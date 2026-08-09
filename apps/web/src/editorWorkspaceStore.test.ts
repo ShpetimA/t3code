@@ -400,7 +400,7 @@ describe("thread editor workspace", () => {
     expect(findSurfaceTabs(removed, "diff")).toHaveLength(1);
   });
 
-  test("replaces transient explorer tabs without moving their groups", () => {
+  test("applies explicit surface replacements without moving their groups", () => {
     const initial = createThreadEditorWorkspace(["files"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const groupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
@@ -414,7 +414,12 @@ describe("thread editor workspace", () => {
     const groupsBefore = findSurfaceTabs(split, "files").map((tab) =>
       findEditorWorkspaceTabGroup(split, tab.id),
     );
-    const reconciled = transitionThreadEditorWorkspace(split, {
+    const replaced = transitionThreadEditorWorkspace(split, {
+      _tag: "ReplaceSurface",
+      previousSurfaceId: "files",
+      nextSurfaceId: "file:src/app.ts",
+    });
+    const reconciled = transitionThreadEditorWorkspace(replaced, {
       _tag: "ReconcileSurfaces",
       surfaceIds: ["file:src/app.ts"],
     });
@@ -428,6 +433,17 @@ describe("thread editor workspace", () => {
         findEditorWorkspaceTabGroup(reconciled, tab.id),
       ),
     ).toEqual(groupsBefore);
+  });
+
+  test("does not infer replacement identity from surface id prefixes", () => {
+    const initial = createThreadEditorWorkspace(["files"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const reconciled = transitionThreadEditorWorkspace(initial, {
+      _tag: "ReconcileSurfaces",
+      surfaceIds: ["file:src/app.ts"],
+    });
+
+    expect(findSurfaceTabs(reconciled, "file:src/app.ts")[0]?.id).not.toBe(filesTab.id);
   });
 
   test("parses valid persisted trees and clamps their split ratios", () => {

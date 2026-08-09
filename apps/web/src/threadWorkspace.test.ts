@@ -99,4 +99,49 @@ describe("thread workspace lifecycle", () => {
     expect(closed.removedSurfaces).toEqual([{ id: "diff", kind: "diff" }]);
     expect(findSurfaceTabs(closed.editorWorkspace!, "diff")).toEqual([]);
   });
+
+  test("replaces explorer placements explicitly when a file opens", () => {
+    const opened = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Files" },
+    }).editorWorkspace!;
+    const filesTab = findSurfaceTabs(opened, "files")[0]!;
+    const copied = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "ApplyEditorTransition",
+      transition: {
+        _tag: "SplitTab",
+        groupId: findEditorWorkspaceTabGroup(opened, filesTab.id)!,
+        tabId: filesTab.id,
+        direction: "right",
+        mode: "copy",
+      },
+    }).editorWorkspace!;
+    const previousTabIds = findSurfaceTabs(copied, "files").map((tab) => tab.id);
+
+    const fileOpened = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "OpenSurface",
+      surface: { _tag: "File", relativePath: "src/app.ts" },
+    }).editorWorkspace!;
+
+    expect(findSurfaceTabs(fileOpened, "files")).toEqual([]);
+    expect(findSurfaceTabs(fileOpened, "file:src/app.ts").map((tab) => tab.id)).toEqual(
+      previousTabIds,
+    );
+  });
+
+  test("replaces a browser placeholder with the opened session", () => {
+    const placeholder = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: null },
+    }).editorWorkspace!;
+    const placeholderTabId = findSurfaceTabs(placeholder, "browser:new")[0]!.id;
+
+    const opened = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: "tab-1" },
+    }).editorWorkspace!;
+
+    expect(findSurfaceTabs(opened, "browser:new")).toEqual([]);
+    expect(findSurfaceTabs(opened, "browser:tab-1")[0]?.id).toBe(placeholderTabId);
+  });
 });

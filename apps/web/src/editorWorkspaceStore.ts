@@ -51,6 +51,11 @@ export type ThreadEditorWorkspaceTransition =
   | { readonly _tag: "ActivateThread" }
   | { readonly _tag: "ActivateSurface"; readonly surfaceId: string }
   | { readonly _tag: "OpenSurface"; readonly surfaceId: string }
+  | {
+      readonly _tag: "ReplaceSurface";
+      readonly previousSurfaceId: string;
+      readonly nextSurfaceId: string;
+    }
   | { readonly _tag: "ActivateTab"; readonly groupId: EditorGroupId; readonly tabId: EditorTabId }
   | { readonly _tag: "FocusGroup"; readonly groupId: EditorGroupId }
   | { readonly _tag: "ToggleGroupMaximized"; readonly groupId: EditorGroupId }
@@ -191,7 +196,7 @@ function reconcileThreadEditorWorkspace(
   surfaceIds: readonly string[],
 ): ThreadEditorWorkspace {
   const validSurfaceIds = new Set(surfaceIds);
-  let next = replaceTransientSurfaceTabs(current, surfaceIds);
+  let next = current;
   for (const tab of Object.values(next.tabsById)) {
     if (tab._tag === "Surface" && !validSurfaceIds.has(tab.surfaceId)) {
       next = closeWorkspaceTab(next, tab.id);
@@ -219,6 +224,8 @@ export function transitionThreadEditorWorkspace(
       return activateSurfaceWorkspaceTab(current, input.surfaceId);
     case "OpenSurface":
       return openSurfaceWorkspaceTab(current, input.surfaceId);
+    case "ReplaceSurface":
+      return replaceSurfaceWorkspaceTabs(current, input.previousSurfaceId, input.nextSurfaceId);
     case "ActivateTab": {
       const workspace = activateEditorTab(current.workspace, input.groupId, input.tabId);
       return workspace === current.workspace ? current : { ...current, workspace };
@@ -258,44 +265,39 @@ export function transitionThreadEditorWorkspace(
   }
 }
 
-function replaceTransientSurfaceTabs(
+function replaceSurfaceWorkspaceTabs(
   current: ThreadEditorWorkspace,
-  surfaceIds: readonly string[],
+  previousSurfaceId: string,
+  nextSurfaceId: string,
 ): ThreadEditorWorkspace {
-  const existingSurfaceIds = new Set(
-    Object.values(current.tabsById).flatMap((tab) =>
-      tab._tag === "Surface" ? [tab.surfaceId] : [],
-    ),
-  );
-  const incomingSurfaceIds = new Set(surfaceIds);
-  const missingSurfaceIds = surfaceIds.filter((surfaceId) => !existingSurfaceIds.has(surfaceId));
-  const removedSurfaceIds = [...existingSurfaceIds].filter(
-    (surfaceId) => !incomingSurfaceIds.has(surfaceId),
-  );
-  let tabsById = current.tabsById;
-  for (const nextSurfaceId of missingSurfaceIds) {
-    const previousSurfaceId = removedSurfaceIds.find((surfaceId) =>
-      isTransientSurfaceReplacement(surfaceId, nextSurfaceId),
-    );
-    if (!previousSurfaceId) continue;
-    tabsById = Object.fromEntries(
-      Object.entries(tabsById).map(([tabId, tab]) => [
-        tabId,
-        tab._tag === "Surface" && tab.surfaceId === previousSurfaceId
-          ? { ...tab, surfaceId: nextSurfaceId }
-          : tab,
-      ]),
-    );
-    removedSurfaceIds.splice(removedSurfaceIds.indexOf(previousSurfaceId), 1);
+  if (previousSurfaceId === nextSurfaceId) return current;
+  let next = current;
+  for (const previousTab of findSurfaceTabs(current, previousSurfaceId)) {
+    const groupId = findEditorWorkspaceTabGroup(next, previousTab.id);
+    const group = groupId ? findEditorGroup(next.workspace.root, groupId) : null;
+    if (!groupId || !group) continue;
+    const equivalentTabId = group.tabIds.find((tabId) => {
+      const tab = next.tabsById[tabId];
+      return tabId !== previousTab.id && tab?._tag === "Surface" && tab.surfaceId === nextSurfaceId;
+    });
+    if (equivalentTabId) {
+      const wasActive = group.activeTabId === previousTab.id;
+      next = closeWorkspaceTab(next, previousTab.id, groupId);
+      if (wasActive) {
+        const workspace = activateEditorTab(next.workspace, groupId, equivalentTabId);
+        next = workspace === next.workspace ? next : { ...next, workspace };
+      }
+      continue;
+    }
+    next = {
+      ...next,
+      tabsById: {
+        ...next.tabsById,
+        [previousTab.id]: { ...previousTab, surfaceId: nextSurfaceId },
+      },
+    };
   }
-  return tabsById === current.tabsById ? current : { ...current, tabsById };
-}
-
-function isTransientSurfaceReplacement(previousSurfaceId: string, nextSurfaceId: string): boolean {
-  return (
-    (previousSurfaceId === "files" && nextSurfaceId.startsWith("file:")) ||
-    (previousSurfaceId === "browser:new" && nextSurfaceId.startsWith("browser:"))
-  );
+  return next;
 }
 
 function activateThreadWorkspaceTab(current: ThreadEditorWorkspace): ThreadEditorWorkspace {

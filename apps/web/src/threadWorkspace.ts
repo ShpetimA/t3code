@@ -75,7 +75,19 @@ export function transitionThreadWorkspace(
 
   switch (input._tag) {
     case "OpenSurface": {
-      const surfaceId = openRightPanelSurface(ref, input.surface, input.presentation);
+      const { surfaceId, previousSurfaceIds } = openRightPanelSurface(
+        ref,
+        beforePanel,
+        input.surface,
+        input.presentation,
+      );
+      for (const previousSurfaceId of previousSurfaceIds) {
+        editorWorkspaceStore.transition(ref, {
+          _tag: "ReplaceSurface",
+          previousSurfaceId,
+          nextSurfaceId: surfaceId,
+        });
+      }
       editorWorkspaceStore.transition(ref, { _tag: "OpenSurface", surfaceId });
       break;
     }
@@ -130,9 +142,26 @@ export function transitionThreadWorkspace(
         }
       }
       break;
-    case "ReconcileBrowserSurfaces":
+    case "ReconcileBrowserSurfaces": {
       rightPanelStore.reconcileBrowserSurfaces(ref, input.tabIds);
+      const placeholder = beforePanel.surfaces.find(
+        (surface) => surface.kind === "preview" && surface.resourceId === null,
+      );
+      const firstNewBrowser = currentRightPanel(ref).surfaces.find(
+        (surface) =>
+          surface.kind === "preview" &&
+          surface.resourceId !== null &&
+          !beforePanel.surfaces.some((previous) => previous.id === surface.id),
+      );
+      if (placeholder && firstNewBrowser) {
+        editorWorkspaceStore.transition(ref, {
+          _tag: "ReplaceSurface",
+          previousSurfaceId: placeholder.id,
+          nextSurfaceId: firstNewBrowser.id,
+        });
+      }
       break;
+    }
     case "ReconcileFileSurfaces":
       rightPanelStore.reconcileFileSurfaces(ref, input.workspaceAvailable);
       break;
@@ -167,29 +196,42 @@ export function transitionThreadWorkspace(
 
 function openRightPanelSurface(
   ref: ScopedThreadRef,
+  current: ThreadRightPanelState,
   request: ThreadWorkspaceSurfaceRequest,
   presentation: RightPanelSurfacePresentation | undefined,
-): string {
+): { readonly surfaceId: string; readonly previousSurfaceIds: readonly string[] } {
   const store = useRightPanelStore.getState();
   switch (request._tag) {
     case "Diff":
       store.open(ref, "diff", presentation);
-      return "diff";
+      return { surfaceId: "diff", previousSurfaceIds: [] };
     case "Files":
       store.open(ref, "files", presentation);
-      return "files";
+      return { surfaceId: "files", previousSurfaceIds: [] };
     case "Agents":
       store.open(ref, "agents", presentation);
-      return "agents";
-    case "Browser":
+      return { surfaceId: "agents", previousSurfaceIds: [] };
+    case "Browser": {
       store.openBrowser(ref, request.tabId, presentation);
-      return request.tabId ? `browser:${request.tabId}` : "browser:new";
+      const placeholder = current.surfaces.find(
+        (surface) => surface.kind === "preview" && surface.resourceId === null,
+      );
+      return {
+        surfaceId: request.tabId ? `browser:${request.tabId}` : "browser:new",
+        previousSurfaceIds: request.tabId && placeholder ? [placeholder.id] : [],
+      };
+    }
     case "File":
       store.openFile(ref, request.relativePath, request.line, presentation);
-      return `file:${request.relativePath}`;
+      return {
+        surfaceId: `file:${request.relativePath}`,
+        previousSurfaceIds: current.surfaces.some((surface) => surface.kind === "files")
+          ? ["files"]
+          : [],
+      };
     case "Terminal":
       store.openTerminal(ref, request.terminalId, presentation);
-      return `terminal:${request.terminalId}`;
+      return { surfaceId: `terminal:${request.terminalId}`, previousSurfaceIds: [] };
   }
 }
 
