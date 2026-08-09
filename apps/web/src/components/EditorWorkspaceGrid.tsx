@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import {
+  calculateEditorWorkspaceLayout,
   clampEditorSplitRatio,
   findEditorGroup,
   getVisibleEditorWorkspaceRoot,
@@ -22,15 +23,14 @@ import {
   type EditorSplitNode,
   type EditorTabDragData,
   type EditorWorkspace,
+  type EditorWorkspaceBounds,
 } from "~/editorWorkspace";
 import { cn } from "~/lib/utils";
 
 import {
-  calculateEditorWorkspaceLayout,
   calculateEditorSplitRatio,
   resolveEditorGroupDropZone,
   resolveKeyboardResizeDelta,
-  type EditorWorkspaceBounds,
 } from "./EditorWorkspaceGrid.logic";
 
 interface EditorWorkspaceGridProps {

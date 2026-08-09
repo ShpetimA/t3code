@@ -77,6 +77,28 @@ export interface AdjacentEditorGroups {
   readonly right: EditorGroupId | null;
 }
 
+export interface EditorWorkspaceBounds {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+export interface EditorWorkspaceGroupLayout {
+  readonly group: EditorGroupNode;
+  readonly bounds: EditorWorkspaceBounds;
+}
+
+export interface EditorWorkspaceSplitLayout {
+  readonly split: EditorSplitNode;
+  readonly bounds: EditorWorkspaceBounds;
+}
+
+export interface EditorWorkspaceLayout {
+  readonly groups: readonly EditorWorkspaceGroupLayout[];
+  readonly splits: readonly EditorWorkspaceSplitLayout[];
+}
+
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
 
@@ -120,15 +142,21 @@ export function getVisibleEditorWorkspaceRoot(workspace: EditorWorkspace): Edito
 }
 
 export function findTopRightEditorGroup(node: EditorWorkspaceNode): EditorGroupNode {
-  if (node._tag === "Group") return node;
-  return findTopRightEditorGroup(node.orientation === "horizontal" ? node.second : node.first);
+  return getTopEditorGroups(node).at(-1)!;
 }
 
 export function getTopEditorGroups(node: EditorWorkspaceNode): readonly EditorGroupNode[] {
-  if (node._tag === "Group") return [node];
-  return node.orientation === "horizontal"
-    ? [...getTopEditorGroups(node.first), ...getTopEditorGroups(node.second)]
-    : getTopEditorGroups(node.first);
+  return calculateEditorWorkspaceLayout(node).groups.flatMap(({ group, bounds }) =>
+    bounds.top === 0 ? [group] : [],
+  );
+}
+
+/** Projects the split tree into stable, normalized group and divider geometry. */
+export function calculateEditorWorkspaceLayout(root: EditorWorkspaceNode): EditorWorkspaceLayout {
+  const groups: EditorWorkspaceGroupLayout[] = [];
+  const splits: EditorWorkspaceSplitLayout[] = [];
+  collectEditorWorkspaceLayout(root, { top: 0, right: 1, bottom: 1, left: 0 }, groups, splits);
+  return { groups, splits };
 }
 
 /** Finds the closest spatially adjacent editor group in every direction. */
@@ -136,21 +164,16 @@ export function findAdjacentEditorGroups(
   workspace: EditorWorkspace,
   groupId: EditorGroupId,
 ): AdjacentEditorGroups {
-  const bounds = collectEditorGroupBounds(workspace.root, {
-    top: 0,
-    right: 1,
-    bottom: 1,
-    left: 0,
-  });
-  const source = bounds.find((entry) => entry.groupId === groupId);
+  const groups = calculateEditorWorkspaceLayout(workspace.root).groups;
+  const source = groups.find((entry) => entry.group.id === groupId);
   if (!source) {
     return { up: null, down: null, left: null, right: null };
   }
   return {
-    up: findDirectionalEditorGroup(bounds, source, "up"),
-    down: findDirectionalEditorGroup(bounds, source, "down"),
-    left: findDirectionalEditorGroup(bounds, source, "left"),
-    right: findDirectionalEditorGroup(bounds, source, "right"),
+    up: findDirectionalEditorGroup(groups, source, "up"),
+    down: findDirectionalEditorGroup(groups, source, "down"),
+    left: findDirectionalEditorGroup(groups, source, "left"),
+    right: findDirectionalEditorGroup(groups, source, "right"),
   };
 }
 
@@ -547,49 +570,46 @@ function mapEditorNode(
   return map(first === node.first && second === node.second ? node : { ...node, first, second });
 }
 
-interface EditorGroupBounds {
-  readonly groupId: EditorGroupId;
-  readonly top: number;
-  readonly right: number;
-  readonly bottom: number;
-  readonly left: number;
-}
-
-function collectEditorGroupBounds(
+function collectEditorWorkspaceLayout(
   node: EditorWorkspaceNode,
-  bounds: Omit<EditorGroupBounds, "groupId">,
-): readonly EditorGroupBounds[] {
-  if (node._tag === "Group") return [{ ...bounds, groupId: node.id }];
+  bounds: EditorWorkspaceBounds,
+  groups: EditorWorkspaceGroupLayout[],
+  splits: EditorWorkspaceSplitLayout[],
+): void {
+  if (node._tag === "Group") {
+    groups.push({ group: node, bounds });
+    return;
+  }
+  splits.push({ split: node, bounds });
   if (node.orientation === "horizontal") {
     const splitAt = bounds.left + (bounds.right - bounds.left) * node.ratio;
-    return [
-      ...collectEditorGroupBounds(node.first, { ...bounds, right: splitAt }),
-      ...collectEditorGroupBounds(node.second, { ...bounds, left: splitAt }),
-    ];
+    collectEditorWorkspaceLayout(node.first, { ...bounds, right: splitAt }, groups, splits);
+    collectEditorWorkspaceLayout(node.second, { ...bounds, left: splitAt }, groups, splits);
+    return;
   }
   const splitAt = bounds.top + (bounds.bottom - bounds.top) * node.ratio;
-  return [
-    ...collectEditorGroupBounds(node.first, { ...bounds, bottom: splitAt }),
-    ...collectEditorGroupBounds(node.second, { ...bounds, top: splitAt }),
-  ];
+  collectEditorWorkspaceLayout(node.first, { ...bounds, bottom: splitAt }, groups, splits);
+  collectEditorWorkspaceLayout(node.second, { ...bounds, top: splitAt }, groups, splits);
 }
 
 function findDirectionalEditorGroup(
-  bounds: readonly EditorGroupBounds[],
-  source: EditorGroupBounds,
+  groups: readonly EditorWorkspaceGroupLayout[],
+  source: EditorWorkspaceGroupLayout,
   direction: EditorSplitDirection,
 ): EditorGroupId | null {
-  const candidates = bounds.flatMap((candidate, order) => {
-    if (candidate.groupId === source.groupId) return [];
+  const candidates = groups.flatMap((candidate, order) => {
+    if (candidate.group.id === source.group.id) return [];
     const verticalOverlap =
-      Math.min(source.bottom, candidate.bottom) - Math.max(source.top, candidate.top);
+      Math.min(source.bounds.bottom, candidate.bounds.bottom) -
+      Math.max(source.bounds.top, candidate.bounds.top);
     const horizontalOverlap =
-      Math.min(source.right, candidate.right) - Math.max(source.left, candidate.left);
+      Math.min(source.bounds.right, candidate.bounds.right) -
+      Math.max(source.bounds.left, candidate.bounds.left);
     const overlap =
       direction === "left" || direction === "right" ? verticalOverlap : horizontalOverlap;
     if (overlap <= 0) return [];
-    const distance = editorGroupDistance(source, candidate, direction);
-    return distance < 0 ? [] : [{ groupId: candidate.groupId, distance, overlap, order }];
+    const distance = editorGroupDistance(source.bounds, candidate.bounds, direction);
+    return distance < 0 ? [] : [{ groupId: candidate.group.id, distance, overlap, order }];
   });
   candidates.sort((left, right) =>
     left.distance !== right.distance
@@ -602,8 +622,8 @@ function findDirectionalEditorGroup(
 }
 
 function editorGroupDistance(
-  source: EditorGroupBounds,
-  candidate: EditorGroupBounds,
+  source: EditorWorkspaceBounds,
+  candidate: EditorWorkspaceBounds,
   direction: EditorSplitDirection,
 ): number {
   switch (direction) {

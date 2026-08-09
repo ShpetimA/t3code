@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
 import {
+  calculateEditorWorkspaceLayout,
   createEditorWorkspace,
   splitEditorTab,
   toggleMaximizedEditorGroup,
@@ -12,7 +13,6 @@ import {
 
 import { EditorWorkspaceGrid } from "./EditorWorkspaceGrid";
 import {
-  calculateEditorWorkspaceLayout,
   calculateEditorSplitRatio,
   resolveEditorGroupDropZone,
   resolveKeyboardResizeDelta,
