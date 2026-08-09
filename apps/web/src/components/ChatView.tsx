@@ -14,7 +14,6 @@ import {
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
-  type ThreadWorkspaceDefaultLayout,
   type TurnId,
   type KeybindingCommand,
   OrchestrationThreadActivity,
@@ -57,7 +56,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
 } from "react";
@@ -76,6 +74,7 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import { useDiffPanelStore } from "../diffPanelStore";
+import { useThreadWorkspaceViewStore } from "../threadWorkspaceViewStore";
 import {
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
@@ -296,7 +295,6 @@ import {
 } from "./chat/draftHeroTransition";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  INITIAL_THREAD_WORKSPACE_VIEW,
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
@@ -320,7 +318,6 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
-  reduceThreadWorkspaceView,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
@@ -1352,15 +1349,11 @@ function ChatViewContent(props: ChatViewProps) {
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
-  const [threadWorkspaceView, dispatchThreadWorkspaceView] = useReducer(
-    reduceThreadWorkspaceView,
-    INITIAL_THREAD_WORKSPACE_VIEW,
-  );
+  const threadWorkspaceView = useThreadWorkspaceViewStore((state) => state.view);
   const threadWorkspaceDefaultLayout = useClientSettings(
     (clientSettings) => clientSettings.threadWorkspaceDefaultLayout,
   );
   const clientSettingsHydrated = useClientSettingsHydrated();
-  const appliedDefaultWorkspaceLayoutRef = useRef<ThreadWorkspaceDefaultLayout | null>(null);
   const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
     ApprovalRequestId[]
@@ -1627,16 +1620,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   useLayoutEffect(() => {
     if (!clientSettingsHydrated || !activeThreadRef || shouldUseRightPanelSheet) return;
-    if (appliedDefaultWorkspaceLayoutRef.current !== threadWorkspaceDefaultLayout) {
-      appliedDefaultWorkspaceLayoutRef.current = threadWorkspaceDefaultLayout;
-      dispatchThreadWorkspaceView({
-        _tag: "ApplyDefault",
-        layout: threadWorkspaceDefaultLayout,
-      });
-      return;
-    }
-
-    dispatchThreadWorkspaceView({ _tag: "SelectThread" });
+    useThreadWorkspaceViewStore.getState().applyDefaultLayout(threadWorkspaceDefaultLayout);
   }, [
     activeThreadRef,
     clientSettingsHydrated,
@@ -3481,7 +3465,7 @@ function ChatViewContent(props: ChatViewProps) {
   const toggleWorkspaceMode = useCallback(() => {
     if (shouldUseRightPanelSheet) return;
     if (workspaceMode) {
-      dispatchThreadWorkspaceView({ _tag: "ExitWorkspace" });
+      useThreadWorkspaceViewStore.getState().exitWorkspace();
       return;
     }
     if (activeThreadRef) {
@@ -3496,7 +3480,7 @@ function ChatViewContent(props: ChatViewProps) {
         workspaceStore.activateThread(activeThreadRef);
       }
     }
-    dispatchThreadWorkspaceView({ _tag: "EnterWorkspace" });
+    useThreadWorkspaceViewStore.getState().enterWorkspace();
   }, [
     activeThreadRef,
     rightPanelOpen,
