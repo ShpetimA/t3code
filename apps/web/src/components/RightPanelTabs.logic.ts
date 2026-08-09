@@ -13,9 +13,6 @@ export type TabContextMenuAction =
   | "close-others"
   | "close-to-right"
   | "close-all"
-  | "move-tab-left"
-  | "move-tab-right"
-  | "move-to-group"
   | "move-group-up"
   | "move-group-down"
   | "move-group-left"
@@ -26,29 +23,20 @@ export type TabContextMenuAction =
   | "move-up"
   | "move-down"
   | "move-left"
-  | "move-right"
-  | "merge-group"
-  | "merge-group-up"
-  | "merge-group-down"
-  | "merge-group-left"
-  | "merge-group-right";
+  | "move-right";
 
-/** A non-splitting tab or group operation selected from a tab context menu. */
-export type EditorTabLayoutAction =
-  | { readonly _tag: "Reorder"; readonly direction: "left" | "right" }
-  | { readonly _tag: "MoveToGroup"; readonly direction: EditorSplitDirection }
-  | { readonly _tag: "MergeGroup"; readonly direction: EditorSplitDirection };
+/** A move into an existing editor group selected from a tab context menu. */
+export type EditorTabLayoutAction = {
+  readonly _tag: "MoveToGroup";
+  readonly direction: EditorSplitDirection;
+};
 
 export function buildEditorTabContextMenuItems(input: {
   readonly target: EditorTabContextTarget;
   readonly surfaceCount: number;
   readonly surfaceIndex: number;
-  readonly tabCount: number;
-  readonly tabIndex: number;
   readonly adjacentGroups: AdjacentEditorGroups;
-  readonly reorderAvailable: boolean;
   readonly moveToGroupAvailable: boolean;
-  readonly mergeGroupAvailable: boolean;
   readonly copyToSplitAvailable: boolean;
   readonly moveToSplitAvailable: boolean;
 }): readonly ContextMenuItem<TabContextMenuAction>[] {
@@ -76,87 +64,57 @@ export function buildEditorTabContextMenuItems(input: {
       },
     );
   }
-  if (input.reorderAvailable) {
-    items.push(
-      { id: "move-tab-left", label: "Move Left", disabled: input.tabIndex <= 0 },
-      {
-        id: "move-tab-right",
-        label: "Move Right",
-        disabled: input.tabIndex < 0 || input.tabIndex >= input.tabCount - 1,
-      },
-    );
-  }
-  const moveGroupItems = directionalGroupItems("move", input.adjacentGroups);
-  if (input.moveToGroupAvailable && moveGroupItems.length > 0) {
-    items.push({ id: "move-to-group", label: "Move into Group", children: moveGroupItems });
-  }
-  if (input.copyToSplitAvailable || input.moveToSplitAvailable) {
+  const moveGroupItems = input.moveToGroupAvailable
+    ? directionalGroupItems(input.adjacentGroups)
+    : [];
+  if (input.copyToSplitAvailable || input.moveToSplitAvailable || moveGroupItems.length > 0) {
     items.push(
       { id: "split-right", label: "Split Right", disabled: !input.copyToSplitAvailable },
       { id: "split-down", label: "Split Down", disabled: !input.copyToSplitAvailable },
       {
         id: "split-and-move",
         label: "Split & Move",
-        disabled: !input.moveToSplitAvailable,
+        disabled: !input.moveToSplitAvailable && moveGroupItems.length === 0,
         children: [
-          { id: "move-up", label: "Split Up" },
-          { id: "move-down", label: "Split Down" },
-          { id: "move-left", label: "Split Left" },
-          { id: "move-right", label: "Split Right" },
+          { id: "move-up", label: "Split Up", disabled: !input.moveToSplitAvailable },
+          { id: "move-down", label: "Split Down", disabled: !input.moveToSplitAvailable },
+          { id: "move-left", label: "Split Left", disabled: !input.moveToSplitAvailable },
+          { id: "move-right", label: "Split Right", disabled: !input.moveToSplitAvailable },
+          ...moveGroupItems,
         ],
       },
     );
-  }
-  const mergeGroupItems = directionalGroupItems("merge", input.adjacentGroups);
-  if (input.mergeGroupAvailable && mergeGroupItems.length > 0) {
-    items.push({ id: "merge-group", label: "Merge Group With", children: mergeGroupItems });
   }
   return items;
 }
 
 function directionalGroupItems(
-  operation: "move" | "merge",
   groups: AdjacentEditorGroups,
 ): readonly ContextMenuItem<TabContextMenuAction>[] {
   return (["up", "down", "left", "right"] as const).flatMap((direction) => {
     if (!groups[direction]) return [];
     const label =
       direction === "up"
-        ? "Above"
+        ? "Move Above"
         : direction === "down"
-          ? "Below"
+          ? "Move Below"
           : direction === "left"
-            ? "Left"
-            : "Right";
-    return [{ id: directionalGroupActionId(operation, direction), label }];
+            ? "Move Left"
+            : "Move Right";
+    return [{ id: directionalGroupActionId(direction), label }];
   });
 }
 
-function directionalGroupActionId(
-  operation: "move" | "merge",
-  direction: EditorSplitDirection,
-): TabContextMenuAction {
-  if (operation === "move") {
-    switch (direction) {
-      case "up":
-        return "move-group-up";
-      case "down":
-        return "move-group-down";
-      case "left":
-        return "move-group-left";
-      case "right":
-        return "move-group-right";
-    }
-  }
+function directionalGroupActionId(direction: EditorSplitDirection): TabContextMenuAction {
   switch (direction) {
     case "up":
-      return "merge-group-up";
+      return "move-group-up";
     case "down":
-      return "merge-group-down";
+      return "move-group-down";
     case "left":
-      return "merge-group-left";
+      return "move-group-left";
     case "right":
-      return "merge-group-right";
+      return "move-group-right";
   }
 }
 
@@ -186,10 +144,6 @@ export function resolveEditorTabLayoutAction(
   action: TabContextMenuAction | null,
 ): EditorTabLayoutAction | null {
   switch (action) {
-    case "move-tab-left":
-      return { _tag: "Reorder", direction: "left" };
-    case "move-tab-right":
-      return { _tag: "Reorder", direction: "right" };
     case "move-group-up":
       return { _tag: "MoveToGroup", direction: "up" };
     case "move-group-down":
@@ -198,14 +152,6 @@ export function resolveEditorTabLayoutAction(
       return { _tag: "MoveToGroup", direction: "left" };
     case "move-group-right":
       return { _tag: "MoveToGroup", direction: "right" };
-    case "merge-group-up":
-      return { _tag: "MergeGroup", direction: "up" };
-    case "merge-group-down":
-      return { _tag: "MergeGroup", direction: "down" };
-    case "merge-group-left":
-      return { _tag: "MergeGroup", direction: "left" };
-    case "merge-group-right":
-      return { _tag: "MergeGroup", direction: "right" };
     default:
       return null;
   }

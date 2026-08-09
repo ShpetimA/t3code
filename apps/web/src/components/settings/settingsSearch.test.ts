@@ -46,10 +46,7 @@ describe("searchSettings", () => {
   it("matches normalized title substrings", () => {
     expect(searchSettings("  WORD   WRAP  ", ITEMS).map((item) => item.id)).toEqual(["word-wrap"]);
     expect(searchSettings("glass").map((item) => item.id)).toEqual(["setting-glass-opacity"]);
-    expect(searchSettings("work").map((item) => item.id)).toEqual([
-      "thread-workspace-layout",
-      "project-new-thread-workspace",
-    ]);
+    expect(searchSettings("work").map((item) => item.id)).toEqual(["project-new-thread-workspace"]);
     expect(searchSettings("xyzzy")).toEqual([]);
   });
 

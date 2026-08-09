@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { PanelLayoutControls, WorkspaceModeControl } from "./PanelLayoutControls";
+import { PanelLayoutControls } from "./PanelLayoutControls";
 
 const NOOP = () => {};
 
@@ -35,25 +35,13 @@ describe("PanelLayoutControls", () => {
         terminalAvailable
         terminalOpen={false}
         terminalShortcutLabel={null}
-        rightControl={{ _tag: "Split", available: false, onSplitRight: NOOP }}
+        rightControl={{ _tag: "Split", available: true, onSplitRight: NOOP }}
         onToggleTerminal={NOOP}
       />,
     );
 
     expect(markup).toContain('aria-label="Split editor right"');
-    expect(markup).toContain("disabled");
+    expect(markup).toContain("[--control-icon-color:currentColor]");
     expect(markup).not.toContain('aria-label="Toggle right panel"');
-  });
-});
-
-describe("WorkspaceModeControl", () => {
-  it("is available in both conversation and workspace modes", () => {
-    const conversation = renderToStaticMarkup(
-      <WorkspaceModeControl active={false} onToggle={NOOP} />,
-    );
-    const workspace = renderToStaticMarkup(<WorkspaceModeControl active onToggle={NOOP} />);
-
-    expect(conversation).toContain('aria-label="Open workspace"');
-    expect(workspace).toContain('aria-label="Return to conversation"');
   });
 });

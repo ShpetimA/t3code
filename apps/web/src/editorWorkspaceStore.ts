@@ -12,12 +12,12 @@ import {
   findEditorGroup,
   focusEditorGroup,
   getEditorGroups,
-  mergeEditorGroups,
   moveEditorTabToGroup,
   moveEditorTabToSplit,
   openEditorTab,
   reorderEditorTab,
   resizeEditorSplit,
+  splitEditorGroup,
   splitEditorTab,
   swapEditorGroups,
   toggleMaximizedEditorGroup,
@@ -45,6 +45,7 @@ interface EditorWorkspaceStoreState {
   readonly ensure: (ref: ScopedThreadRef, surfaceIds: readonly string[]) => void;
   readonly activateThread: (ref: ScopedThreadRef) => void;
   readonly activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
+  readonly openSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   readonly activateTab: (ref: ScopedThreadRef, groupId: EditorGroupId, tabId: EditorTabId) => void;
   readonly focusGroup: (ref: ScopedThreadRef, groupId: EditorGroupId) => void;
   readonly toggleGroupMaximized: (ref: ScopedThreadRef, groupId: EditorGroupId) => void;
@@ -52,6 +53,11 @@ interface EditorWorkspaceStoreState {
     ref: ScopedThreadRef,
     splitId: `editor-split:${string}`,
     ratio: number,
+  ) => void;
+  readonly splitGroup: (
+    ref: ScopedThreadRef,
+    groupId: EditorGroupId,
+    direction: EditorSplitDirection,
   ) => void;
   readonly splitTab: (
     ref: ScopedThreadRef,
@@ -81,11 +87,6 @@ interface EditorWorkspaceStoreState {
     direction: EditorSplitDirection,
   ) => void;
   readonly swapGroups: (
-    ref: ScopedThreadRef,
-    sourceGroupId: EditorGroupId,
-    targetGroupId: EditorGroupId,
-  ) => void;
-  readonly mergeGroups: (
     ref: ScopedThreadRef,
     sourceGroupId: EditorGroupId,
     targetGroupId: EditorGroupId,
@@ -265,6 +266,21 @@ export function activateSurfaceWorkspaceTab(
     : addSurfaceTab(current, surfaceId);
 }
 
+/** Opens a surface in the focused group, allowing the same surface in separate groups. */
+export function openSurfaceWorkspaceTab(
+  current: ThreadEditorWorkspace,
+  surfaceId: string,
+): ThreadEditorWorkspace {
+  const focusedGroup = findEditorGroup(current.workspace.root, current.workspace.focusedGroupId);
+  if (!focusedGroup) return activateSurfaceWorkspaceTab(current, surfaceId);
+  const focusedTab = focusedGroup.tabIds
+    .map((tabId) => current.tabsById[tabId])
+    .find((tab) => tab?._tag === "Surface" && tab.surfaceId === surfaceId);
+  return focusedTab
+    ? activateWorkspaceTab(current, focusedTab.id)
+    : addSurfaceTab(current, surfaceId);
+}
+
 export function splitThreadEditorTab(
   current: ThreadEditorWorkspace,
   input: {
@@ -299,6 +315,22 @@ export function splitThreadEditorTab(
         : current.tabsById,
     nextId: current.nextId + (input.mode === "copy" ? 3 : 2),
   };
+}
+
+export function splitThreadEditorGroup(
+  current: ThreadEditorWorkspace,
+  groupId: EditorGroupId,
+  direction: EditorSplitDirection,
+): ThreadEditorWorkspace {
+  const workspace = splitEditorGroup(current.workspace, {
+    sourceGroupId: groupId,
+    targetGroupId: `editor-group:${current.nextId}` as EditorGroupId,
+    splitId: `editor-split:${current.nextId + 1}` as EditorSplitId,
+    direction,
+  });
+  return workspace === current.workspace
+    ? current
+    : { ...current, workspace, nextId: current.nextId + 2 };
 }
 
 /** Reorders one thread-workspace tab within its current editor group. */
@@ -396,61 +428,6 @@ export function swapThreadEditorGroups(
 ): ThreadEditorWorkspace {
   const workspace = swapEditorGroups(current.workspace, input.sourceGroupId, input.targetGroupId);
   return workspace === current.workspace ? current : { ...current, workspace };
-}
-
-/** Merges one thread-workspace group into another and deduplicates copied surfaces. */
-export function mergeThreadEditorGroups(
-  current: ThreadEditorWorkspace,
-  input: {
-    readonly sourceGroupId: EditorGroupId;
-    readonly targetGroupId: EditorGroupId;
-  },
-): ThreadEditorWorkspace {
-  const sourceGroup = findEditorGroup(current.workspace.root, input.sourceGroupId);
-  const targetGroup = findEditorGroup(current.workspace.root, input.targetGroupId);
-  if (!sourceGroup || !targetGroup || sourceGroup.id === targetGroup.id) return current;
-  const duplicateTargetBySource = new Map<EditorTabId, EditorTabId>();
-  for (const sourceTabId of sourceGroup.tabIds) {
-    const sourceTab = current.tabsById[sourceTabId];
-    if (!sourceTab) continue;
-    const targetTabId = targetGroup.tabIds.find((candidateId) => {
-      const candidate = current.tabsById[candidateId];
-      return candidate ? editorWorkspaceTabsShareContent(sourceTab, candidate) : false;
-    });
-    if (targetTabId) duplicateTargetBySource.set(sourceTabId, targetTabId);
-  }
-  let next = current;
-  for (const duplicateSourceId of duplicateTargetBySource.keys()) {
-    next = closeWorkspaceTab(next, duplicateSourceId, input.sourceGroupId);
-  }
-  const workspace = findEditorGroup(next.workspace.root, input.sourceGroupId)
-    ? mergeEditorGroups(next.workspace, input)
-    : next.workspace;
-  next = withoutUnreferencedTabs(workspace === next.workspace ? next : { ...next, workspace });
-  const mergedTargetGroup = findEditorGroup(next.workspace.root, input.targetGroupId);
-  const threadTabId = mergedTargetGroup?.tabIds.find(
-    (tabId) => next.tabsById[tabId]?._tag === "Thread",
-  );
-  if (threadTabId && mergedTargetGroup?.tabIds[0] !== threadTabId) {
-    next = {
-      ...next,
-      workspace: reorderEditorTab(next.workspace, {
-        groupId: input.targetGroupId,
-        tabId: threadTabId,
-        targetIndex: 0,
-      }),
-    };
-  }
-  const requestedActiveTabId = sourceGroup.activeTabId
-    ? (duplicateTargetBySource.get(sourceGroup.activeTabId) ?? sourceGroup.activeTabId)
-    : targetGroup.activeTabId;
-  if (!requestedActiveTabId) return next;
-  const activeWorkspace = activateEditorTab(
-    next.workspace,
-    input.targetGroupId,
-    requestedActiveTabId,
-  );
-  return activeWorkspace === next.workspace ? next : { ...next, workspace: activeWorkspace };
 }
 
 export function closeThreadEditorSurfaceTab(
@@ -772,6 +749,12 @@ export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
             activateSurfaceWorkspaceTab(current, surfaceId),
           ),
         })),
+      openSurface: (ref, surfaceId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            openSurfaceWorkspaceTab(current, surfaceId),
+          ),
+        })),
       activateTab: (ref, groupId, tabId) =>
         set((state) => ({
           byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
@@ -799,6 +782,12 @@ export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
             const workspace = resizeEditorSplit(current.workspace, splitId, ratio);
             return workspace === current.workspace ? current : { ...current, workspace };
           }),
+        })),
+      splitGroup: (ref, groupId, direction) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            splitThreadEditorGroup(current, groupId, direction),
+          ),
         })),
       splitTab: (ref, groupId, tabId, direction, mode) =>
         set((state) => ({
@@ -838,12 +827,6 @@ export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
         set((state) => ({
           byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
             swapThreadEditorGroups(current, { sourceGroupId, targetGroupId }),
-          ),
-        })),
-      mergeGroups: (ref, sourceGroupId, targetGroupId) =>
-        set((state) => ({
-          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-            mergeThreadEditorGroups(current, { sourceGroupId, targetGroupId }),
           ),
         })),
       closeSurfaceTab: (ref, groupId, tabId) =>

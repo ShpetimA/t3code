@@ -1,10 +1,4 @@
-import {
-  Columns2Icon,
-  Maximize2Icon,
-  Minimize2Icon,
-  PanelBottomIcon,
-  PanelRightIcon,
-} from "lucide-react";
+import { Columns2Icon, PanelBottomIcon, PanelRightIcon } from "lucide-react";
 import { memo } from "react";
 
 import { Button } from "../ui/button";
@@ -112,7 +106,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
           <TooltipTrigger
             render={
               <Button
-                className="shrink-0 [-webkit-app-region:no-drag]"
+                className="shrink-0 text-foreground [--control-icon-color:currentColor] [-webkit-app-region:no-drag]"
                 onClick={rightControl.onSplitRight}
                 aria-label="Split editor right"
                 variant="ghost"
@@ -124,45 +118,10 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
             }
           />
           <TooltipPopup side="bottom">
-            {rightControl.available
-              ? "Split editor right"
-              : "Open a tool tab before splitting the editor"}
+            {rightControl.available ? "Split editor right" : "Editor splitting is unavailable"}
           </TooltipPopup>
         </Tooltip>
       )}
     </div>
-  );
-});
-
-export const WorkspaceModeControl = memo(function WorkspaceModeControl({
-  active,
-  onToggle,
-}: {
-  active: boolean;
-  onToggle: () => void;
-}) {
-  const label = active ? "Return to conversation" : "Open workspace";
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Toggle
-            className="shrink-0 [-webkit-app-region:no-drag]"
-            pressed={active}
-            onPressedChange={onToggle}
-            aria-label={label}
-            variant="ghost"
-            size="sm"
-          >
-            {active ? (
-              <Minimize2Icon className="size-3.5" />
-            ) : (
-              <Maximize2Icon className="size-3.5" />
-            )}
-          </Toggle>
-        }
-      />
-      <TooltipPopup side="bottom">{label}</TooltipPopup>
-    </Tooltip>
   );
 });

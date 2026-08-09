@@ -25,7 +25,7 @@ export const RIGHT_PANEL_KINDS = [
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
 /** Whether opening a surface should reveal the inline conversation panel. */
-export type RightPanelSurfacePresentation = "show-inline" | "preserve-inline";
+export type RightPanelSurfacePresentation = "show-panel" | "preserve-panel";
 
 export type RightPanelSurface =
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
@@ -153,9 +153,9 @@ const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
-  presentation: RightPanelSurfacePresentation = "show-inline",
+  presentation: RightPanelSurfacePresentation = "show-panel",
 ): ThreadRightPanelState => ({
-  isOpen: presentation === "show-inline" ? true : current.isOpen,
+  isOpen: presentation === "show-panel" ? true : current.isOpen,
   surfaces: current.surfaces.some((entry) => entry.id === surface.id)
     ? current.surfaces
     : [...current.surfaces, surface],
@@ -305,7 +305,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             );
           }),
         })),
-      openFile: (ref, relativePath, line, presentation = "show-inline") =>
+      openFile: (ref, relativePath, line, presentation = "show-panel") =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             const withoutStandaloneExplorer = current.surfaces.filter(
@@ -322,7 +322,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (existing?.revealRequestId ?? 0) + 1,
             );
             return {
-              isOpen: presentation === "show-inline" ? true : current.isOpen,
+              isOpen: presentation === "show-panel" ? true : current.isOpen,
               activeSurfaceId: surface.id,
               surfaces: existing
                 ? withoutStandaloneExplorer.map((entry) =>

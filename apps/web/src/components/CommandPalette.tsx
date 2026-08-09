@@ -140,7 +140,8 @@ import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { selectThreadEditorWorkspace, useEditorWorkspaceStore } from "../editorWorkspaceStore";
-import { useThreadWorkspaceViewStore } from "../threadWorkspaceViewStore";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
@@ -589,7 +590,7 @@ function OpenCommandPaletteDialog(props: {
   const activeEditorWorkspace = useEditorWorkspaceStore((state) =>
     selectThreadEditorWorkspace(state.byThreadKey, activeEditorThreadRef),
   );
-  const workspaceMode = useThreadWorkspaceViewStore((state) => state.view._tag === "Workspace");
+  const workspaceMode = !useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();

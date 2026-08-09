@@ -61,6 +61,7 @@ describe("EditorWorkspaceGrid", () => {
     expect(markup).toContain('aria-label="Resize editor columns"');
     expect(markup).toContain('aria-label="Resize editor rows"');
     expect(markup).toContain('data-editor-group-focused="true"');
+    expect(markup).toContain("absolute isolate flex");
     expect(markup).toContain(group("three"));
   });
 

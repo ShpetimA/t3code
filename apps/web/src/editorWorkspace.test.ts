@@ -14,12 +14,12 @@ import {
   getVisibleEditorWorkspaceRoot,
   focusEditorGroup,
   getEditorGroups,
-  mergeEditorGroups,
   moveEditorTabToGroup,
   moveEditorTabToSplit,
   openEditorTab,
   reorderEditorTab,
   resizeEditorSplit,
+  splitEditorGroup,
   splitEditorTab,
   swapEditorGroups,
   toggleMaximizedEditorGroup,
@@ -248,35 +248,25 @@ describe("editor workspace", () => {
     expect(swapped.focusedGroupId).toBe(columns.focusedGroupId);
   });
 
-  test("merges all source tabs into an existing group", () => {
-    const initial = splitEditorTab(
-      createEditorWorkspace({
-        groupId: group("left"),
-        tabIds: [tab("thread"), tab("diff")],
-        activeTabId: tab("diff"),
-      }),
-      {
-        sourceGroupId: group("left"),
-        sourceTabId: tab("diff"),
-        targetTabId: tab("file"),
-        targetGroupId: group("right"),
-        splitId: split("columns"),
-        direction: "right",
-        mode: "copy",
-      },
-    );
-    const merged = mergeEditorGroups(initial, {
-      sourceGroupId: group("right"),
-      targetGroupId: group("left"),
+  test("creates and focuses an empty group beside the current editor", () => {
+    const initial = createEditorWorkspace({
+      groupId: group("left"),
+      tabIds: [tab("thread")],
+    });
+    const next = splitEditorGroup(initial, {
+      sourceGroupId: group("left"),
+      targetGroupId: group("right"),
+      splitId: split("columns"),
+      direction: "right",
     });
 
-    expect(merged.root).toEqual({
-      _tag: "Group",
-      id: group("left"),
-      tabIds: [tab("thread"), tab("diff"), tab("file")],
-      activeTabId: tab("file"),
+    expect(next.root._tag).toBe("Split");
+    expect(findEditorGroup(next.root, group("left"))?.tabIds).toEqual([tab("thread")]);
+    expect(findEditorGroup(next.root, group("right"))).toMatchObject({
+      tabIds: [],
+      activeTabId: null,
     });
-    expect(merged.focusedGroupId).toBe(group("left"));
+    expect(next.focusedGroupId).toBe(group("right"));
   });
 
   test("does not move the only tab out of a group", () => {

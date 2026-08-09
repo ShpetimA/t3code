@@ -167,7 +167,7 @@ describe("rightPanelStore", () => {
     });
   });
 
-  it("selects a workspace surface without reopening the inline panel", () => {
+  it("selects a workspace surface without reopening the narrow panel", () => {
     useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().open(refA, "agents");
     useRightPanelStore.getState().close(refA);
@@ -184,9 +184,9 @@ describe("rightPanelStore", () => {
     });
   });
 
-  it("opens workspace surfaces without changing inline panel visibility", () => {
-    useRightPanelStore.getState().open(refA, "diff", "preserve-inline");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts", undefined, "preserve-inline");
+  it("opens workspace surfaces without changing narrow panel visibility", () => {
+    useRightPanelStore.getState().open(refA, "diff", "preserve-panel");
+    useRightPanelStore.getState().openFile(refA, "src/index.ts", undefined, "preserve-panel");
 
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
       isOpen: false,

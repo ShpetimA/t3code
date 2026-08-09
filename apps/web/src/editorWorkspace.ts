@@ -46,6 +46,13 @@ export interface SplitEditorTabInput {
   readonly mode: "copy" | "move";
 }
 
+export interface SplitEditorGroupInput {
+  readonly sourceGroupId: EditorGroupId;
+  readonly targetGroupId: EditorGroupId;
+  readonly splitId: EditorSplitId;
+  readonly direction: EditorSplitDirection;
+}
+
 /** Moves one tab from its current editor group into an existing group. */
 export interface MoveEditorTabInput {
   readonly sourceGroupId: EditorGroupId;
@@ -348,34 +355,34 @@ export function swapEditorGroups(
   return root === workspace.root ? workspace : { ...workspace, root };
 }
 
-/** Joins one editor group into another group and removes the source split. */
-export function mergeEditorGroups(
+/** Creates and focuses an empty editor group beside an existing group. */
+export function splitEditorGroup(
   workspace: EditorWorkspace,
-  input: {
-    readonly sourceGroupId: EditorGroupId;
-    readonly targetGroupId: EditorGroupId;
-  },
+  input: SplitEditorGroupInput,
 ): EditorWorkspace {
-  if (input.sourceGroupId === input.targetGroupId) return workspace;
   const sourceGroup = findEditorGroup(workspace.root, input.sourceGroupId);
-  const targetGroup = findEditorGroup(workspace.root, input.targetGroupId);
-  if (!sourceGroup || !targetGroup) return workspace;
-  const sourceTabIds = sourceGroup.tabIds.filter((tabId) => !targetGroup.tabIds.includes(tabId));
-  const targetTabIds = [...targetGroup.tabIds, ...sourceTabIds];
-  const activeTabId = sourceGroup.activeTabId ?? targetGroup.activeTabId;
-  const updatedRoot = mapEditorNode(workspace.root, (node) =>
-    node._tag === "Group" && node.id === targetGroup.id
-      ? { ...node, tabIds: targetTabIds, activeTabId }
-      : node,
-  );
-  const root = collapseEditorGroup(updatedRoot, sourceGroup.id);
-  return root
-    ? {
-        root,
-        focusedGroupId: targetGroup.id,
-        maximizedGroupId: workspace.maximizedGroupId ? targetGroup.id : null,
-      }
-    : workspace;
+  if (!sourceGroup || findEditorGroup(workspace.root, input.targetGroupId)) return workspace;
+
+  const targetGroup: EditorGroupNode = {
+    _tag: "Group",
+    id: input.targetGroupId,
+    tabIds: [],
+    activeTabId: null,
+  };
+  const newGroupFirst = input.direction === "left" || input.direction === "up";
+  const split: EditorSplitNode = {
+    _tag: "Split",
+    id: input.splitId,
+    orientation:
+      input.direction === "left" || input.direction === "right" ? "horizontal" : "vertical",
+    ratio: 0.5,
+    first: newGroupFirst ? targetGroup : sourceGroup,
+    second: newGroupFirst ? sourceGroup : targetGroup,
+  };
+  const root = replaceEditorGroup(workspace.root, input.sourceGroupId, split);
+  return root === workspace.root
+    ? workspace
+    : { root, focusedGroupId: targetGroup.id, maximizedGroupId: null };
 }
 
 export function splitEditorTab(

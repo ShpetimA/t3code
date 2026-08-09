@@ -29,6 +29,7 @@ import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { Button } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { faviconUrlForOrigin } from "~/lib/favicon";
@@ -47,7 +48,6 @@ import {
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
-  maximized?: boolean;
   titleBar?: boolean;
   sidebarTitleBarInset?: boolean;
   layoutControls?: ReactNode;
@@ -74,9 +74,7 @@ interface RightPanelTabsProps {
   onCloseAllSurfaces: () => void;
   onSplitTab?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
   onMoveTabToSplit?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
-  onReorderTab?: (target: EditorTabContextTarget, direction: "left" | "right") => void;
   onMoveTabToGroup?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
-  onMergeGroup?: (direction: EditorSplitDirection) => void;
   onTabDragStart?: (target: EditorTabContextTarget) => void;
   onTabDragEnd?: () => void;
   onTabDrop?: (target: EditorTabContextTarget, position: "before" | "after") => void;
@@ -141,7 +139,7 @@ function SurfaceMenuItem(props: {
   return <DisabledReasonTooltip reason={props.disabledReason} trigger={item} />;
 }
 
-function RightPanelEmptyState(props: {
+export function RightPanelEmptyState(props: {
   onAddBrowser: () => void;
   onAddTerminal: () => void;
   onAddDiff: () => void;
@@ -205,9 +203,7 @@ function RightPanelEmptyState(props: {
       <div className="w-full max-w-xl">
         <div className="mb-5 text-center">
           <h3 className="text-sm font-medium text-foreground">Open a surface</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Choose what to show in the right panel.
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Choose what to open here.</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           {actions.map((action) => {
@@ -237,7 +233,7 @@ function RightPanelEmptyState(props: {
                   key={action.label}
                   type="button"
                   onClick={action.onClick}
-                  className="cursor-pointer flex min-h-28 w-full flex-col items-start rounded-lg border border-border/80 bg-card p-4 text-left transition hover:border-border hover:bg-accent/60 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5"
+                  className="cursor-pointer flex min-h-28 w-full flex-col items-start rounded-lg border border-border/80 bg-card p-4 text-left transition-[background-color,border-color] hover:border-border hover:bg-accent/60 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5"
                 >
                   {content}
                 </button>
@@ -366,11 +362,10 @@ function ThreadTabStatusDot({ status }: { readonly status: ThreadStatusPill }) {
   );
 }
 
-/** Render the shared tab strip used by inline panels and thread workspaces. */
+/** Render the shared tab strip used by tool panels and thread workspaces. */
 export function RightPanelTabBar(props: RightPanelTabBarProps) {
-  const ownsDesktopTitleBar = isElectron && (props.mode === "inline" || props.titleBar === true);
-  const reservesNativeControls =
-    ownsDesktopTitleBar && (props.mode === "inline" || props.layoutControls !== undefined);
+  const ownsDesktopTitleBar = isElectron && props.titleBar === true;
+  const reservesNativeControls = ownsDesktopTitleBar && props.layoutControls !== undefined;
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
   const [tabDropPreview, setTabDropPreview] = useState<{
@@ -459,12 +454,8 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         target,
         surfaceCount: props.surfaces.length,
         surfaceIndex,
-        tabCount: props.surfaces.length,
-        tabIndex: surfaceIndex,
         adjacentGroups: props.adjacentGroups ?? NO_ADJACENT_EDITOR_GROUPS,
-        reorderAvailable: target._tag === "Surface" && props.onReorderTab !== undefined,
         moveToGroupAvailable: props.onMoveTabToGroup !== undefined,
-        mergeGroupAvailable: props.onMergeGroup !== undefined,
         copyToSplitAvailable:
           props.onSplitTab !== undefined && (props.canCopyTabToSplit?.(target) ?? true),
         moveToSplitAvailable:
@@ -483,16 +474,8 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         return;
       }
       const layoutAction = resolveEditorTabLayoutAction(action);
-      if (layoutAction?._tag === "Reorder") {
-        props.onReorderTab?.(target, layoutAction.direction);
-        return;
-      }
       if (layoutAction?._tag === "MoveToGroup") {
         props.onMoveTabToGroup?.(target, layoutAction.direction);
-        return;
-      }
-      if (layoutAction?._tag === "MergeGroup") {
-        props.onMergeGroup?.(layoutAction.direction);
         return;
       }
       switch (action) {
@@ -511,9 +494,6 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         case "close-all":
           props.onCloseAllSurfaces();
           break;
-        case "move-tab-left":
-        case "move-tab-right":
-        case "move-to-group":
         case "move-group-up":
         case "move-group-down":
         case "move-group-left":
@@ -525,11 +505,6 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         case "move-down":
         case "move-left":
         case "move-right":
-        case "merge-group":
-        case "merge-group-up":
-        case "merge-group-down":
-        case "merge-group-left":
-        case "merge-group-right":
         case null:
           break;
       }
@@ -559,11 +534,10 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
     <div
       className={cn(
         "workspace-topbar relative z-[60] gap-1 pl-2",
-        props.mode !== "inline" && !props.titleBar && "[--workspace-topbar-height:--spacing(11)]",
-        props.mode === "inline" || props.layoutControls ? "pr-28" : "pr-3",
-        reservesNativeControls && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
-        ((props.mode === "inline" && props.maximized) || props.sidebarTitleBarInset) &&
-          COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+        !props.titleBar && "[--workspace-topbar-height:--spacing(11)]",
+        "pr-2",
+        reservesNativeControls && "wco:pr-[var(--workspace-native-controls-inset)]",
+        props.sidebarTitleBarInset && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
       )}
       data-right-panel-tabbar
     >
@@ -753,32 +727,39 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
           ) : null}
         </div>
       </ScrollArea>
-      {props.focusView ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={props.focusView.active ? "Restore editor layout" : "Focus editor group"}
-                aria-pressed={props.focusView.active}
-                onClick={props.focusView.onToggle}
-                className="cursor-pointer relative inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.96]"
-              >
-                {props.focusView.active ? (
-                  <Minimize2 className="size-3.5" />
-                ) : (
-                  <Maximize2 className="size-3.5" />
-                )}
-              </button>
-            }
-          />
-          <TooltipPopup>
-            {props.focusView.active ? "Restore editor layout" : "Focus editor group"}
-            {props.focusView.shortcutLabel ? ` (${props.focusView.shortcutLabel})` : ""}
-          </TooltipPopup>
-        </Tooltip>
+      {props.focusView || props.layoutControls ? (
+        <div className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
+          {props.focusView ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label={
+                      props.focusView.active ? "Restore editor layout" : "Focus editor group"
+                    }
+                    aria-pressed={props.focusView.active}
+                    onClick={props.focusView.onToggle}
+                    className="text-foreground [--control-icon-color:currentColor] transition-[color,background-color,scale] duration-150 active:scale-[0.96]"
+                    variant="ghost"
+                    size="icon-sm"
+                  >
+                    {props.focusView.active ? (
+                      <Minimize2 className="size-3.5" />
+                    ) : (
+                      <Maximize2 className="size-3.5" />
+                    )}
+                  </Button>
+                }
+              />
+              <TooltipPopup>
+                {props.focusView.active ? "Restore editor layout" : "Focus editor group"}
+                {props.focusView.shortcutLabel ? ` (${props.focusView.shortcutLabel})` : ""}
+              </TooltipPopup>
+            </Tooltip>
+          ) : null}
+          {props.layoutControls}
+        </div>
       ) : null}
-      {props.layoutControls}
     </div>
   );
 }
@@ -787,10 +768,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
 export function RightPanelTabs(props: RightPanelTabsProps) {
   const { children, ...tabBarProps } = props;
   return (
-    <PreviewPanelShell
-      mode={props.mode}
-      {...(props.maximized !== undefined ? { maximized: props.maximized } : {})}
-    >
+    <PreviewPanelShell mode={props.mode}>
       <RightPanelTabBar {...tabBarProps} />
       <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
         {props.activeSurfaceId === null ? (

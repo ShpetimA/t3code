@@ -6,17 +6,17 @@ import {
   resolveEditorTabLayoutAction,
   resolveEditorTabSplitAction,
 } from "./RightPanelTabs.logic";
-import { RightPanelTabBar } from "./RightPanelTabs";
+import { RightPanelEmptyState, RightPanelTabBar } from "./RightPanelTabs";
 
 const NOOP = () => {};
 const NO_ADJACENT_GROUPS = { up: null, down: null, left: null, right: null } as const;
 
 describe("RightPanelTabBar", () => {
-  it("renders the current thread as a pinned active tab in the maximized workspace", () => {
+  it("renders the current thread as a pinned active workspace tab", () => {
     const markup = renderToStaticMarkup(
       <RightPanelTabBar
-        mode="inline"
-        maximized
+        mode="embedded"
+        titleBar
         threadTab={{
           title: "New thread",
           active: true,
@@ -70,6 +70,7 @@ describe("RightPanelTabBar", () => {
       <RightPanelTabBar
         mode="embedded"
         focusView={{ active: true, shortcutLabel: "⌘⇧↵", onToggle: NOOP }}
+        layoutControls={<button aria-label="Split editor right" />}
         surfaces={[]}
         activeSurfaceId={null}
         pendingSurfaceIds={new Set()}
@@ -95,6 +96,31 @@ describe("RightPanelTabBar", () => {
 
     expect(markup).toContain('aria-label="Restore editor layout"');
     expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain("[--control-icon-color:currentColor]");
+    expect(markup.indexOf('aria-label="Restore editor layout"')).toBeLessThan(
+      markup.indexOf('aria-label="Split editor right"'),
+    );
+    expect(markup).not.toContain("pr-28");
+  });
+
+  it("renders the surface chooser for an empty editor group", () => {
+    const markup = renderToStaticMarkup(
+      <RightPanelEmptyState
+        onAddBrowser={NOOP}
+        onAddTerminal={NOOP}
+        onAddDiff={NOOP}
+        onAddFiles={NOOP}
+        onAddAgents={NOOP}
+        browserAvailable
+        diffAvailable
+        filesAvailable
+        liveAgentCount={0}
+      />,
+    );
+
+    expect(markup).toContain("Open a surface");
+    expect(markup).toContain("Choose what to open here.");
+    expect(markup).toContain("Terminal");
   });
 
   it("adds copy and move split actions to a surface tab menu", () => {
@@ -112,12 +138,8 @@ describe("RightPanelTabBar", () => {
         },
         surfaceCount: 3,
         surfaceIndex: 1,
-        tabCount: 4,
-        tabIndex: 2,
         adjacentGroups: NO_ADJACENT_GROUPS,
-        reorderAvailable: true,
         moveToGroupAvailable: true,
-        mergeGroupAvailable: true,
         copyToSplitAvailable: true,
         moveToSplitAvailable: true,
       }),
@@ -127,8 +149,6 @@ describe("RightPanelTabBar", () => {
       { id: "close-others", label: "Close others", disabled: false },
       { id: "close-to-right", label: "Close to the right", disabled: false },
       { id: "close-all", label: "Close all", disabled: false },
-      { id: "move-tab-left", label: "Move Left", disabled: false },
-      { id: "move-tab-right", label: "Move Right", disabled: false },
       { id: "split-right", label: "Split Right", disabled: false },
       { id: "split-down", label: "Split Down", disabled: false },
       {
@@ -136,36 +156,27 @@ describe("RightPanelTabBar", () => {
         label: "Split & Move",
         disabled: false,
         children: [
-          { id: "move-up", label: "Split Up" },
-          { id: "move-down", label: "Split Down" },
-          { id: "move-left", label: "Split Left" },
-          { id: "move-right", label: "Split Right" },
+          { id: "move-up", label: "Split Up", disabled: false },
+          { id: "move-down", label: "Split Down", disabled: false },
+          { id: "move-left", label: "Split Left", disabled: false },
+          { id: "move-right", label: "Split Right", disabled: false },
         ],
       },
     ]);
   });
 
-  it("keeps the pinned thread fixed while allowing existing-group moves and merges", () => {
+  it("puts existing-group moves inside the Split & Move submenu", () => {
     const items = buildEditorTabContextMenuItems({
       target: { _tag: "Thread" },
       surfaceCount: 0,
       surfaceIndex: -1,
-      tabCount: 1,
-      tabIndex: -1,
       adjacentGroups: { up: null, down: null, left: null, right: "editor-group:right" },
-      reorderAvailable: false,
       moveToGroupAvailable: true,
-      mergeGroupAvailable: true,
       copyToSplitAvailable: false,
       moveToSplitAvailable: true,
     });
 
     expect(items).toEqual([
-      {
-        id: "move-to-group",
-        label: "Move into Group",
-        children: [{ id: "move-group-right", label: "Right" }],
-      },
       { id: "split-right", label: "Split Right", disabled: true },
       { id: "split-down", label: "Split Down", disabled: true },
       {
@@ -173,16 +184,12 @@ describe("RightPanelTabBar", () => {
         label: "Split & Move",
         disabled: false,
         children: [
-          { id: "move-up", label: "Split Up" },
-          { id: "move-down", label: "Split Down" },
-          { id: "move-left", label: "Split Left" },
-          { id: "move-right", label: "Split Right" },
+          { id: "move-up", label: "Split Up", disabled: false },
+          { id: "move-down", label: "Split Down", disabled: false },
+          { id: "move-left", label: "Split Left", disabled: false },
+          { id: "move-right", label: "Split Right", disabled: false },
+          { id: "move-group-right", label: "Move Right" },
         ],
-      },
-      {
-        id: "merge-group",
-        label: "Merge Group With",
-        children: [{ id: "merge-group-right", label: "Right" }],
       },
     ]);
   });
@@ -199,18 +206,10 @@ describe("RightPanelTabBar", () => {
     expect(resolveEditorTabSplitAction("close")).toBeNull();
   });
 
-  it("resolves reorder, move-to-group, and merge-group commands", () => {
-    expect(resolveEditorTabLayoutAction("move-tab-left")).toEqual({
-      _tag: "Reorder",
-      direction: "left",
-    });
+  it("resolves existing-group move commands", () => {
     expect(resolveEditorTabLayoutAction("move-group-down")).toEqual({
       _tag: "MoveToGroup",
       direction: "down",
-    });
-    expect(resolveEditorTabLayoutAction("merge-group-right")).toEqual({
-      _tag: "MergeGroup",
-      direction: "right",
     });
     expect(resolveEditorTabLayoutAction("split-right")).toBeNull();
   });

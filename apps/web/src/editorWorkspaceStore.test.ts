@@ -11,13 +11,14 @@ import {
   createThreadEditorWorkspace,
   findEditorWorkspaceTabGroup,
   findSurfaceTabs,
-  mergeThreadEditorGroups,
   moveThreadEditorTabToGroup,
   moveThreadEditorTabToSplit,
+  openSurfaceWorkspaceTab,
   parsePersistedEditorWorkspaceState,
   reconcileThreadEditorWorkspace,
   reorderThreadEditorTab,
   splitThreadEditorTab,
+  splitThreadEditorGroup,
   swapThreadEditorGroups,
 } from "./editorWorkspaceStore";
 
@@ -61,6 +62,29 @@ describe("thread editor workspace", () => {
     });
   });
 
+  test("opens the same surface once in each focused group", () => {
+    const initial = createThreadEditorWorkspace(["files"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const rootGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId: rootGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "move",
+    });
+    const threadFocused = activateThreadWorkspaceTab(split);
+    const opened = openSurfaceWorkspaceTab(threadFocused, "files");
+    const reopened = openSurfaceWorkspaceTab(opened, "files");
+    const filesTabs = findSurfaceTabs(opened, "files");
+
+    expect(filesTabs).toHaveLength(2);
+    expect(new Set(filesTabs.map((tab) => findEditorWorkspaceTabGroup(opened, tab.id))).size).toBe(
+      2,
+    );
+    expect(findSurfaceTabs(reopened, "files")).toHaveLength(2);
+    expect(reopened.nextId).toBe(opened.nextId);
+  });
+
   test("copies a surface into a new group but keeps the thread singleton", () => {
     const initial = createThreadEditorWorkspace(["file:one.ts"]);
     const surfaceTab = findSurfaceTabs(initial, "file:one.ts")[0]!;
@@ -82,6 +106,17 @@ describe("thread editor workspace", () => {
         mode: "copy",
       }),
     ).toBe(initial);
+  });
+
+  test("opens an empty split for choosing a new surface", () => {
+    const initial = createThreadEditorWorkspace();
+    const next = splitThreadEditorGroup(initial, initial.workspace.focusedGroupId, "right");
+    const focused = findEditorGroup(next.workspace.root, next.workspace.focusedGroupId);
+
+    expect(next.workspace.root._tag).toBe("Split");
+    expect(focused).toMatchObject({ tabIds: [], activeTabId: null });
+    expect(next.tabsById).toEqual(initial.tabsById);
+    expect(next.nextId).toBe(initial.nextId + 2);
   });
 
   test("moves a surface and prevents moving the only tab from a group", () => {
@@ -236,29 +271,7 @@ describe("thread editor workspace", () => {
     expect(targetGroup?.tabIds).toEqual([threadTab.id, filesTab.id]);
   });
 
-  test("pins the thread first when merging its group into another group", () => {
-    const initial = createThreadEditorWorkspace(["files", "diff"]);
-    const filesTab = findSurfaceTabs(initial, "files")[0]!;
-    const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
-      groupId: sourceGroupId,
-      tabId: filesTab.id,
-      direction: "right",
-      mode: "move",
-    });
-    const targetGroupId = findEditorWorkspaceTabGroup(split, filesTab.id)!;
-    const threadTab = Object.values(split.tabsById).find((tab) => tab._tag === "Thread")!;
-    const diffTab = findSurfaceTabs(split, "diff")[0]!;
-    const merged = mergeThreadEditorGroups(split, { sourceGroupId, targetGroupId });
-
-    expect(findEditorGroup(merged.workspace.root, targetGroupId)?.tabIds).toEqual([
-      threadTab.id,
-      filesTab.id,
-      diffTab.id,
-    ]);
-  });
-
-  test("deduplicates copied surfaces when moving or merging groups", () => {
+  test("deduplicates copied surfaces when moving into an existing group", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const rootGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
@@ -278,24 +291,6 @@ describe("thread editor workspace", () => {
 
     expect(findSurfaceTabs(moved, "files")).toHaveLength(1);
     expect(moved.workspace.root._tag).toBe("Group");
-
-    const copiedAgain = splitThreadEditorTab(initial, {
-      groupId: rootGroupId,
-      tabId: filesTab.id,
-      direction: "right",
-      mode: "copy",
-    });
-    const duplicate = findSurfaceTabs(copiedAgain, "files").find((tab) => tab.id !== filesTab.id)!;
-    const duplicateGroupId = findEditorWorkspaceTabGroup(copiedAgain, duplicate.id)!;
-    const merged = mergeThreadEditorGroups(copiedAgain, {
-      sourceGroupId: duplicateGroupId,
-      targetGroupId: rootGroupId,
-    });
-
-    expect(findSurfaceTabs(merged, "files")).toHaveLength(1);
-    expect(merged.workspace.root._tag).toBe("Group");
-    if (merged.workspace.root._tag !== "Group") return;
-    expect(merged.workspace.root.activeTabId).toBe(filesTab.id);
   });
 
   test("closes only one copied view until the last resource tab closes", () => {

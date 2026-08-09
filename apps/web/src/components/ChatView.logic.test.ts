@@ -12,7 +12,6 @@ import type { Thread, ThreadShell } from "../types";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  INITIAL_THREAD_WORKSPACE_VIEW,
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
@@ -27,7 +26,6 @@ import {
   isBranchMismatchDismissedForSession,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
-  reduceThreadWorkspaceView,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   scheduleEnvironmentReconnectWarning,
@@ -40,53 +38,6 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
-
-describe("thread workspace view", () => {
-  it("enters workspace mode without requiring panel state", () => {
-    expect(
-      reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, { _tag: "EnterWorkspace" }),
-    ).toEqual({ _tag: "Workspace" });
-  });
-
-  it("keeps workspace mode when selecting another sidebar thread", () => {
-    const workspace = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
-      _tag: "EnterWorkspace",
-    });
-
-    expect(reduceThreadWorkspaceView(workspace, { _tag: "SelectThread" })).toEqual(workspace);
-  });
-
-  it("returns to conversation mode explicitly", () => {
-    const workspace = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
-      _tag: "ApplyDefault",
-      layout: "maximized",
-    });
-
-    expect(reduceThreadWorkspaceView(workspace, { _tag: "ExitWorkspace" })).toEqual({
-      _tag: "Conversation",
-    });
-  });
-
-  it("applies both workspace defaults", () => {
-    expect(
-      reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
-        _tag: "ApplyDefault",
-        layout: "maximized",
-      }),
-    ).toEqual({ _tag: "Workspace" });
-    expect(
-      reduceThreadWorkspaceView(
-        { _tag: "Workspace" },
-        {
-          _tag: "ApplyDefault",
-          layout: "split",
-        },
-      ),
-    ).toEqual({
-      _tag: "Conversation",
-    });
-  });
-});
 
 describe("environment reconnect warning grace", () => {
   afterEach(() => vi.useRealTimers());

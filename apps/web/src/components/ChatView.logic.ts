@@ -8,7 +8,6 @@ import {
   type ScopedProjectRef,
   type ScopedThreadRef,
   type ThreadId,
-  type ThreadWorkspaceDefaultLayout,
   type TurnId,
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadShell } from "../types";
@@ -29,37 +28,6 @@ export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
-
-/** The desktop thread workspace's current presentation mode. */
-export type ThreadWorkspaceViewState =
-  | { readonly _tag: "Conversation" }
-  | { readonly _tag: "Workspace" };
-
-type ThreadWorkspaceViewAction =
-  | { readonly _tag: "ApplyDefault"; readonly layout: ThreadWorkspaceDefaultLayout }
-  | { readonly _tag: "SelectThread" }
-  | { readonly _tag: "EnterWorkspace" }
-  | { readonly _tag: "ExitWorkspace" };
-
-/** The conversation layout used before settings hydrate or workspace mode is requested. */
-export const INITIAL_THREAD_WORKSPACE_VIEW: ThreadWorkspaceViewState = { _tag: "Conversation" };
-
-/** Reduce thread navigation without coupling view mode to panels or a thread id. */
-export function reduceThreadWorkspaceView(
-  state: ThreadWorkspaceViewState,
-  action: ThreadWorkspaceViewAction,
-): ThreadWorkspaceViewState {
-  switch (action._tag) {
-    case "ApplyDefault":
-      return action.layout === "maximized" ? { _tag: "Workspace" } : INITIAL_THREAD_WORKSPACE_VIEW;
-    case "SelectThread":
-      return state;
-    case "EnterWorkspace":
-      return { _tag: "Workspace" };
-    case "ExitWorkspace":
-      return INITIAL_THREAD_WORKSPACE_VIEW;
-  }
-}
 
 export function scheduleEnvironmentReconnectWarning(showWarning: () => void): () => void {
   const timeoutId = globalThis.setTimeout(showWarning, ENVIRONMENT_RECONNECT_WARNING_GRACE_MS);

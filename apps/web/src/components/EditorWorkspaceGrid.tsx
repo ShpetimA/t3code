@@ -110,8 +110,9 @@ interface EditorWorkspaceGroupProps {
 function EditorWorkspaceGroup(props: EditorWorkspaceGroupProps) {
   const { group } = props;
   return (
+    // Keep surface-local overlays below the workspace's sibling split handles.
     <section
-      className="absolute flex min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+      className="absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden bg-background"
       style={editorWorkspaceBoundsStyle(props.bounds)}
       data-editor-group={group.id}
       data-editor-group-focused={group.id === props.focusedGroupId ? "true" : "false"}

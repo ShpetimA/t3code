@@ -9,7 +9,6 @@ import {
   ProviderDriverKind,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
-  type ThreadWorkspaceDefaultLayout,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -154,11 +153,6 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
-
-const THREAD_WORKSPACE_LAYOUT_LABELS: Readonly<Record<ThreadWorkspaceDefaultLayout, string>> = {
-  split: "Split panel",
-  maximized: "Maximized tabs",
-};
 
 const BACKGROUND_ACTIVITY_PROFILE_LABELS: Record<BackgroundActivityProfile, string> = {
   balanced: "Balanced",
@@ -1828,49 +1822,6 @@ export function GeneralSettingsPanel() {
             }
           />
         ) : null}
-
-        <SettingsRow
-          {...searchableSetting("thread-workspace-layout")}
-          description="Choose whether selecting a thread keeps tools beside the conversation or opens the maximized tab workspace."
-          resetAction={
-            settings.threadWorkspaceDefaultLayout !==
-            DEFAULT_UNIFIED_SETTINGS.threadWorkspaceDefaultLayout ? (
-              <SettingResetButton
-                label="thread workspace layout"
-                onClick={() =>
-                  updateSettings({
-                    threadWorkspaceDefaultLayout:
-                      DEFAULT_UNIFIED_SETTINGS.threadWorkspaceDefaultLayout,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Select
-              value={settings.threadWorkspaceDefaultLayout}
-              onValueChange={(value) => {
-                if (value === "split" || value === "maximized") {
-                  updateSettings({ threadWorkspaceDefaultLayout: value });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Thread workspace layout">
-                <SelectValue>
-                  {THREAD_WORKSPACE_LAYOUT_LABELS[settings.threadWorkspaceDefaultLayout]}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem hideIndicator value="split">
-                  {THREAD_WORKSPACE_LAYOUT_LABELS.split}
-                </SelectItem>
-                <SelectItem hideIndicator value="maximized">
-                  {THREAD_WORKSPACE_LAYOUT_LABELS.maximized}
-                </SelectItem>
-              </SelectPopup>
-            </Select>
-          }
-        />
 
         <SettingsRow
           {...searchableSetting("time-format")}
