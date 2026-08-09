@@ -103,6 +103,27 @@ describe("ClientSettings sidebar", () => {
   });
 });
 
+describe("ClientSettings thread workspace layout", () => {
+  it("keeps the split panel as the default", () => {
+    expect(decodeClientSettings({}).threadWorkspaceDefaultLayout).toBe("split");
+  });
+
+  it.each(["split", "maximized"] as const)("accepts the %s layout", (layout) => {
+    expect(
+      decodeClientSettings({ threadWorkspaceDefaultLayout: layout }).threadWorkspaceDefaultLayout,
+    ).toBe(layout);
+    expect(
+      decodeClientSettingsPatch({ threadWorkspaceDefaultLayout: layout })
+        .threadWorkspaceDefaultLayout,
+    ).toBe(layout);
+  });
+
+  it("rejects unsupported layouts", () => {
+    expect(() => decodeClientSettings({ threadWorkspaceDefaultLayout: "tabs" })).toThrow();
+    expect(() => decodeClientSettingsPatch({ threadWorkspaceDefaultLayout: "tabs" })).toThrow();
+  });
+});
+
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults text generation to Luna at low reasoning effort", () => {
     expect(DEFAULT_SERVER_SETTINGS.textGenerationModelSelection).toEqual({

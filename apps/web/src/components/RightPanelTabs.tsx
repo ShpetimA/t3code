@@ -1,6 +1,15 @@
 import type { ContextMenuItem, PreviewSessionSnapshot } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
-import { Bot, FileDiff, Files, Globe2, Plus, TerminalSquare, X } from "lucide-react";
+import {
+  Bot,
+  FileDiff,
+  Files,
+  Globe2,
+  MessageSquareText,
+  Plus,
+  TerminalSquare,
+  X,
+} from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -24,11 +33,18 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
+import type { ThreadStatusPill } from "./Sidebar.logic";
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
   layoutControls?: ReactNode;
+  threadTab?: {
+    readonly title: string;
+    readonly active: boolean;
+    readonly status: ThreadStatusPill | null;
+    readonly onActivate: () => void;
+  };
   surfaces: readonly RightPanelSurface[];
   activeSurfaceId: string | null;
   pendingSurfaceIds: ReadonlySet<string>;
@@ -52,6 +68,8 @@ interface RightPanelTabsProps {
   liveAgentCount: number;
   children: ReactNode;
 }
+
+type RightPanelTabBarProps = Omit<RightPanelTabsProps, "children">;
 
 const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the T3 Code desktop app.",
@@ -297,7 +315,25 @@ function SurfaceIcon({
   }
 }
 
-export function RightPanelTabs(props: RightPanelTabsProps) {
+function ThreadTabStatusDot({ status }: { readonly status: ThreadStatusPill }) {
+  return (
+    <span
+      aria-label={status.label}
+      className={cn("inline-flex size-2.5 shrink-0 items-center justify-center", status.colorClass)}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          status.dotClass,
+          status.pulse && "animate-status-pulse",
+        )}
+      />
+    </span>
+  );
+}
+
+/** Render the shared tab strip used by split and maximized thread workspaces. */
+export function RightPanelTabBar(props: RightPanelTabBarProps) {
   const ownsDesktopTitleBar = isElectron && props.mode === "inline";
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -376,135 +412,174 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   useEffect(() => {
     const activeTab = tabListRef.current?.querySelector<HTMLElement>("[data-active-tab='true']");
     activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [props.activeSurfaceId]);
+  }, [props.activeSurfaceId, props.threadTab?.active]);
 
+  return (
+    <div
+      className={cn(
+        "workspace-topbar gap-1 pl-2",
+        props.mode !== "inline" && "[--workspace-topbar-height:--spacing(11)]",
+        props.mode === "inline" ? "pr-28" : "pr-3",
+        ownsDesktopTitleBar && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
+        props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+      )}
+      data-right-panel-tabbar
+    >
+      <ScrollArea
+        ref={tabListRef}
+        hideScrollbars
+        scrollFade
+        className={cn("min-w-0 flex-1 rounded-none", ownsDesktopTitleBar && "drag-region")}
+        data-right-panel-tab-list
+      >
+        <div className="flex h-full w-max min-w-full items-center gap-1">
+          {props.threadTab ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-active-tab={props.threadTab.active}
+                    aria-current={props.threadTab.active ? "page" : undefined}
+                    onClick={props.threadTab.onActivate}
+                    className={cn(
+                      "cursor-pointer flex h-6 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs",
+                      props.threadTab.active
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                    )}
+                  >
+                    <MessageSquareText className="size-3 shrink-0" />
+                    {props.threadTab.status ? (
+                      <ThreadTabStatusDot status={props.threadTab.status} />
+                    ) : null}
+                    <span className="truncate">{props.threadTab.title}</span>
+                  </button>
+                }
+              />
+              <TooltipPopup>
+                {props.threadTab.status
+                  ? `${props.threadTab.title} · ${props.threadTab.status.label}`
+                  : props.threadTab.title}
+              </TooltipPopup>
+            </Tooltip>
+          ) : null}
+          {props.surfaces.map((surface) => {
+            const active = surface.id === props.activeSurfaceId;
+            const pending = props.pendingSurfaceIds.has(surface.id);
+            const title = surfaceTitle(surface, props.previewSessions, props.terminalLabelsById);
+            return (
+              <div
+                key={surface.id}
+                data-active-tab={active}
+                onMouseDown={handleTabMouseDown}
+                onAuxClick={(event) => handleTabAuxClick(event, surface)}
+                onContextMenu={(event) => void handleTabContextMenu(event, surface)}
+                className={cn(
+                  "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
+                  active
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                )}
+              >
+                <button
+                  type="button"
+                  className="cursor-pointer group/close relative flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted"
+                  aria-label={`Close ${title}`}
+                  onClick={() => props.onCloseSurface(surface)}
+                >
+                  <span className="relative flex size-3 items-center justify-center group-hover/tab:hidden group-focus-visible/close:hidden">
+                    <SurfaceIcon
+                      surface={surface}
+                      sessions={props.previewSessions}
+                      theme={resolvedTheme}
+                    />
+                    {pending ? (
+                      <span
+                        className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
+                  <X className="hidden size-3 group-hover/tab:block group-focus-visible/close:block" />
+                </button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        className="cursor-pointer flex min-w-0 items-center"
+                        onClick={() => props.onActivate(surface)}
+                      >
+                        <span className="truncate">{title}</span>
+                      </button>
+                    }
+                  />
+                  <TooltipPopup>{title}</TooltipPopup>
+                </Tooltip>
+              </div>
+            );
+          })}
+          {props.surfaces.length > 0 || props.threadTab ? (
+            <Menu>
+              <MenuTrigger
+                className="cursor-pointer relative inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label="Add panel surface"
+              >
+                <Plus className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup align="start" side="bottom" sideOffset={6} className="min-w-44">
+                <SurfaceMenuItem
+                  available={props.browserAvailable}
+                  disabledReason={SURFACE_DISABLED_REASONS.browser}
+                  onClick={props.onAddBrowser}
+                >
+                  <Globe2 />
+                  Browser
+                </SurfaceMenuItem>
+                <SurfaceMenuItem available onClick={props.onAddTerminal}>
+                  <TerminalSquare />
+                  Terminal
+                </SurfaceMenuItem>
+                <SurfaceMenuItem
+                  available={props.filesAvailable}
+                  disabledReason={SURFACE_DISABLED_REASONS.files}
+                  onClick={props.onAddFiles}
+                >
+                  <Files />
+                  Files
+                </SurfaceMenuItem>
+                <SurfaceMenuItem
+                  available={props.diffAvailable}
+                  disabledReason={SURFACE_DISABLED_REASONS.diff}
+                  onClick={props.onAddDiff}
+                >
+                  <FileDiff />
+                  Diff
+                </SurfaceMenuItem>
+                <SurfaceMenuItem available onClick={props.onAddAgents}>
+                  <Bot />
+                  Agents
+                </SurfaceMenuItem>
+              </MenuPopup>
+            </Menu>
+          ) : null}
+        </div>
+      </ScrollArea>
+      {props.layoutControls}
+    </div>
+  );
+}
+
+/** Render the right-panel shell, shared tab strip, and active surface. */
+export function RightPanelTabs(props: RightPanelTabsProps) {
+  const { children, ...tabBarProps } = props;
   return (
     <PreviewPanelShell
       mode={props.mode}
       {...(props.maximized !== undefined ? { maximized: props.maximized } : {})}
     >
-      <div
-        className={cn(
-          "workspace-topbar gap-1 pl-2",
-          props.mode !== "inline" && "[--workspace-topbar-height:--spacing(11)]",
-          props.mode === "inline" ? "pr-28" : "pr-3",
-          ownsDesktopTitleBar && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
-          props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-        )}
-        data-right-panel-tabbar
-      >
-        <ScrollArea
-          ref={tabListRef}
-          hideScrollbars
-          scrollFade
-          className={cn("min-w-0 flex-1 rounded-none", ownsDesktopTitleBar && "drag-region")}
-          data-right-panel-tab-list
-        >
-          <div className="flex h-full w-max min-w-full items-center gap-1">
-            {props.surfaces.map((surface) => {
-              const active = surface.id === props.activeSurfaceId;
-              const pending = props.pendingSurfaceIds.has(surface.id);
-              const title = surfaceTitle(surface, props.previewSessions, props.terminalLabelsById);
-              return (
-                <div
-                  key={surface.id}
-                  data-active-tab={active}
-                  onMouseDown={handleTabMouseDown}
-                  onAuxClick={(event) => handleTabAuxClick(event, surface)}
-                  onContextMenu={(event) => void handleTabContextMenu(event, surface)}
-                  className={cn(
-                    "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
-                    active
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  )}
-                >
-                  <button
-                    type="button"
-                    className="cursor-pointer group/close relative flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted"
-                    aria-label={`Close ${title}`}
-                    onClick={() => props.onCloseSurface(surface)}
-                  >
-                    <span className="relative flex size-3 items-center justify-center group-hover/tab:hidden group-focus-visible/close:hidden">
-                      <SurfaceIcon
-                        surface={surface}
-                        sessions={props.previewSessions}
-                        theme={resolvedTheme}
-                      />
-                      {pending ? (
-                        <span
-                          className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-                          aria-hidden
-                        />
-                      ) : null}
-                    </span>
-                    <X className="hidden size-3 group-hover/tab:block group-focus-visible/close:block" />
-                  </button>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          type="button"
-                          className="cursor-pointer flex min-w-0 items-center"
-                          onClick={() => props.onActivate(surface)}
-                        >
-                          <span className="truncate">{title}</span>
-                        </button>
-                      }
-                    />
-                    <TooltipPopup>{title}</TooltipPopup>
-                  </Tooltip>
-                </div>
-              );
-            })}
-            {props.surfaces.length > 0 ? (
-              <Menu>
-                <MenuTrigger
-                  className="cursor-pointer relative inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                  aria-label="Add panel surface"
-                >
-                  <Plus className="size-3.5" />
-                </MenuTrigger>
-                <MenuPopup align="start" side="bottom" sideOffset={6} className="min-w-44">
-                  <SurfaceMenuItem
-                    available={props.browserAvailable}
-                    disabledReason={SURFACE_DISABLED_REASONS.browser}
-                    onClick={props.onAddBrowser}
-                  >
-                    <Globe2 />
-                    Browser
-                  </SurfaceMenuItem>
-                  <SurfaceMenuItem available onClick={props.onAddTerminal}>
-                    <TerminalSquare />
-                    Terminal
-                  </SurfaceMenuItem>
-                  <SurfaceMenuItem
-                    available={props.filesAvailable}
-                    disabledReason={SURFACE_DISABLED_REASONS.files}
-                    onClick={props.onAddFiles}
-                  >
-                    <Files />
-                    Files
-                  </SurfaceMenuItem>
-                  <SurfaceMenuItem
-                    available={props.diffAvailable}
-                    disabledReason={SURFACE_DISABLED_REASONS.diff}
-                    onClick={props.onAddDiff}
-                  >
-                    <FileDiff />
-                    Diff
-                  </SurfaceMenuItem>
-                  <SurfaceMenuItem available onClick={props.onAddAgents}>
-                    <Bot />
-                    Agents
-                  </SurfaceMenuItem>
-                </MenuPopup>
-              </Menu>
-            ) : null}
-          </div>
-        </ScrollArea>
-        {props.layoutControls}
-      </div>
+      <RightPanelTabBar {...tabBarProps} />
       <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
         {props.activeSurfaceId === null ? (
           <RightPanelEmptyState
@@ -519,7 +594,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             liveAgentCount={props.liveAgentCount}
           />
         ) : (
-          props.children
+          children
         )}
       </div>
     </PreviewPanelShell>

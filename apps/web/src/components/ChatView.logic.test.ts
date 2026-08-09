@@ -12,6 +12,7 @@ import type { Thread, ThreadShell } from "../types";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
+  INITIAL_THREAD_WORKSPACE_VIEW,
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
@@ -26,6 +27,7 @@ import {
   isBranchMismatchDismissedForSession,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  reduceThreadWorkspaceView,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   scheduleEnvironmentReconnectWarning,
@@ -38,6 +40,45 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
+
+describe("thread workspace view", () => {
+  it("keeps the maximized layout when selecting another sidebar thread", () => {
+    const maximized = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
+      _tag: "Maximize",
+      hasActiveSurface: true,
+    });
+
+    expect(reduceThreadWorkspaceView(maximized, { _tag: "SelectThread" })).toEqual({
+      _tag: "Maximized",
+      activeContent: "thread",
+    });
+  });
+
+  it("restores the split layout explicitly", () => {
+    const maximized = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
+      _tag: "ApplyDefault",
+      layout: "maximized",
+    });
+
+    expect(reduceThreadWorkspaceView(maximized, { _tag: "Restore" })).toEqual({
+      _tag: "Split",
+    });
+  });
+
+  it("switches between the thread and surface content inside maximized mode", () => {
+    const maximized = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
+      _tag: "Maximize",
+      hasActiveSurface: false,
+    });
+    const surfaceActive = reduceThreadWorkspaceView(maximized, { _tag: "ActivateSurface" });
+
+    expect(surfaceActive).toEqual({ _tag: "Maximized", activeContent: "surface" });
+    expect(reduceThreadWorkspaceView(surfaceActive, { _tag: "ActivateThread" })).toEqual({
+      _tag: "Maximized",
+      activeContent: "thread",
+    });
+  });
+});
 
 describe("environment reconnect warning grace", () => {
   afterEach(() => vi.useRealTimers());

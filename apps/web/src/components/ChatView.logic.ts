@@ -8,6 +8,7 @@ import {
   type ScopedProjectRef,
   type ScopedThreadRef,
   type ThreadId,
+  type ThreadWorkspaceDefaultLayout,
   type TurnId,
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadShell } from "../types";
@@ -28,6 +29,47 @@ export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
+
+/** The desktop thread workspace's current layout and maximized content selection. */
+export type ThreadWorkspaceViewState =
+  | { readonly _tag: "Split" }
+  | { readonly _tag: "Maximized"; readonly activeContent: "thread" | "surface" };
+
+type ThreadWorkspaceViewAction =
+  | { readonly _tag: "ApplyDefault"; readonly layout: ThreadWorkspaceDefaultLayout }
+  | { readonly _tag: "SelectThread" }
+  | { readonly _tag: "ActivateThread" }
+  | { readonly _tag: "ActivateSurface" }
+  | { readonly _tag: "Maximize"; readonly hasActiveSurface: boolean }
+  | { readonly _tag: "Restore" };
+
+/** The legacy split layout used before settings hydrate or maximize is requested. */
+export const INITIAL_THREAD_WORKSPACE_VIEW: ThreadWorkspaceViewState = { _tag: "Split" };
+
+/** Reduce thread navigation and tab actions without coupling layout to a thread id. */
+export function reduceThreadWorkspaceView(
+  state: ThreadWorkspaceViewState,
+  action: ThreadWorkspaceViewAction,
+): ThreadWorkspaceViewState {
+  switch (action._tag) {
+    case "ApplyDefault":
+      return action.layout === "maximized"
+        ? { _tag: "Maximized", activeContent: "thread" }
+        : INITIAL_THREAD_WORKSPACE_VIEW;
+    case "SelectThread":
+    case "ActivateThread":
+      return state._tag === "Maximized" ? { _tag: "Maximized", activeContent: "thread" } : state;
+    case "ActivateSurface":
+      return state._tag === "Maximized" ? { _tag: "Maximized", activeContent: "surface" } : state;
+    case "Maximize":
+      return {
+        _tag: "Maximized",
+        activeContent: action.hasActiveSurface ? "surface" : "thread",
+      };
+    case "Restore":
+      return INITIAL_THREAD_WORKSPACE_VIEW;
+  }
+}
 
 export function scheduleEnvironmentReconnectWarning(showWarning: () => void): () => void {
   const timeoutId = globalThis.setTimeout(showWarning, ENVIRONMENT_RECONNECT_WARNING_GRACE_MS);
