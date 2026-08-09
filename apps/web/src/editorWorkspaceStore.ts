@@ -292,7 +292,13 @@ export function reorderThreadEditorTab(
     readonly targetIndex: number;
   },
 ): ThreadEditorWorkspace {
-  const workspace = reorderEditorTab(current.workspace, input);
+  const tab = current.tabsById[input.tabId];
+  const group = findEditorGroup(current.workspace.root, input.groupId);
+  if (!tab || tab._tag === "Thread" || !group) return current;
+  const threadIndex = group.tabIds.findIndex((tabId) => current.tabsById[tabId]?._tag === "Thread");
+  const targetIndex =
+    threadIndex < 0 ? input.targetIndex : Math.max(threadIndex + 1, input.targetIndex);
+  const workspace = reorderEditorTab(current.workspace, { ...input, targetIndex });
   return workspace === current.workspace ? current : { ...current, workspace };
 }
 
@@ -321,7 +327,10 @@ export function moveThreadEditorTabToGroup(
     );
     return workspace === withoutSource.workspace ? withoutSource : { ...withoutSource, workspace };
   }
-  const workspace = moveEditorTabToGroup(current.workspace, input);
+  const workspace = moveEditorTabToGroup(current.workspace, {
+    ...input,
+    ...(tab._tag === "Thread" ? { targetIndex: 0 } : {}),
+  });
   return workspace === current.workspace ? current : { ...current, workspace };
 }
 
@@ -354,6 +363,20 @@ export function mergeThreadEditorGroups(
     ? mergeEditorGroups(next.workspace, input)
     : next.workspace;
   next = withoutUnreferencedTabs(workspace === next.workspace ? next : { ...next, workspace });
+  const mergedTargetGroup = findEditorGroup(next.workspace.root, input.targetGroupId);
+  const threadTabId = mergedTargetGroup?.tabIds.find(
+    (tabId) => next.tabsById[tabId]?._tag === "Thread",
+  );
+  if (threadTabId && mergedTargetGroup?.tabIds[0] !== threadTabId) {
+    next = {
+      ...next,
+      workspace: reorderEditorTab(next.workspace, {
+        groupId: input.targetGroupId,
+        tabId: threadTabId,
+        targetIndex: 0,
+      }),
+    };
+  }
   const requestedActiveTabId = sourceGroup.activeTabId
     ? (duplicateTargetBySource.get(sourceGroup.activeTabId) ?? sourceGroup.activeTabId)
     : targetGroup.activeTabId;

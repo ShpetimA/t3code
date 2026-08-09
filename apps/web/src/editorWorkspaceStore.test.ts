@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import type { EditorTabId } from "./editorWorkspace";
+import { findEditorGroup, type EditorTabId } from "./editorWorkspace";
 import {
   activateSurfaceWorkspaceTab,
   activateThreadWorkspaceTab,
@@ -125,6 +125,29 @@ describe("thread editor workspace", () => {
     ).toEqual(["thread", "diff", "files"]);
   });
 
+  test("keeps the thread tab pinned before reordered surface tabs", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const threadTab = Object.values(initial.tabsById).find((tab) => tab._tag === "Thread")!;
+    const surfaceReordered = reorderThreadEditorTab(initial, {
+      groupId: initial.workspace.focusedGroupId,
+      tabId: filesTab.id,
+      targetIndex: 0,
+    });
+    const threadReordered = reorderThreadEditorTab(surfaceReordered, {
+      groupId: surfaceReordered.workspace.focusedGroupId,
+      tabId: threadTab.id,
+      targetIndex: 2,
+    });
+
+    expect(
+      surfaceReordered.workspace.root._tag === "Group"
+        ? surfaceReordered.workspace.root.tabIds
+        : [],
+    ).toEqual([threadTab.id, filesTab.id, findSurfaceTabs(initial, "diff")[0]!.id]);
+    expect(threadReordered).toBe(surfaceReordered);
+  });
+
   test("moves tabs into existing groups without creating another split", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
@@ -152,6 +175,50 @@ describe("thread editor workspace", () => {
       expect.objectContaining({ _tag: "Surface", surfaceId: "diff" }),
     ]);
     expect(targetGroup?.activeTabId).toBe(diffTab.id);
+  });
+
+  test("pins the thread first when moving it into an existing group", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId: sourceGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "move",
+    });
+    const targetGroupId = findEditorWorkspaceTabGroup(split, filesTab.id)!;
+    const threadTab = Object.values(split.tabsById).find((tab) => tab._tag === "Thread")!;
+    const moved = moveThreadEditorTabToGroup(split, {
+      sourceGroupId,
+      targetGroupId,
+      tabId: threadTab.id,
+    });
+    const targetGroup = findEditorGroup(moved.workspace.root, targetGroupId);
+
+    expect(targetGroup?.tabIds).toEqual([threadTab.id, filesTab.id]);
+  });
+
+  test("pins the thread first when merging its group into another group", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId: sourceGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "move",
+    });
+    const targetGroupId = findEditorWorkspaceTabGroup(split, filesTab.id)!;
+    const threadTab = Object.values(split.tabsById).find((tab) => tab._tag === "Thread")!;
+    const diffTab = findSurfaceTabs(split, "diff")[0]!;
+    const merged = mergeThreadEditorGroups(split, { sourceGroupId, targetGroupId });
+
+    expect(findEditorGroup(merged.workspace.root, targetGroupId)?.tabIds).toEqual([
+      threadTab.id,
+      filesTab.id,
+      diffTab.id,
+    ]);
   });
 
   test("deduplicates copied surfaces when moving or merging groups", () => {

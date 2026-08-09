@@ -137,7 +137,12 @@ import type {
   EditorSplitDirection,
   EditorTabId,
 } from "../editorWorkspace";
-import { findEditorGroup, findTopRightEditorGroup, getTopEditorGroups } from "../editorWorkspace";
+import {
+  findAdjacentEditorGroups,
+  findEditorGroup,
+  findTopRightEditorGroup,
+  getTopEditorGroups,
+} from "../editorWorkspace";
 import {
   findSurfaceTabs,
   selectThreadEditorWorkspace,
@@ -6665,6 +6670,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   const renderEditorGroup = (group: EditorGroupNode) => {
     if (!editorWorkspaceState || !activeThreadRef) return null;
+    const adjacentGroups = findAdjacentEditorGroups(editorWorkspaceState.workspace, group.id);
     const tabs = group.tabIds.flatMap((tabId) => {
       const tab = editorWorkspaceState.tabsById[tabId];
       return tab ? [tab] : [];
@@ -6699,6 +6705,30 @@ function ChatViewContent(props: ChatViewProps) {
       } else {
         activateRightPanelSurface(target.surface);
       }
+    };
+    const reorderTab = (target: EditorTabContextTarget, direction: "left" | "right") => {
+      const tabId = tabIdForTarget(target);
+      const tabIndex = tabId ? group.tabIds.indexOf(tabId) : -1;
+      if (!tabId || tabIndex < 0) return;
+      const targetIndex = tabIndex + (direction === "left" ? -1 : 1);
+      useEditorWorkspaceStore.getState().reorderTab(activeThreadRef, group.id, tabId, targetIndex);
+    };
+    const moveTabToGroup = (target: EditorTabContextTarget, direction: EditorSplitDirection) => {
+      const tabId = tabIdForTarget(target);
+      const targetGroupId = adjacentGroups[direction];
+      if (!tabId || !targetGroupId) return;
+      mutateEditorTabsAndCleanup(() =>
+        useEditorWorkspaceStore
+          .getState()
+          .moveTabToGroup(activeThreadRef, group.id, targetGroupId, tabId),
+      );
+    };
+    const mergeGroup = (direction: EditorSplitDirection) => {
+      const targetGroupId = adjacentGroups[direction];
+      if (!targetGroupId) return;
+      mutateEditorTabsAndCleanup(() =>
+        useEditorWorkspaceStore.getState().mergeGroups(activeThreadRef, group.id, targetGroupId),
+      );
     };
     const mutateSurfaceTabs = (
       surface: RightPanelSurface,
@@ -6768,6 +6798,10 @@ function ChatViewContent(props: ChatViewProps) {
           }
           onSplitTab={(target, direction) => splitTab(target, direction, "copy")}
           onMoveTabToSplit={(target, direction) => splitTab(target, direction, "move")}
+          onReorderTab={reorderTab}
+          onMoveTabToGroup={moveTabToGroup}
+          onMergeGroup={mergeGroup}
+          adjacentGroups={adjacentGroups}
           canCopyTabToSplit={(target) => target._tag === "Surface"}
           canMoveTabToSplit={() => group.tabIds.length > 1}
           onCopyFilePath={copyRightPanelFilePath}

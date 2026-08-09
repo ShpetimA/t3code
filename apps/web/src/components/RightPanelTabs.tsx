@@ -21,7 +21,7 @@ import {
 } from "react";
 
 import { isElectron } from "~/env";
-import type { EditorSplitDirection } from "~/editorWorkspace";
+import type { AdjacentEditorGroups, EditorSplitDirection } from "~/editorWorkspace";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
@@ -38,6 +38,7 @@ import type { ThreadStatusPill } from "./Sidebar.logic";
 import {
   buildEditorTabContextMenuItems,
   type EditorTabContextTarget,
+  resolveEditorTabLayoutAction,
   resolveEditorTabSplitAction,
 } from "./RightPanelTabs.logic";
 
@@ -65,6 +66,10 @@ interface RightPanelTabsProps {
   onCloseAllSurfaces: () => void;
   onSplitTab?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
   onMoveTabToSplit?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
+  onReorderTab?: (target: EditorTabContextTarget, direction: "left" | "right") => void;
+  onMoveTabToGroup?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
+  onMergeGroup?: (direction: EditorSplitDirection) => void;
+  adjacentGroups?: AdjacentEditorGroups;
   canCopyTabToSplit?: (target: EditorTabContextTarget) => boolean;
   canMoveTabToSplit?: (target: EditorTabContextTarget) => boolean;
   onCopyFilePath: (relativePath: string) => void;
@@ -88,6 +93,13 @@ const SURFACE_DISABLED_REASONS = {
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
 } as const;
+
+const NO_ADJACENT_EDITOR_GROUPS: AdjacentEditorGroups = {
+  up: null,
+  down: null,
+  left: null,
+  right: null,
+};
 
 function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement }) {
   return (
@@ -342,7 +354,7 @@ function ThreadTabStatusDot({ status }: { readonly status: ThreadStatusPill }) {
   );
 }
 
-/** Render the shared tab strip used by split and maximized thread workspaces. */
+/** Render the shared tab strip used by inline panels and thread workspaces. */
 export function RightPanelTabBar(props: RightPanelTabBarProps) {
   const ownsDesktopTitleBar = isElectron && (props.mode === "inline" || props.titleBar === true);
   const reservesNativeControls =
@@ -368,6 +380,12 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         target,
         surfaceCount: props.surfaces.length,
         surfaceIndex,
+        tabCount: props.surfaces.length,
+        tabIndex: surfaceIndex,
+        adjacentGroups: props.adjacentGroups ?? NO_ADJACENT_EDITOR_GROUPS,
+        reorderAvailable: target._tag === "Surface" && props.onReorderTab !== undefined,
+        moveToGroupAvailable: props.onMoveTabToGroup !== undefined,
+        mergeGroupAvailable: props.onMergeGroup !== undefined,
         copyToSplitAvailable:
           props.onSplitTab !== undefined && (props.canCopyTabToSplit?.(target) ?? true),
         moveToSplitAvailable:
@@ -383,6 +401,19 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
       }
       if (splitAction?.mode === "move") {
         props.onMoveTabToSplit?.(target, splitAction.direction);
+        return;
+      }
+      const layoutAction = resolveEditorTabLayoutAction(action);
+      if (layoutAction?._tag === "Reorder") {
+        props.onReorderTab?.(target, layoutAction.direction);
+        return;
+      }
+      if (layoutAction?._tag === "MoveToGroup") {
+        props.onMoveTabToGroup?.(target, layoutAction.direction);
+        return;
+      }
+      if (layoutAction?._tag === "MergeGroup") {
+        props.onMergeGroup?.(layoutAction.direction);
         return;
       }
       switch (action) {
@@ -401,6 +432,13 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         case "close-all":
           props.onCloseAllSurfaces();
           break;
+        case "move-tab-left":
+        case "move-tab-right":
+        case "move-to-group":
+        case "move-group-up":
+        case "move-group-down":
+        case "move-group-left":
+        case "move-group-right":
         case "split-right":
         case "split-down":
         case "split-and-move":
@@ -408,6 +446,11 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         case "move-down":
         case "move-left":
         case "move-right":
+        case "merge-group":
+        case "merge-group-up":
+        case "merge-group-down":
+        case "merge-group-left":
+        case "merge-group-right":
         case null:
           break;
       }

@@ -3,11 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildEditorTabContextMenuItems,
+  resolveEditorTabLayoutAction,
   resolveEditorTabSplitAction,
 } from "./RightPanelTabs.logic";
 import { RightPanelTabBar } from "./RightPanelTabs";
 
 const NOOP = () => {};
+const NO_ADJACENT_GROUPS = { up: null, down: null, left: null, right: null } as const;
 
 describe("RightPanelTabBar", () => {
   it("renders the current thread as a pinned active tab in the maximized workspace", () => {
@@ -72,6 +74,12 @@ describe("RightPanelTabBar", () => {
         },
         surfaceCount: 3,
         surfaceIndex: 1,
+        tabCount: 4,
+        tabIndex: 2,
+        adjacentGroups: NO_ADJACENT_GROUPS,
+        reorderAvailable: true,
+        moveToGroupAvailable: true,
+        mergeGroupAvailable: true,
         copyToSplitAvailable: true,
         moveToSplitAvailable: true,
       }),
@@ -81,6 +89,8 @@ describe("RightPanelTabBar", () => {
       { id: "close-others", label: "Close others", disabled: false },
       { id: "close-to-right", label: "Close to the right", disabled: false },
       { id: "close-all", label: "Close all", disabled: false },
+      { id: "move-tab-left", label: "Move Left", disabled: false },
+      { id: "move-tab-right", label: "Move Right", disabled: false },
       { id: "split-right", label: "Split Right", disabled: false },
       { id: "split-down", label: "Split Down", disabled: false },
       {
@@ -97,19 +107,46 @@ describe("RightPanelTabBar", () => {
     ]);
   });
 
-  it("keeps the pinned thread menu limited to layout actions", () => {
+  it("keeps the pinned thread fixed while allowing existing-group moves and merges", () => {
     const items = buildEditorTabContextMenuItems({
       target: { _tag: "Thread" },
       surfaceCount: 0,
       surfaceIndex: -1,
+      tabCount: 1,
+      tabIndex: -1,
+      adjacentGroups: { up: null, down: null, left: null, right: "editor-group:right" },
+      reorderAvailable: false,
+      moveToGroupAvailable: true,
+      mergeGroupAvailable: true,
       copyToSplitAvailable: false,
       moveToSplitAvailable: true,
     });
 
-    expect(items.map((item) => item.id)).toEqual(["split-right", "split-down", "split-and-move"]);
-    expect(items[2]?.disabled).toBe(false);
-    expect(items[0]?.disabled).toBe(true);
-    expect(items[1]?.disabled).toBe(true);
+    expect(items).toEqual([
+      {
+        id: "move-to-group",
+        label: "Move into Group",
+        children: [{ id: "move-group-right", label: "Right" }],
+      },
+      { id: "split-right", label: "Split Right", disabled: true },
+      { id: "split-down", label: "Split Down", disabled: true },
+      {
+        id: "split-and-move",
+        label: "Split & Move",
+        disabled: false,
+        children: [
+          { id: "move-up", label: "Split Up" },
+          { id: "move-down", label: "Split Down" },
+          { id: "move-left", label: "Split Left" },
+          { id: "move-right", label: "Split Right" },
+        ],
+      },
+      {
+        id: "merge-group",
+        label: "Merge Group With",
+        children: [{ id: "merge-group-right", label: "Right" }],
+      },
+    ]);
   });
 
   it("resolves split menu actions into copy and move commands", () => {
@@ -122,5 +159,21 @@ describe("RightPanelTabBar", () => {
       direction: "up",
     });
     expect(resolveEditorTabSplitAction("close")).toBeNull();
+  });
+
+  it("resolves reorder, move-to-group, and merge-group commands", () => {
+    expect(resolveEditorTabLayoutAction("move-tab-left")).toEqual({
+      _tag: "Reorder",
+      direction: "left",
+    });
+    expect(resolveEditorTabLayoutAction("move-group-down")).toEqual({
+      _tag: "MoveToGroup",
+      direction: "down",
+    });
+    expect(resolveEditorTabLayoutAction("merge-group-right")).toEqual({
+      _tag: "MergeGroup",
+      direction: "right",
+    });
+    expect(resolveEditorTabLayoutAction("split-right")).toBeNull();
   });
 });
