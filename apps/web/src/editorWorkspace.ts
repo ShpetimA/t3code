@@ -41,6 +41,11 @@ export interface SplitEditorTabInput {
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
 
+export function clampEditorSplitRatio(ratio: number): number | null {
+  if (!Number.isFinite(ratio)) return null;
+  return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
+}
+
 export function createEditorWorkspace(input: {
   readonly groupId: EditorGroupId;
   readonly tabIds?: readonly EditorTabId[];
@@ -199,8 +204,8 @@ export function resizeEditorSplit(
   splitId: EditorSplitId,
   ratio: number,
 ): EditorWorkspace {
-  if (!Number.isFinite(ratio)) return workspace;
-  const nextRatio = Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
+  const nextRatio = clampEditorSplitRatio(ratio);
+  if (nextRatio === null) return workspace;
   const root = mapEditorNode(workspace.root, (node) =>
     node._tag === "Split" && node.id === splitId ? { ...node, ratio: nextRatio } : node,
   );
