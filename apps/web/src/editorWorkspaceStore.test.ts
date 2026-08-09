@@ -161,4 +161,30 @@ describe("thread editor workspace", () => {
     expect(findSurfaceTabs(removed, "files")).toHaveLength(0);
     expect(findSurfaceTabs(removed, "diff")).toHaveLength(1);
   });
+
+  test("replaces transient explorer tabs without moving their groups", () => {
+    const initial = createThreadEditorWorkspace(["files"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const groupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "copy",
+    });
+    const groupsBefore = findSurfaceTabs(split, "files").map((tab) =>
+      findEditorWorkspaceTabGroup(split, tab.id),
+    );
+    const reconciled = reconcileThreadEditorWorkspace(split, ["file:src/app.ts"]);
+
+    expect(findSurfaceTabs(reconciled, "files")).toHaveLength(0);
+    expect(findSurfaceTabs(reconciled, "file:src/app.ts").map((tab) => tab.id)).toEqual(
+      findSurfaceTabs(split, "files").map((tab) => tab.id),
+    );
+    expect(
+      findSurfaceTabs(reconciled, "file:src/app.ts").map((tab) =>
+        findEditorWorkspaceTabGroup(reconciled, tab.id),
+      ),
+    ).toEqual(groupsBefore);
+  });
 });

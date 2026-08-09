@@ -4,8 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildEditorTabContextMenuItems,
   resolveEditorTabSplitAction,
-  RightPanelTabBar,
-} from "./RightPanelTabs";
+} from "./RightPanelTabs.logic";
+import { RightPanelTabBar } from "./RightPanelTabs";
 
 const NOOP = () => {};
 
@@ -72,7 +72,7 @@ describe("RightPanelTabBar", () => {
         },
         surfaceCount: 3,
         surfaceIndex: 1,
-        splitAvailable: true,
+        copyToSplitAvailable: true,
         moveToSplitAvailable: true,
       }),
     ).toEqual([
@@ -81,8 +81,8 @@ describe("RightPanelTabBar", () => {
       { id: "close-others", label: "Close others", disabled: false },
       { id: "close-to-right", label: "Close to the right", disabled: false },
       { id: "close-all", label: "Close all", disabled: false },
-      { id: "split-right", label: "Split Right" },
-      { id: "split-down", label: "Split Down" },
+      { id: "split-right", label: "Split Right", disabled: false },
+      { id: "split-down", label: "Split Down", disabled: false },
       {
         id: "split-and-move",
         label: "Split & Move",
@@ -102,12 +102,14 @@ describe("RightPanelTabBar", () => {
       target: { _tag: "Thread" },
       surfaceCount: 0,
       surfaceIndex: -1,
-      splitAvailable: true,
-      moveToSplitAvailable: false,
+      copyToSplitAvailable: false,
+      moveToSplitAvailable: true,
     });
 
     expect(items.map((item) => item.id)).toEqual(["split-right", "split-down", "split-and-move"]);
-    expect(items[2]?.disabled).toBe(true);
+    expect(items[2]?.disabled).toBe(false);
+    expect(items[0]?.disabled).toBe(true);
+    expect(items[1]?.disabled).toBe(true);
   });
 
   it("resolves split menu actions into copy and move commands", () => {

@@ -33,6 +33,7 @@ interface EditorWorkspaceStoreState {
   readonly ensure: (ref: ScopedThreadRef, surfaceIds: readonly string[]) => void;
   readonly activateThread: (ref: ScopedThreadRef) => void;
   readonly activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
+  readonly activateTab: (ref: ScopedThreadRef, groupId: EditorGroupId, tabId: EditorTabId) => void;
   readonly focusGroup: (ref: ScopedThreadRef, groupId: EditorGroupId) => void;
   readonly resizeSplit: (
     ref: ScopedThreadRef,
@@ -87,8 +88,8 @@ export function reconcileThreadEditorWorkspace(
   surfaceIds: readonly string[],
 ): ThreadEditorWorkspace {
   const validSurfaceIds = new Set(surfaceIds);
-  let next = current;
-  for (const tab of Object.values(current.tabsById)) {
+  let next = replaceTransientSurfaceTabs(current, surfaceIds);
+  for (const tab of Object.values(next.tabsById)) {
     if (tab._tag === "Surface" && !validSurfaceIds.has(tab.surfaceId)) {
       next = closeWorkspaceTab(next, tab.id);
     }
@@ -99,6 +100,46 @@ export function reconcileThreadEditorWorkspace(
     }
   }
   return next;
+}
+
+function replaceTransientSurfaceTabs(
+  current: ThreadEditorWorkspace,
+  surfaceIds: readonly string[],
+): ThreadEditorWorkspace {
+  const existingSurfaceIds = new Set(
+    Object.values(current.tabsById).flatMap((tab) =>
+      tab._tag === "Surface" ? [tab.surfaceId] : [],
+    ),
+  );
+  const incomingSurfaceIds = new Set(surfaceIds);
+  const missingSurfaceIds = surfaceIds.filter((surfaceId) => !existingSurfaceIds.has(surfaceId));
+  const removedSurfaceIds = [...existingSurfaceIds].filter(
+    (surfaceId) => !incomingSurfaceIds.has(surfaceId),
+  );
+  let tabsById = current.tabsById;
+  for (const nextSurfaceId of missingSurfaceIds) {
+    const previousSurfaceId = removedSurfaceIds.find((surfaceId) =>
+      isTransientSurfaceReplacement(surfaceId, nextSurfaceId),
+    );
+    if (!previousSurfaceId) continue;
+    tabsById = Object.fromEntries(
+      Object.entries(tabsById).map(([tabId, tab]) => [
+        tabId,
+        tab._tag === "Surface" && tab.surfaceId === previousSurfaceId
+          ? { ...tab, surfaceId: nextSurfaceId }
+          : tab,
+      ]),
+    );
+    removedSurfaceIds.splice(removedSurfaceIds.indexOf(previousSurfaceId), 1);
+  }
+  return tabsById === current.tabsById ? current : { ...current, tabsById };
+}
+
+function isTransientSurfaceReplacement(previousSurfaceId: string, nextSurfaceId: string): boolean {
+  return (
+    (previousSurfaceId === "files" && nextSurfaceId.startsWith("file:")) ||
+    (previousSurfaceId === "browser:new" && nextSurfaceId.startsWith("browser:"))
+  );
 }
 
 export function activateThreadWorkspaceTab(current: ThreadEditorWorkspace): ThreadEditorWorkspace {
@@ -328,6 +369,13 @@ export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()((set)
       byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
         activateSurfaceWorkspaceTab(current, surfaceId),
       ),
+    })),
+  activateTab: (ref, groupId, tabId) =>
+    set((state) => ({
+      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
+        const workspace = activateEditorTab(current.workspace, groupId, tabId);
+        return workspace === current.workspace ? current : { ...current, workspace };
+      }),
     })),
   focusGroup: (ref, groupId) =>
     set((state) => ({

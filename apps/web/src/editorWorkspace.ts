@@ -73,6 +73,18 @@ export function findEditorGroup(
   return findEditorGroup(node.first, groupId) ?? findEditorGroup(node.second, groupId);
 }
 
+export function findTopRightEditorGroup(node: EditorWorkspaceNode): EditorGroupNode {
+  if (node._tag === "Group") return node;
+  return findTopRightEditorGroup(node.orientation === "horizontal" ? node.second : node.first);
+}
+
+export function getTopEditorGroups(node: EditorWorkspaceNode): readonly EditorGroupNode[] {
+  if (node._tag === "Group") return [node];
+  return node.orientation === "horizontal"
+    ? [...getTopEditorGroups(node.first), ...getTopEditorGroups(node.second)]
+    : getTopEditorGroups(node.first);
+}
+
 export function focusEditorGroup(
   workspace: EditorWorkspace,
   groupId: EditorGroupId,

@@ -8,6 +8,8 @@ import {
   closeOtherEditorTabs,
   createEditorWorkspace,
   findEditorGroup,
+  findTopRightEditorGroup,
+  getTopEditorGroups,
   focusEditorGroup,
   getEditorGroups,
   openEditorTab,
@@ -204,5 +206,35 @@ describe("editor workspace", () => {
 
     expect(next.root._tag === "Split" ? next.root.ratio : null).toBe(0.9);
     expect(resizeEditorSplit(next, split("one"), Number.NaN)).toBe(next);
+  });
+
+  test("finds the group occupying the workspace's top-right corner", () => {
+    const columns = splitEditorTab(
+      createEditorWorkspace({ groupId: group("left"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("left"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("right"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const nested = splitEditorTab(columns, {
+      sourceGroupId: group("right"),
+      sourceTabId: tab("right"),
+      targetTabId: tab("bottom-right"),
+      targetGroupId: group("bottom-right"),
+      splitId: split("right-rows"),
+      direction: "down",
+      mode: "copy",
+    });
+
+    expect(findTopRightEditorGroup(nested.root).id).toBe(group("right"));
+    expect(getTopEditorGroups(nested.root).map((editorGroup) => editorGroup.id)).toEqual([
+      group("left"),
+      group("right"),
+    ]);
   });
 });

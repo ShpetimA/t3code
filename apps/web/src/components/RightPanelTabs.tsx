@@ -1,4 +1,4 @@
-import type { ContextMenuItem, PreviewSessionSnapshot } from "@t3tools/contracts";
+import type { PreviewSessionSnapshot } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
@@ -35,10 +35,17 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import type { ThreadStatusPill } from "./Sidebar.logic";
+import {
+  buildEditorTabContextMenuItems,
+  type EditorTabContextTarget,
+  resolveEditorTabSplitAction,
+} from "./RightPanelTabs.logic";
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
+  titleBar?: boolean;
+  sidebarTitleBarInset?: boolean;
   layoutControls?: ReactNode;
   threadTab?: {
     readonly title: string;
@@ -58,6 +65,7 @@ interface RightPanelTabsProps {
   onCloseAllSurfaces: () => void;
   onSplitTab?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
   onMoveTabToSplit?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
+  canCopyTabToSplit?: (target: EditorTabContextTarget) => boolean;
   canMoveTabToSplit?: (target: EditorTabContextTarget) => boolean;
   onCopyFilePath: (relativePath: string) => void;
   onAddBrowser: () => void;
@@ -75,101 +83,11 @@ interface RightPanelTabsProps {
 
 type RightPanelTabBarProps = Omit<RightPanelTabsProps, "children">;
 
-export type EditorTabContextTarget =
-  | { readonly _tag: "Thread" }
-  | { readonly _tag: "Surface"; readonly surface: RightPanelSurface };
-
 const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the T3 Code desktop app.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
 } as const;
-
-export type TabContextMenuAction =
-  | "copy-path"
-  | "close"
-  | "close-others"
-  | "close-to-right"
-  | "close-all"
-  | "split-right"
-  | "split-down"
-  | "split-and-move"
-  | "move-up"
-  | "move-down"
-  | "move-left"
-  | "move-right";
-
-export function buildEditorTabContextMenuItems(input: {
-  readonly target: EditorTabContextTarget;
-  readonly surfaceCount: number;
-  readonly surfaceIndex: number;
-  readonly splitAvailable: boolean;
-  readonly moveToSplitAvailable: boolean;
-}): readonly ContextMenuItem<TabContextMenuAction>[] {
-  const items: ContextMenuItem<TabContextMenuAction>[] = [];
-  if (input.target._tag === "Surface") {
-    if (input.target.surface.kind === "file") {
-      items.push({ id: "copy-path", label: "Copy path" });
-    }
-    items.push(
-      { id: "close", label: "Close" },
-      {
-        id: "close-others",
-        label: "Close others",
-        disabled: input.surfaceCount <= 1,
-      },
-      {
-        id: "close-to-right",
-        label: "Close to the right",
-        disabled: input.surfaceIndex >= input.surfaceCount - 1,
-      },
-      {
-        id: "close-all",
-        label: "Close all",
-        disabled: input.surfaceCount === 0,
-      },
-    );
-  }
-  if (input.splitAvailable) {
-    items.push(
-      { id: "split-right", label: "Split Right" },
-      { id: "split-down", label: "Split Down" },
-      {
-        id: "split-and-move",
-        label: "Split & Move",
-        disabled: !input.moveToSplitAvailable,
-        children: [
-          { id: "move-up", label: "Split Up" },
-          { id: "move-down", label: "Split Down" },
-          { id: "move-left", label: "Split Left" },
-          { id: "move-right", label: "Split Right" },
-        ],
-      },
-    );
-  }
-  return items;
-}
-
-export function resolveEditorTabSplitAction(
-  action: TabContextMenuAction | null,
-): { readonly mode: "copy" | "move"; readonly direction: EditorSplitDirection } | null {
-  switch (action) {
-    case "split-right":
-      return { mode: "copy", direction: "right" };
-    case "split-down":
-      return { mode: "copy", direction: "down" };
-    case "move-up":
-      return { mode: "move", direction: "up" };
-    case "move-down":
-      return { mode: "move", direction: "down" };
-    case "move-left":
-      return { mode: "move", direction: "left" };
-    case "move-right":
-      return { mode: "move", direction: "right" };
-    default:
-      return null;
-  }
-}
 
 function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement }) {
   return (
@@ -426,7 +344,9 @@ function ThreadTabStatusDot({ status }: { readonly status: ThreadStatusPill }) {
 
 /** Render the shared tab strip used by split and maximized thread workspaces. */
 export function RightPanelTabBar(props: RightPanelTabBarProps) {
-  const ownsDesktopTitleBar = isElectron && props.mode === "inline";
+  const ownsDesktopTitleBar = isElectron && (props.mode === "inline" || props.titleBar === true);
+  const reservesNativeControls =
+    ownsDesktopTitleBar && (props.mode === "inline" || props.layoutControls !== undefined);
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
 
@@ -448,7 +368,8 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         target,
         surfaceCount: props.surfaces.length,
         surfaceIndex,
-        splitAvailable: props.onSplitTab !== undefined,
+        copyToSplitAvailable:
+          props.onSplitTab !== undefined && (props.canCopyTabToSplit?.(target) ?? true),
         moveToSplitAvailable:
           props.onMoveTabToSplit !== undefined && (props.canMoveTabToSplit?.(target) ?? true),
       });
@@ -516,10 +437,11 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
     <div
       className={cn(
         "workspace-topbar gap-1 pl-2",
-        props.mode !== "inline" && "[--workspace-topbar-height:--spacing(11)]",
-        props.mode === "inline" ? "pr-28" : "pr-3",
-        ownsDesktopTitleBar && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
-        props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+        props.mode !== "inline" && !props.titleBar && "[--workspace-topbar-height:--spacing(11)]",
+        props.mode === "inline" || props.layoutControls ? "pr-28" : "pr-3",
+        reservesNativeControls && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
+        ((props.mode === "inline" && props.maximized) || props.sidebarTitleBarInset) &&
+          COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
       )}
       data-right-panel-tabbar
     >
