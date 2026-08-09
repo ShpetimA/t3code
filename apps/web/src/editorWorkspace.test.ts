@@ -11,6 +11,7 @@ import {
   findEditorGroup,
   findTopRightEditorGroup,
   getTopEditorGroups,
+  getVisibleEditorWorkspaceRoot,
   focusEditorGroup,
   getEditorGroups,
   mergeEditorGroups,
@@ -19,6 +20,7 @@ import {
   reorderEditorTab,
   resizeEditorSplit,
   splitEditorTab,
+  toggleMaximizedEditorGroup,
   type EditorGroupId,
   type EditorSplitId,
   type EditorTabId,
@@ -46,6 +48,36 @@ describe("editor workspace", () => {
   test("ignores attempts to focus a group that is not in the tree", () => {
     const initial = createEditorWorkspace({ groupId: group("one") });
     expect(focusEditorGroup(initial, group("missing"))).toBe(initial);
+  });
+
+  test("focuses one editor group without changing the split layout and restores it", () => {
+    const splitWorkspace = splitEditorTab(
+      createEditorWorkspace({ groupId: group("left"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("left"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("file"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const root = splitWorkspace.root;
+    const focused = toggleMaximizedEditorGroup(splitWorkspace, group("left"));
+
+    expect(focused.root).toBe(root);
+    expect(focused.maximizedGroupId).toBe(group("left"));
+    expect(getVisibleEditorWorkspaceRoot(focused)).toBe(
+      findEditorGroup(focused.root, group("left")),
+    );
+
+    const followed = focusEditorGroup(focused, group("right"));
+    expect(followed.maximizedGroupId).toBe(group("right"));
+    expect(toggleMaximizedEditorGroup(followed, group("right"))).toEqual({
+      ...followed,
+      maximizedGroupId: null,
+    });
   });
 
   test.each([

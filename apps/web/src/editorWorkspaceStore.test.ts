@@ -366,6 +366,7 @@ describe("thread editor workspace", () => {
           nextId: 1,
           workspace: {
             ...split.workspace,
+            maximizedGroupId: groupId,
             root: { ...split.workspace.root, ratio: 5 },
           },
         },
@@ -376,6 +377,7 @@ describe("thread editor workspace", () => {
     expect(parsed?.workspace.root._tag === "Split" ? parsed.workspace.root.ratio : null).toBe(0.9);
     expect(parsed?.tabsById).toEqual(split.tabsById);
     expect(parsed?.nextId).toBeGreaterThan(1);
+    expect(parsed?.workspace.maximizedGroupId).toBe(groupId);
   });
 
   test("drops malformed persisted threads without discarding valid siblings", () => {
@@ -399,5 +401,22 @@ describe("thread editor workspace", () => {
       ),
     ).toEqual(["valid"]);
     expect(parsePersistedEditorWorkspaceState(null)).toEqual({ byThreadKey: {} });
+  });
+
+  test("loads layouts saved before Focus View existed", () => {
+    const valid = createThreadEditorWorkspace(["files"]);
+    const parsed = parsePersistedEditorWorkspaceState({
+      byThreadKey: {
+        legacy: {
+          ...valid,
+          workspace: {
+            root: valid.workspace.root,
+            focusedGroupId: valid.workspace.focusedGroupId,
+          },
+        },
+      },
+    }).byThreadKey.legacy;
+
+    expect(parsed?.workspace.maximizedGroupId).toBeNull();
   });
 });

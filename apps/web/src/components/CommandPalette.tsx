@@ -34,7 +34,9 @@ import {
   FolderIcon,
   FolderPlusIcon,
   LinkIcon,
+  Maximize2Icon,
   MessageSquareIcon,
+  Minimize2Icon,
   PaletteIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -137,6 +139,8 @@ import { ComposerHandleContext, useComposerHandleContext } from "../composerHand
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
+import { selectThreadEditorWorkspace, useEditorWorkspaceStore } from "../editorWorkspaceStore";
+import { useThreadWorkspaceViewStore } from "../threadWorkspaceViewStore";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
@@ -578,6 +582,14 @@ function OpenCommandPaletteDialog(props: {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
+  const activeEditorThreadRef = useMemo(
+    () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
+    [activeThread],
+  );
+  const activeEditorWorkspace = useEditorWorkspaceStore((state) =>
+    selectThreadEditorWorkspace(state.byThreadKey, activeEditorThreadRef),
+  );
+  const workspaceMode = useThreadWorkspaceViewStore((state) => state.view._tag === "Workspace");
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
@@ -1433,6 +1445,32 @@ function OpenCommandPaletteDialog(props: {
       openOverlayMode("content");
     },
   });
+
+  if (activeEditorThreadRef) {
+    const focusViewActive = Boolean(activeEditorWorkspace?.workspace.maximizedGroupId);
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-editor-focus",
+      searchTerms: ["focus view", "maximize editor", "restore layout", "zoom pane"],
+      title: focusViewActive ? "Restore editor layout" : "Focus current editor group",
+      icon: focusViewActive ? (
+        <Minimize2Icon className={ITEM_ICON_CLASS} />
+      ) : (
+        <Maximize2Icon className={ITEM_ICON_CLASS} />
+      ),
+      disabled: !workspaceMode || !activeEditorWorkspace,
+      shortcutCommand: "editor.toggleFocus",
+      run: async () => {
+        if (!activeEditorWorkspace) return;
+        useEditorWorkspaceStore
+          .getState()
+          .toggleGroupMaximized(
+            activeEditorThreadRef,
+            activeEditorWorkspace.workspace.focusedGroupId,
+          );
+      },
+    });
+  }
 
   actionItems.push({
     kind: "action",

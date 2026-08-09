@@ -5,7 +5,9 @@ import {
   FileDiff,
   Files,
   Globe2,
+  Maximize2,
   MessageSquareText,
+  Minimize2,
   Plus,
   TerminalSquare,
   X,
@@ -48,6 +50,11 @@ interface RightPanelTabsProps {
   titleBar?: boolean;
   sidebarTitleBarInset?: boolean;
   layoutControls?: ReactNode;
+  focusView?: {
+    readonly active: boolean;
+    readonly shortcutLabel: string | null;
+    readonly onToggle: () => void;
+  };
   threadTab?: {
     readonly title: string;
     readonly active: boolean;
@@ -632,6 +639,31 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
           ) : null}
         </div>
       </ScrollArea>
+      {props.focusView ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={props.focusView.active ? "Restore editor layout" : "Focus editor group"}
+                aria-pressed={props.focusView.active}
+                onClick={props.focusView.onToggle}
+                className="cursor-pointer relative inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.96]"
+              >
+                {props.focusView.active ? (
+                  <Minimize2 className="size-3.5" />
+                ) : (
+                  <Maximize2 className="size-3.5" />
+                )}
+              </button>
+            }
+          />
+          <TooltipPopup>
+            {props.focusView.active ? "Restore editor layout" : "Focus editor group"}
+            {props.focusView.shortcutLabel ? ` (${props.focusView.shortcutLabel})` : ""}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       {props.layoutControls}
     </div>
   );

@@ -26,6 +26,7 @@ export type EditorWorkspaceNode = EditorGroupNode | EditorSplitNode;
 export interface EditorWorkspace {
   readonly root: EditorWorkspaceNode;
   readonly focusedGroupId: EditorGroupId;
+  readonly maximizedGroupId: EditorGroupId | null;
 }
 
 export interface SplitEditorTabInput {
@@ -72,6 +73,7 @@ export function createEditorWorkspace(input: {
   return {
     root: { _tag: "Group", id: input.groupId, tabIds, activeTabId },
     focusedGroupId: input.groupId,
+    maximizedGroupId: null,
   };
 }
 
@@ -87,6 +89,12 @@ export function findEditorGroup(
 ): EditorGroupNode | null {
   if (node._tag === "Group") return node.id === groupId ? node : null;
   return findEditorGroup(node.first, groupId) ?? findEditorGroup(node.second, groupId);
+}
+
+/** Returns the full layout or the single group selected for Focus View. */
+export function getVisibleEditorWorkspaceRoot(workspace: EditorWorkspace): EditorWorkspaceNode {
+  if (!workspace.maximizedGroupId) return workspace.root;
+  return findEditorGroup(workspace.root, workspace.maximizedGroupId) ?? workspace.root;
 }
 
 export function findTopRightEditorGroup(node: EditorWorkspaceNode): EditorGroupNode {
@@ -129,8 +137,25 @@ export function focusEditorGroup(
   groupId: EditorGroupId,
 ): EditorWorkspace {
   return findEditorGroup(workspace.root, groupId)
-    ? { ...workspace, focusedGroupId: groupId }
+    ? {
+        ...workspace,
+        focusedGroupId: groupId,
+        maximizedGroupId: workspace.maximizedGroupId ? groupId : null,
+      }
     : workspace;
+}
+
+/** Toggles Focus View for one editor group without changing the split tree. */
+export function toggleMaximizedEditorGroup(
+  workspace: EditorWorkspace,
+  groupId = workspace.focusedGroupId,
+): EditorWorkspace {
+  if (!findEditorGroup(workspace.root, groupId)) return workspace;
+  return {
+    ...workspace,
+    focusedGroupId: groupId,
+    maximizedGroupId: workspace.maximizedGroupId === groupId ? null : groupId,
+  };
 }
 
 export function openEditorTab(
@@ -158,6 +183,7 @@ export function activateEditorTab(
       activeTabId: tabId,
     })),
     focusedGroupId: groupId,
+    maximizedGroupId: workspace.maximizedGroupId ? groupId : null,
   };
 }
 
@@ -220,7 +246,11 @@ export function moveEditorTabToGroup(
   if (sourceAfterMove.tabIds.length === 0) {
     root = collapseEditorGroup(root, sourceGroup.id) ?? root;
   }
-  return { root, focusedGroupId: targetGroup.id };
+  return {
+    root,
+    focusedGroupId: targetGroup.id,
+    maximizedGroupId: workspace.maximizedGroupId ? targetGroup.id : null,
+  };
 }
 
 /** Joins one editor group into another group and removes the source split. */
@@ -244,7 +274,13 @@ export function mergeEditorGroups(
       : node,
   );
   const root = collapseEditorGroup(updatedRoot, sourceGroup.id);
-  return root ? { root, focusedGroupId: targetGroup.id } : workspace;
+  return root
+    ? {
+        root,
+        focusedGroupId: targetGroup.id,
+        maximizedGroupId: workspace.maximizedGroupId ? targetGroup.id : null,
+      }
+    : workspace;
 }
 
 export function splitEditorTab(
@@ -276,7 +312,7 @@ export function splitEditorTab(
   };
   const root = replaceEditorGroup(workspace.root, input.sourceGroupId, split);
   if (root === workspace.root) return workspace;
-  return { root, focusedGroupId: input.targetGroupId };
+  return { root, focusedGroupId: input.targetGroupId, maximizedGroupId: null };
 }
 
 export function closeEditorTab(
@@ -366,7 +402,13 @@ function removeEditorGroup(workspace: EditorWorkspace, groupId: EditorGroupId): 
   const focusedGroupId = findEditorGroup(root, workspace.focusedGroupId)
     ? workspace.focusedGroupId
     : getEditorGroups(root)[0]?.id;
-  return focusedGroupId ? { root, focusedGroupId } : workspace;
+  return focusedGroupId
+    ? {
+        root,
+        focusedGroupId,
+        maximizedGroupId: workspace.maximizedGroupId ? focusedGroupId : null,
+      }
+    : workspace;
 }
 
 function collapseEditorGroup(

@@ -42,6 +42,12 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedRightPanelToggle.command, "rightPanel.toggle");
 
+    const parsedEditorToggleFocus = yield* decode(KeybindingRule, {
+      key: "mod+shift+enter",
+      command: "editor.toggleFocus",
+    });
+    assert.strictEqual(parsedEditorToggleFocus.command, "editor.toggleFocus");
+
     const parsedClose = yield* decode(KeybindingRule, {
       key: "mod+w",
       command: "terminal.close",

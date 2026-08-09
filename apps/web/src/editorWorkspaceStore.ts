@@ -18,6 +18,7 @@ import {
   reorderEditorTab,
   resizeEditorSplit,
   splitEditorTab,
+  toggleMaximizedEditorGroup,
   type EditorGroupId,
   type EditorSplitId,
   type EditorSplitDirection,
@@ -44,6 +45,7 @@ interface EditorWorkspaceStoreState {
   readonly activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   readonly activateTab: (ref: ScopedThreadRef, groupId: EditorGroupId, tabId: EditorTabId) => void;
   readonly focusGroup: (ref: ScopedThreadRef, groupId: EditorGroupId) => void;
+  readonly toggleGroupMaximized: (ref: ScopedThreadRef, groupId: EditorGroupId) => void;
   readonly resizeSplit: (
     ref: ScopedThreadRef,
     splitId: `editor-split:${string}`,
@@ -145,6 +147,7 @@ const PersistedThreadEditorWorkspaceSchema = Schema.Struct({
   workspace: Schema.Struct({
     root: PersistedEditorWorkspaceNodeSchema,
     focusedGroupId: Schema.String,
+    maximizedGroupId: Schema.optional(Schema.NullOr(Schema.String)),
   }),
   tabsById: Schema.Record(Schema.String, PersistedEditorWorkspaceTabSchema),
   nextId: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
@@ -596,16 +599,22 @@ function normalizePersistedThreadEditorWorkspace(
     tabsById,
   });
   const focusedGroupId = parseEditorGroupId(persisted.workspace.focusedGroupId);
+  const maximizedGroupId = persisted.workspace.maximizedGroupId
+    ? parseEditorGroupId(persisted.workspace.maximizedGroupId)
+    : null;
   if (
     !root ||
     !focusedGroupId ||
     !seenGroupIds.has(focusedGroupId) ||
+    (persisted.workspace.maximizedGroupId !== undefined &&
+      persisted.workspace.maximizedGroupId !== null &&
+      (!maximizedGroupId || !seenGroupIds.has(maximizedGroupId))) ||
     referencedTabIds.size !== Object.keys(tabsById).length
   ) {
     return null;
   }
   return {
-    workspace: { root, focusedGroupId },
+    workspace: { root, focusedGroupId, maximizedGroupId },
     tabsById,
     nextId: Math.max(
       persisted.nextId,
@@ -713,6 +722,13 @@ export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
         set((state) => ({
           byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
             const workspace = focusEditorGroup(current.workspace, groupId);
+            return workspace === current.workspace ? current : { ...current, workspace };
+          }),
+        })),
+      toggleGroupMaximized: (ref, groupId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
+            const workspace = toggleMaximizedEditorGroup(current.workspace, groupId);
             return workspace === current.workspace ? current : { ...current, workspace };
           }),
         })),

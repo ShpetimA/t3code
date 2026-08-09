@@ -141,6 +141,7 @@ import {
   findEditorGroup,
   findTopRightEditorGroup,
   getTopEditorGroups,
+  getVisibleEditorWorkspaceRoot,
 } from "../editorWorkspace";
 import {
   findSurfaceTabs,
@@ -3508,6 +3509,17 @@ function ChatViewContent(props: ChatViewProps) {
       .getState()
       .splitTab(activeThreadRef, focusedGroup.id, activeTab.id, "right", "copy");
   }, [activeThreadRef, workspaceMode]);
+  const toggleFocusedEditorGroup = useCallback(() => {
+    if (!workspaceMode || !activeThreadRef) return;
+    const current = selectThreadEditorWorkspace(
+      useEditorWorkspaceStore.getState().byThreadKey,
+      activeThreadRef,
+    );
+    if (!current) return;
+    useEditorWorkspaceStore
+      .getState()
+      .toggleGroupMaximized(activeThreadRef, current.workspace.focusedGroupId);
+  }, [activeThreadRef, workspaceMode]);
   const cleanupRightPanelSurfaces = useCallback(
     (surfaces: readonly RightPanelSurface[]) => {
       if (!activeThreadRef) return;
@@ -4771,6 +4783,14 @@ function ChatViewContent(props: ChatViewProps) {
         return;
       }
 
+      if (command === "editor.toggleFocus") {
+        if (!workspaceMode) return;
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFocusedEditorGroup();
+        return;
+      }
+
       if (command === "terminal.split") {
         event.preventDefault();
         event.stopPropagation();
@@ -4867,6 +4887,7 @@ function ChatViewContent(props: ChatViewProps) {
     keybindings,
     onToggleDiff,
     toggleRightPanel,
+    toggleFocusedEditorGroup,
     toggleTerminalVisibility,
     workspaceMode,
     composerRef,
@@ -6643,11 +6664,14 @@ function ChatViewContent(props: ChatViewProps) {
     </div>
   );
 
-  const topRightEditorGroupId = editorWorkspaceState
-    ? findTopRightEditorGroup(editorWorkspaceState.workspace.root).id
+  const visibleEditorWorkspaceRoot = editorWorkspaceState
+    ? getVisibleEditorWorkspaceRoot(editorWorkspaceState.workspace)
     : null;
-  const topEditorGroups = editorWorkspaceState
-    ? getTopEditorGroups(editorWorkspaceState.workspace.root)
+  const topRightEditorGroupId = visibleEditorWorkspaceRoot
+    ? findTopRightEditorGroup(visibleEditorWorkspaceRoot).id
+    : null;
+  const topEditorGroups = visibleEditorWorkspaceRoot
+    ? getTopEditorGroups(visibleEditorWorkspaceRoot)
     : [];
   const topEditorGroupIds = new Set(topEditorGroups.map((group) => group.id));
   const topLeftEditorGroupId = topEditorGroups[0]?.id ?? null;
@@ -6733,6 +6757,12 @@ function ChatViewContent(props: ChatViewProps) {
           mode="embedded"
           titleBar={topEditorGroupIds.has(group.id)}
           sidebarTitleBarInset={topLeftEditorGroupId === group.id}
+          focusView={{
+            active: editorWorkspaceState.workspace.maximizedGroupId === group.id,
+            shortcutLabel: shortcutLabelForCommand(keybindings, "editor.toggleFocus"),
+            onToggle: () =>
+              useEditorWorkspaceStore.getState().toggleGroupMaximized(activeThreadRef, group.id),
+          }}
           {...(topRightEditorGroupId === group.id ? { layoutControls: panelLayoutControls } : {})}
           {...(threadTab
             ? {

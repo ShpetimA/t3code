@@ -59,6 +59,38 @@ describe("RightPanelTabBar", () => {
     expect(markup).not.toContain('aria-label="Close New thread"');
   });
 
+  it("renders a reversible Focus View control", () => {
+    const markup = renderToStaticMarkup(
+      <RightPanelTabBar
+        mode="embedded"
+        focusView={{ active: true, shortcutLabel: "⌘⇧↵", onToggle: NOOP }}
+        surfaces={[]}
+        activeSurfaceId={null}
+        pendingSurfaceIds={new Set()}
+        previewSessions={{}}
+        terminalLabelsById={new Map()}
+        onActivate={NOOP}
+        onCloseSurface={NOOP}
+        onCloseOtherSurfaces={NOOP}
+        onCloseSurfacesToRight={NOOP}
+        onCloseAllSurfaces={NOOP}
+        onCopyFilePath={NOOP}
+        onAddBrowser={NOOP}
+        onAddTerminal={NOOP}
+        onAddDiff={NOOP}
+        onAddFiles={NOOP}
+        onAddAgents={NOOP}
+        browserAvailable
+        diffAvailable
+        filesAvailable
+        liveAgentCount={0}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Restore editor layout"');
+    expect(markup).toContain('aria-pressed="true"');
+  });
+
   it("adds copy and move split actions to a surface tab menu", () => {
     expect(
       buildEditorTabContextMenuItems({

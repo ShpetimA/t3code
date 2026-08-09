@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import {
   createEditorWorkspace,
   splitEditorTab,
+  toggleMaximizedEditorGroup,
   type EditorGroupId,
   type EditorSplitId,
   type EditorTabId,
@@ -63,6 +64,36 @@ describe("EditorWorkspaceGrid", () => {
     expect(calculateEditorSplitRatio(0, 100, 500)).toBe(0.1);
     expect(calculateEditorSplitRatio(1_000, 100, 500)).toBe(0.9);
     expect(calculateEditorSplitRatio(100, 100, 0)).toBeNull();
+  });
+
+  test("renders only the focused group while preserving the split workspace", () => {
+    const splitWorkspace = splitEditorTab(
+      createEditorWorkspace({ groupId: group("one"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("one"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("file"),
+        targetGroupId: group("two"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const focused = toggleMaximizedEditorGroup(splitWorkspace, group("one"));
+    const markup = renderToStaticMarkup(
+      <EditorWorkspaceGrid
+        workspace={focused}
+        renderGroup={(editorGroup) => <span>{editorGroup.id}</span>}
+        onFocusGroup={NOOP}
+        onResizeSplit={NOOP}
+      />,
+    );
+
+    expect(focused.root._tag).toBe("Split");
+    expect(markup).toContain('data-editor-focus-view="true"');
+    expect(markup).toContain(group("one"));
+    expect(markup).not.toContain(group("two"));
+    expect(markup).not.toContain('role="separator"');
   });
 
   test("maps keyboard arrows to the split axis", () => {

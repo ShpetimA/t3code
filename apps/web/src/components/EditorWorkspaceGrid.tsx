@@ -2,6 +2,7 @@ import { type KeyboardEvent, type PointerEvent, type ReactNode, useCallback, use
 
 import {
   clampEditorSplitRatio,
+  getVisibleEditorWorkspaceRoot,
   type EditorGroupId,
   type EditorGroupNode,
   type EditorSplitId,
@@ -22,10 +23,14 @@ interface EditorWorkspaceGridProps {
 }
 
 export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
+  const visibleRoot = getVisibleEditorWorkspaceRoot(props.workspace);
   return (
-    <div className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", props.className)}>
+    <div
+      className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", props.className)}
+      data-editor-focus-view={props.workspace.maximizedGroupId ? "true" : "false"}
+    >
       <EditorWorkspaceBranch
-        node={props.workspace.root}
+        node={visibleRoot}
         focusedGroupId={props.workspace.focusedGroupId}
         renderGroup={props.renderGroup}
         onFocusGroup={props.onFocusGroup}
