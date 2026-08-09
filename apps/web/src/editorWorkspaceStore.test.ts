@@ -11,6 +11,7 @@ import {
   createThreadEditorWorkspace,
   findEditorWorkspaceTabGroup,
   findSurfaceTabs,
+  parsePersistedEditorWorkspaceState,
   reconcileThreadEditorWorkspace,
   splitThreadEditorTab,
 } from "./editorWorkspaceStore";
@@ -186,5 +187,58 @@ describe("thread editor workspace", () => {
         findEditorWorkspaceTabGroup(reconciled, tab.id),
       ),
     ).toEqual(groupsBefore);
+  });
+
+  test("parses valid persisted trees and clamps their split ratios", () => {
+    const initial = createThreadEditorWorkspace(["files"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const groupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "copy",
+    });
+    if (split.workspace.root._tag !== "Split") throw new Error("Expected split workspace");
+    const parsed = parsePersistedEditorWorkspaceState({
+      byThreadKey: {
+        thread: {
+          ...split,
+          nextId: 1,
+          workspace: {
+            ...split.workspace,
+            root: { ...split.workspace.root, ratio: 5 },
+          },
+        },
+      },
+    }).byThreadKey.thread;
+
+    expect(parsed?.workspace.root._tag).toBe("Split");
+    expect(parsed?.workspace.root._tag === "Split" ? parsed.workspace.root.ratio : null).toBe(0.9);
+    expect(parsed?.tabsById).toEqual(split.tabsById);
+    expect(parsed?.nextId).toBeGreaterThan(1);
+  });
+
+  test("drops malformed persisted threads without discarding valid siblings", () => {
+    const valid = createThreadEditorWorkspace(["files"]);
+    const malformed = {
+      ...valid,
+      workspace: {
+        ...valid.workspace,
+        root: {
+          ...valid.workspace.root,
+          activeTabId: "editor-tab:missing",
+        },
+      },
+    };
+
+    expect(
+      Object.keys(
+        parsePersistedEditorWorkspaceState({
+          byThreadKey: { valid, malformed },
+        }).byThreadKey,
+      ),
+    ).toEqual(["valid"]);
+    expect(parsePersistedEditorWorkspaceState(null)).toEqual({ byThreadKey: {} });
   });
 });

@@ -9,11 +9,8 @@ import {
   type EditorTabId,
 } from "~/editorWorkspace";
 
-import {
-  calculateEditorSplitRatio,
-  EditorWorkspaceGrid,
-  resolveKeyboardResizeDelta,
-} from "./EditorWorkspaceGrid";
+import { EditorWorkspaceGrid } from "./EditorWorkspaceGrid";
+import { calculateEditorSplitRatio, resolveKeyboardResizeDelta } from "./EditorWorkspaceGrid.logic";
 
 const group = (value: string) => `editor-group:${value}` as EditorGroupId;
 const split = (value: string) => `editor-split:${value}` as EditorSplitId;

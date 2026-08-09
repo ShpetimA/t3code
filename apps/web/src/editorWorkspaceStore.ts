@@ -1,9 +1,12 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
   activateEditorTab,
+  clampEditorSplitRatio,
   closeEditorTab,
   createEditorWorkspace,
   findEditorGroup,
@@ -13,10 +16,13 @@ import {
   resizeEditorSplit,
   splitEditorTab,
   type EditorGroupId,
+  type EditorSplitId,
   type EditorSplitDirection,
   type EditorTabId,
   type EditorWorkspace,
+  type EditorWorkspaceNode,
 } from "./editorWorkspace";
+import { resolveStorage } from "./lib/storage";
 
 export type EditorWorkspaceTab =
   | { readonly _tag: "Thread"; readonly id: EditorTabId }
@@ -68,6 +74,65 @@ interface EditorWorkspaceStoreState {
 
 const ROOT_GROUP_ID = "editor-group:root" as EditorGroupId;
 const THREAD_TAB_ID = "editor-tab:thread" as EditorTabId;
+const EDITOR_WORKSPACE_STORAGE_KEY = "t3code:editor-workspace-state:v1";
+const EDITOR_WORKSPACE_STORAGE_VERSION = 1;
+
+interface PersistedEditorGroupNode {
+  readonly _tag: "Group";
+  readonly id: string;
+  readonly tabIds: readonly string[];
+  readonly activeTabId: string | null;
+}
+
+interface PersistedEditorSplitNode {
+  readonly _tag: "Split";
+  readonly id: string;
+  readonly orientation: "horizontal" | "vertical";
+  readonly ratio: number;
+  readonly first: PersistedEditorWorkspaceNode;
+  readonly second: PersistedEditorWorkspaceNode;
+}
+
+type PersistedEditorWorkspaceNode = PersistedEditorGroupNode | PersistedEditorSplitNode;
+
+const PersistedEditorWorkspaceNodeRef = Schema.suspend(
+  (): Schema.Codec<PersistedEditorWorkspaceNode> => PersistedEditorWorkspaceNodeSchema,
+);
+const PersistedEditorWorkspaceNodeSchema = Schema.Union([
+  Schema.TaggedStruct("Group", {
+    id: Schema.String,
+    tabIds: Schema.Array(Schema.String),
+    activeTabId: Schema.NullOr(Schema.String),
+  }),
+  Schema.TaggedStruct("Split", {
+    id: Schema.String,
+    orientation: Schema.Literals(["horizontal", "vertical"]),
+    ratio: Schema.Finite,
+    first: PersistedEditorWorkspaceNodeRef,
+    second: PersistedEditorWorkspaceNodeRef,
+  }),
+]);
+
+const PersistedEditorWorkspaceTabSchema = Schema.Union([
+  Schema.TaggedStruct("Thread", { id: Schema.String }),
+  Schema.TaggedStruct("Surface", {
+    id: Schema.String,
+    surfaceId: Schema.NonEmptyString,
+  }),
+]);
+
+const PersistedThreadEditorWorkspaceSchema = Schema.Struct({
+  workspace: Schema.Struct({
+    root: PersistedEditorWorkspaceNodeSchema,
+    focusedGroupId: Schema.String,
+  }),
+  tabsById: Schema.Record(Schema.String, PersistedEditorWorkspaceTabSchema),
+  nextId: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+});
+
+const decodePersistedThreadEditorWorkspace = Schema.decodeUnknownOption(
+  PersistedThreadEditorWorkspaceSchema,
+);
 
 export function createThreadEditorWorkspace(
   surfaceIds: readonly string[] = [],
@@ -349,83 +414,228 @@ function updateThreadWorkspace(
   return next === current ? byThreadKey : { ...byThreadKey, [threadKey]: next };
 }
 
-export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()((set) => ({
-  byThreadKey: {},
-  ensure: (ref, surfaceIds) =>
-    set((state) => {
-      const threadKey = scopedThreadKey(ref);
-      const current = state.byThreadKey[threadKey] ?? createThreadEditorWorkspace();
-      const next = reconcileThreadEditorWorkspace(current, surfaceIds);
-      return next === state.byThreadKey[threadKey]
-        ? state
-        : { byThreadKey: { ...state.byThreadKey, [threadKey]: next } };
+export function parsePersistedEditorWorkspaceState(input: unknown): {
+  readonly byThreadKey: Readonly<Record<string, ThreadEditorWorkspace>>;
+} {
+  if (!input || typeof input !== "object" || !("byThreadKey" in input)) {
+    return { byThreadKey: {} };
+  }
+  const rawByThreadKey = input.byThreadKey;
+  if (!rawByThreadKey || typeof rawByThreadKey !== "object") {
+    return { byThreadKey: {} };
+  }
+  const byThreadKey: Record<string, ThreadEditorWorkspace> = {};
+  for (const [threadKey, rawWorkspace] of Object.entries(rawByThreadKey)) {
+    const decoded = decodePersistedThreadEditorWorkspace(rawWorkspace);
+    if (decoded._tag === "None") continue;
+    const workspace = normalizePersistedThreadEditorWorkspace(decoded.value);
+    if (workspace) byThreadKey[threadKey] = workspace;
+  }
+  return { byThreadKey };
+}
+
+function normalizePersistedThreadEditorWorkspace(
+  persisted: typeof PersistedThreadEditorWorkspaceSchema.Type,
+): ThreadEditorWorkspace | null {
+  const tabsById: Record<string, EditorWorkspaceTab> = {};
+  let threadTabCount = 0;
+  for (const [tabKey, tab] of Object.entries(persisted.tabsById)) {
+    const tabId = parseEditorTabId(tab.id);
+    if (!tabId || tabKey !== tab.id) return null;
+    if (tab._tag === "Thread") threadTabCount += 1;
+    tabsById[tabKey] =
+      tab._tag === "Thread"
+        ? { _tag: "Thread", id: tabId }
+        : { _tag: "Surface", id: tabId, surfaceId: tab.surfaceId };
+  }
+  if (threadTabCount !== 1) return null;
+
+  const seenGroupIds = new Set<EditorGroupId>();
+  const seenSplitIds = new Set<EditorSplitId>();
+  const referencedTabIds = new Set<EditorTabId>();
+  const root = normalizePersistedEditorNode(persisted.workspace.root, {
+    seenGroupIds,
+    seenSplitIds,
+    referencedTabIds,
+    tabsById,
+  });
+  const focusedGroupId = parseEditorGroupId(persisted.workspace.focusedGroupId);
+  if (
+    !root ||
+    !focusedGroupId ||
+    !seenGroupIds.has(focusedGroupId) ||
+    referencedTabIds.size !== Object.keys(tabsById).length
+  ) {
+    return null;
+  }
+  return {
+    workspace: { root, focusedGroupId },
+    tabsById,
+    nextId: Math.max(
+      persisted.nextId,
+      nextAvailableEditorId([...seenGroupIds, ...seenSplitIds, ...referencedTabIds]),
+    ),
+  };
+}
+
+function nextAvailableEditorId(ids: readonly string[]): number {
+  let nextId = 1;
+  for (const id of ids) {
+    const suffix = id.slice(id.lastIndexOf(":") + 1);
+    const numericId = Number(suffix);
+    if (Number.isSafeInteger(numericId) && numericId >= nextId) {
+      nextId = numericId + 1;
+    }
+  }
+  return nextId;
+}
+
+function normalizePersistedEditorNode(
+  node: PersistedEditorWorkspaceNode,
+  state: {
+    readonly seenGroupIds: Set<EditorGroupId>;
+    readonly seenSplitIds: Set<EditorSplitId>;
+    readonly referencedTabIds: Set<EditorTabId>;
+    readonly tabsById: Readonly<Record<string, EditorWorkspaceTab>>;
+  },
+): EditorWorkspaceNode | null {
+  if (node._tag === "Group") {
+    const id = parseEditorGroupId(node.id);
+    if (!id || state.seenGroupIds.has(id)) return null;
+    state.seenGroupIds.add(id);
+    const tabIds: EditorTabId[] = [];
+    for (const persistedTabId of node.tabIds) {
+      const tabId = parseEditorTabId(persistedTabId);
+      if (!tabId || !state.tabsById[tabId] || state.referencedTabIds.has(tabId)) {
+        return null;
+      }
+      tabIds.push(tabId);
+      state.referencedTabIds.add(tabId);
+    }
+    const activeTabId = node.activeTabId ? parseEditorTabId(node.activeTabId) : null;
+    if ((node.activeTabId && !activeTabId) || (activeTabId && !tabIds.includes(activeTabId))) {
+      return null;
+    }
+    if ((tabIds.length === 0) !== (activeTabId === null)) return null;
+    return { _tag: "Group", id, tabIds, activeTabId };
+  }
+
+  const id = parseEditorSplitId(node.id);
+  const ratio = clampEditorSplitRatio(node.ratio);
+  if (!id || ratio === null || state.seenSplitIds.has(id)) return null;
+  state.seenSplitIds.add(id);
+  const first = normalizePersistedEditorNode(node.first, state);
+  const second = normalizePersistedEditorNode(node.second, state);
+  return first && second
+    ? { _tag: "Split", id, orientation: node.orientation, ratio, first, second }
+    : null;
+}
+
+function parseEditorGroupId(value: string): EditorGroupId | null {
+  return value.startsWith("editor-group:") ? (value as EditorGroupId) : null;
+}
+
+function parseEditorSplitId(value: string): EditorSplitId | null {
+  return value.startsWith("editor-split:") ? (value as EditorSplitId) : null;
+}
+
+function parseEditorTabId(value: string): EditorTabId | null {
+  return value.startsWith("editor-tab:") ? (value as EditorTabId) : null;
+}
+
+export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
+  persist(
+    (set) => ({
+      byThreadKey: {},
+      ensure: (ref, surfaceIds) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const current = state.byThreadKey[threadKey] ?? createThreadEditorWorkspace();
+          const next = reconcileThreadEditorWorkspace(current, surfaceIds);
+          return next === state.byThreadKey[threadKey]
+            ? state
+            : { byThreadKey: { ...state.byThreadKey, [threadKey]: next } };
+        }),
+      activateThread: (ref) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, activateThreadWorkspaceTab),
+        })),
+      activateSurface: (ref, surfaceId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            activateSurfaceWorkspaceTab(current, surfaceId),
+          ),
+        })),
+      activateTab: (ref, groupId, tabId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
+            const workspace = activateEditorTab(current.workspace, groupId, tabId);
+            return workspace === current.workspace ? current : { ...current, workspace };
+          }),
+        })),
+      focusGroup: (ref, groupId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
+            const workspace = focusEditorGroup(current.workspace, groupId);
+            return workspace === current.workspace ? current : { ...current, workspace };
+          }),
+        })),
+      resizeSplit: (ref, splitId, ratio) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
+            const workspace = resizeEditorSplit(current.workspace, splitId, ratio);
+            return workspace === current.workspace ? current : { ...current, workspace };
+          }),
+        })),
+      splitTab: (ref, groupId, tabId, direction, mode) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            splitThreadEditorTab(current, { groupId, tabId, direction, mode }),
+          ),
+        })),
+      closeSurfaceTab: (ref, groupId, tabId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            closeThreadEditorSurfaceTab(current, groupId, tabId),
+          ),
+        })),
+      closeOtherSurfaceTabs: (ref, groupId, tabId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            closeOtherThreadEditorSurfaceTabs(current, groupId, tabId),
+          ),
+        })),
+      closeSurfaceTabsToRight: (ref, groupId, tabId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            closeThreadEditorSurfaceTabsToRight(current, groupId, tabId),
+          ),
+        })),
+      closeAllSurfaceTabs: (ref, groupId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            closeAllThreadEditorSurfaceTabs(current, groupId),
+          ),
+        })),
+      removeThread: (ref) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          if (!(threadKey in state.byThreadKey)) return state;
+          const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
+          return { byThreadKey };
+        }),
     }),
-  activateThread: (ref) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, activateThreadWorkspaceTab),
-    })),
-  activateSurface: (ref, surfaceId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-        activateSurfaceWorkspaceTab(current, surfaceId),
+    {
+      name: EDITOR_WORKSPACE_STORAGE_KEY,
+      version: EDITOR_WORKSPACE_STORAGE_VERSION,
+      storage: createJSONStorage(() =>
+        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
       ),
-    })),
-  activateTab: (ref, groupId, tabId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
-        const workspace = activateEditorTab(current.workspace, groupId, tabId);
-        return workspace === current.workspace ? current : { ...current, workspace };
+      partialize: (state) => ({ byThreadKey: state.byThreadKey }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...parsePersistedEditorWorkspaceState(persistedState),
       }),
-    })),
-  focusGroup: (ref, groupId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
-        const workspace = focusEditorGroup(current.workspace, groupId);
-        return workspace === current.workspace ? current : { ...current, workspace };
-      }),
-    })),
-  resizeSplit: (ref, splitId, ratio) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) => {
-        const workspace = resizeEditorSplit(current.workspace, splitId, ratio);
-        return workspace === current.workspace ? current : { ...current, workspace };
-      }),
-    })),
-  splitTab: (ref, groupId, tabId, direction, mode) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-        splitThreadEditorTab(current, { groupId, tabId, direction, mode }),
-      ),
-    })),
-  closeSurfaceTab: (ref, groupId, tabId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-        closeThreadEditorSurfaceTab(current, groupId, tabId),
-      ),
-    })),
-  closeOtherSurfaceTabs: (ref, groupId, tabId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-        closeOtherThreadEditorSurfaceTabs(current, groupId, tabId),
-      ),
-    })),
-  closeSurfaceTabsToRight: (ref, groupId, tabId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-        closeThreadEditorSurfaceTabsToRight(current, groupId, tabId),
-      ),
-    })),
-  closeAllSurfaceTabs: (ref, groupId) =>
-    set((state) => ({
-      byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
-        closeAllThreadEditorSurfaceTabs(current, groupId),
-      ),
-    })),
-  removeThread: (ref) =>
-    set((state) => {
-      const threadKey = scopedThreadKey(ref);
-      if (!(threadKey in state.byThreadKey)) return state;
-      const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
-      return { byThreadKey };
-    }),
-}));
+    },
+  ),
+);

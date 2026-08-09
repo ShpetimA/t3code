@@ -10,8 +10,16 @@ current thread appears as a pinned tab beside the thread's tool tabs. Select the
 to the conversation without restoring the split layout. Its compact status indicator mirrors the
 sidebar, including working, attention, plan-ready, monitoring, and completion states.
 
+Each editor group has its own tab row. Right-click a file or tool tab and choose **Split Right** or
+**Split Down** to keep a second view open, or use **Split & Move** to move it into a new group above,
+below, left, or right. Drag the divider to resize groups; double-click it to restore an even split.
+Closing the last tab in a group collapses that group automatically. The current thread remains a
+single always-available tab and can be moved once another tab remains in its group.
+
 The row below the active tab is contextual. For the thread it contains the usual project, thread,
 editor, script, and source-control actions. For a file it shows the file path and file actions.
+The group layout, focused group, and split sizes are restored when T3 Code reopens, then reconciled
+with the thread's available files, terminals, diffs, previews, and agents.
 
 ## Choose the default layout
 
