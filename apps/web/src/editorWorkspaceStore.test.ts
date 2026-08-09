@@ -2,24 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import { findEditorGroup, type EditorTabId } from "./editorWorkspace";
 import {
-  activateSurfaceWorkspaceTab,
-  activateThreadWorkspaceTab,
-  closeAllThreadEditorSurfaceTabs,
-  closeOtherThreadEditorSurfaceTabs,
-  closeThreadEditorSurfaceTab,
-  closeThreadEditorSurfaceTabsToRight,
   createThreadEditorWorkspace,
   findEditorWorkspaceTabGroup,
   findSurfaceTabs,
-  moveThreadEditorTabToGroup,
-  moveThreadEditorTabToSplit,
-  openSurfaceWorkspaceTab,
   parsePersistedEditorWorkspaceState,
-  reconcileThreadEditorWorkspace,
-  reorderThreadEditorTab,
-  splitThreadEditorTab,
-  splitThreadEditorGroup,
-  swapThreadEditorGroups,
+  transitionThreadEditorWorkspace,
 } from "./editorWorkspaceStore";
 
 function activeTabId(state: ReturnType<typeof createThreadEditorWorkspace>): EditorTabId | null {
@@ -51,12 +38,15 @@ describe("thread editor workspace", () => {
 
   test("activates an existing surface and returns to the thread tab", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
-    const surfaceActive = activateSurfaceWorkspaceTab(initial, "files");
+    const surfaceActive = transitionThreadEditorWorkspace(initial, {
+      _tag: "ActivateSurface",
+      surfaceId: "files",
+    });
     expect(surfaceActive.tabsById[activeTabId(surfaceActive) ?? ""]).toMatchObject({
       _tag: "Surface",
       surfaceId: "files",
     });
-    const threadActive = activateThreadWorkspaceTab(surfaceActive);
+    const threadActive = transitionThreadEditorWorkspace(surfaceActive, { _tag: "ActivateThread" });
     expect(threadActive.tabsById[activeTabId(threadActive) ?? ""]).toMatchObject({
       _tag: "Thread",
     });
@@ -66,15 +56,22 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const rootGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId: rootGroupId,
       tabId: filesTab.id,
       direction: "right",
       mode: "move",
     });
-    const threadFocused = activateThreadWorkspaceTab(split);
-    const opened = openSurfaceWorkspaceTab(threadFocused, "files");
-    const reopened = openSurfaceWorkspaceTab(opened, "files");
+    const threadFocused = transitionThreadEditorWorkspace(split, { _tag: "ActivateThread" });
+    const opened = transitionThreadEditorWorkspace(threadFocused, {
+      _tag: "OpenSurface",
+      surfaceId: "files",
+    });
+    const reopened = transitionThreadEditorWorkspace(opened, {
+      _tag: "OpenSurface",
+      surfaceId: "files",
+    });
     const filesTabs = findSurfaceTabs(opened, "files");
 
     expect(filesTabs).toHaveLength(2);
@@ -89,7 +86,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["file:one.ts"]);
     const surfaceTab = findSurfaceTabs(initial, "file:one.ts")[0]!;
     const groupId = findEditorWorkspaceTabGroup(initial, surfaceTab.id)!;
-    const copied = splitThreadEditorTab(initial, {
+    const copied = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId,
       tabId: surfaceTab.id,
       direction: "right",
@@ -99,7 +97,8 @@ describe("thread editor workspace", () => {
     expect(findSurfaceTabs(copied, "file:one.ts")).toHaveLength(2);
     const threadTab = Object.values(initial.tabsById).find((tab) => tab._tag === "Thread")!;
     expect(
-      splitThreadEditorTab(initial, {
+      transitionThreadEditorWorkspace(initial, {
+        _tag: "SplitTab",
         groupId,
         tabId: threadTab.id,
         direction: "right",
@@ -110,7 +109,11 @@ describe("thread editor workspace", () => {
 
   test("opens an empty split for choosing a new surface", () => {
     const initial = createThreadEditorWorkspace();
-    const next = splitThreadEditorGroup(initial, initial.workspace.focusedGroupId, "right");
+    const next = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitGroup",
+      groupId: initial.workspace.focusedGroupId,
+      direction: "right",
+    });
     const focused = findEditorGroup(next.workspace.root, next.workspace.focusedGroupId);
 
     expect(next.workspace.root._tag).toBe("Split");
@@ -123,7 +126,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const fileTab = findSurfaceTabs(initial, "files")[0]!;
     const rootGroupId = findEditorWorkspaceTabGroup(initial, fileTab.id)!;
-    const moved = splitThreadEditorTab(initial, {
+    const moved = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId: rootGroupId,
       tabId: fileTab.id,
       direction: "down",
@@ -131,7 +135,8 @@ describe("thread editor workspace", () => {
     });
     const movedGroupId = findEditorWorkspaceTabGroup(moved, fileTab.id)!;
     const diffTab = findSurfaceTabs(moved, "diff")[0]!;
-    const diffMoved = splitThreadEditorTab(moved, {
+    const diffMoved = transitionThreadEditorWorkspace(moved, {
+      _tag: "SplitTab",
       groupId: movedGroupId,
       tabId: fileTab.id,
       direction: "right",
@@ -145,7 +150,8 @@ describe("thread editor workspace", () => {
   test("reorders tabs within one group", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const diffTab = findSurfaceTabs(initial, "diff")[0]!;
-    const reordered = reorderThreadEditorTab(initial, {
+    const reordered = transitionThreadEditorWorkspace(initial, {
+      _tag: "ReorderTab",
       groupId: initial.workspace.focusedGroupId,
       tabId: diffTab.id,
       targetIndex: 1,
@@ -166,12 +172,14 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const threadTab = Object.values(initial.tabsById).find((tab) => tab._tag === "Thread")!;
-    const surfaceReordered = reorderThreadEditorTab(initial, {
+    const surfaceReordered = transitionThreadEditorWorkspace(initial, {
+      _tag: "ReorderTab",
       groupId: initial.workspace.focusedGroupId,
       tabId: filesTab.id,
       targetIndex: 0,
     });
-    const threadReordered = reorderThreadEditorTab(surfaceReordered, {
+    const threadReordered = transitionThreadEditorWorkspace(surfaceReordered, {
+      _tag: "ReorderTab",
       groupId: surfaceReordered.workspace.focusedGroupId,
       tabId: threadTab.id,
       targetIndex: 2,
@@ -189,7 +197,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId: sourceGroupId,
       tabId: filesTab.id,
       direction: "right",
@@ -197,7 +206,8 @@ describe("thread editor workspace", () => {
     });
     const targetGroupId = findEditorWorkspaceTabGroup(split, filesTab.id)!;
     const diffTab = findSurfaceTabs(split, "diff")[0]!;
-    const moved = moveThreadEditorTabToGroup(split, {
+    const moved = transitionThreadEditorWorkspace(split, {
+      _tag: "MoveTabToGroup",
       sourceGroupId,
       targetGroupId,
       tabId: diffTab.id,
@@ -218,7 +228,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const columns = splitThreadEditorTab(initial, {
+    const columns = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId: sourceGroupId,
       tabId: filesTab.id,
       direction: "right",
@@ -226,7 +237,8 @@ describe("thread editor workspace", () => {
     });
     const rightGroupId = findEditorWorkspaceTabGroup(columns, filesTab.id)!;
     const diffTab = findSurfaceTabs(columns, "diff")[0]!;
-    const splitAtTarget = moveThreadEditorTabToSplit(columns, {
+    const splitAtTarget = transitionThreadEditorWorkspace(columns, {
+      _tag: "MoveTabToSplit",
       sourceGroupId,
       targetGroupId: rightGroupId,
       tabId: diffTab.id,
@@ -238,7 +250,8 @@ describe("thread editor workspace", () => {
       findEditorWorkspaceTabGroup(splitAtTarget, diffTab.id),
     );
 
-    const swapped = swapThreadEditorGroups(columns, {
+    const swapped = transitionThreadEditorWorkspace(columns, {
+      _tag: "SwapGroups",
       sourceGroupId,
       targetGroupId: rightGroupId,
     });
@@ -253,7 +266,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId: sourceGroupId,
       tabId: filesTab.id,
       direction: "right",
@@ -261,7 +275,8 @@ describe("thread editor workspace", () => {
     });
     const targetGroupId = findEditorWorkspaceTabGroup(split, filesTab.id)!;
     const threadTab = Object.values(split.tabsById).find((tab) => tab._tag === "Thread")!;
-    const moved = moveThreadEditorTabToGroup(split, {
+    const moved = transitionThreadEditorWorkspace(split, {
+      _tag: "MoveTabToGroup",
       sourceGroupId,
       targetGroupId,
       tabId: threadTab.id,
@@ -275,7 +290,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const rootGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId: rootGroupId,
       tabId: filesTab.id,
       direction: "right",
@@ -283,7 +299,8 @@ describe("thread editor workspace", () => {
     });
     const copiedFilesTab = findSurfaceTabs(split, "files").find((tab) => tab.id !== filesTab.id)!;
     const copiedGroupId = findEditorWorkspaceTabGroup(split, copiedFilesTab.id)!;
-    const moved = moveThreadEditorTabToGroup(split, {
+    const moved = transitionThreadEditorWorkspace(split, {
+      _tag: "MoveTabToGroup",
       sourceGroupId: copiedGroupId,
       targetGroupId: rootGroupId,
       tabId: copiedFilesTab.id,
@@ -297,7 +314,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files"]);
     const fileTab = findSurfaceTabs(initial, "files")[0]!;
     const groupId = findEditorWorkspaceTabGroup(initial, fileTab.id)!;
-    const copied = splitThreadEditorTab(initial, {
+    const copied = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId,
       tabId: fileTab.id,
       direction: "right",
@@ -305,8 +323,16 @@ describe("thread editor workspace", () => {
     });
     const copiedTab = findSurfaceTabs(copied, "files").find((tab) => tab.id !== fileTab.id)!;
     const copiedGroupId = findEditorWorkspaceTabGroup(copied, copiedTab.id)!;
-    const oneClosed = closeThreadEditorSurfaceTab(copied, copiedGroupId, copiedTab.id);
-    const allClosed = closeThreadEditorSurfaceTab(oneClosed, groupId, fileTab.id);
+    const oneClosed = transitionThreadEditorWorkspace(copied, {
+      _tag: "CloseSurfaceTab",
+      groupId: copiedGroupId,
+      tabId: copiedTab.id,
+    });
+    const allClosed = transitionThreadEditorWorkspace(oneClosed, {
+      _tag: "CloseSurfaceTab",
+      groupId,
+      tabId: fileTab.id,
+    });
 
     expect(findSurfaceTabs(oneClosed, "files")).toHaveLength(1);
     expect(findSurfaceTabs(allClosed, "files")).toHaveLength(0);
@@ -321,32 +347,52 @@ describe("thread editor workspace", () => {
     const diffTab = findSurfaceTabs(initial, "diff")[0]!;
 
     expect(
-      Object.values(closeOtherThreadEditorSurfaceTabs(initial, groupId, diffTab.id).tabsById).map(
-        (tab) => (tab._tag === "Thread" ? "thread" : tab.surfaceId),
-      ),
+      Object.values(
+        transitionThreadEditorWorkspace(initial, {
+          _tag: "CloseOtherSurfaceTabs",
+          groupId,
+          tabId: diffTab.id,
+        }).tabsById,
+      ).map((tab) => (tab._tag === "Thread" ? "thread" : tab.surfaceId)),
     ).toEqual(["thread", "diff"]);
     expect(
-      Object.values(closeThreadEditorSurfaceTabsToRight(initial, groupId, diffTab.id).tabsById).map(
-        (tab) => (tab._tag === "Thread" ? "thread" : tab.surfaceId),
-      ),
+      Object.values(
+        transitionThreadEditorWorkspace(initial, {
+          _tag: "CloseSurfaceTabsToRight",
+          groupId,
+          tabId: diffTab.id,
+        }).tabsById,
+      ).map((tab) => (tab._tag === "Thread" ? "thread" : tab.surfaceId)),
     ).toEqual(["thread", "files", "diff"]);
-    expect(Object.values(closeAllThreadEditorSurfaceTabs(initial, groupId).tabsById)).toEqual([
-      expect.objectContaining({ _tag: "Thread" }),
-    ]);
+    expect(
+      Object.values(
+        transitionThreadEditorWorkspace(initial, {
+          _tag: "CloseAllSurfaceTabs",
+          groupId,
+        }).tabsById,
+      ),
+    ).toEqual([expect.objectContaining({ _tag: "Thread" })]);
   });
 
   test("reconciles resources without disturbing existing split placement", () => {
     const initial = createThreadEditorWorkspace(["files"]);
     const fileTab = findSurfaceTabs(initial, "files")[0]!;
     const groupId = findEditorWorkspaceTabGroup(initial, fileTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId,
       tabId: fileTab.id,
       direction: "right",
       mode: "copy",
     });
-    const reconciled = reconcileThreadEditorWorkspace(split, ["files", "diff"]);
-    const removed = reconcileThreadEditorWorkspace(reconciled, ["diff"]);
+    const reconciled = transitionThreadEditorWorkspace(split, {
+      _tag: "ReconcileSurfaces",
+      surfaceIds: ["files", "diff"],
+    });
+    const removed = transitionThreadEditorWorkspace(reconciled, {
+      _tag: "ReconcileSurfaces",
+      surfaceIds: ["diff"],
+    });
 
     expect(findSurfaceTabs(reconciled, "files")).toHaveLength(2);
     expect(findSurfaceTabs(reconciled, "diff")).toHaveLength(1);
@@ -358,7 +404,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const groupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId,
       tabId: filesTab.id,
       direction: "right",
@@ -367,7 +414,10 @@ describe("thread editor workspace", () => {
     const groupsBefore = findSurfaceTabs(split, "files").map((tab) =>
       findEditorWorkspaceTabGroup(split, tab.id),
     );
-    const reconciled = reconcileThreadEditorWorkspace(split, ["file:src/app.ts"]);
+    const reconciled = transitionThreadEditorWorkspace(split, {
+      _tag: "ReconcileSurfaces",
+      surfaceIds: ["file:src/app.ts"],
+    });
 
     expect(findSurfaceTabs(reconciled, "files")).toHaveLength(0);
     expect(findSurfaceTabs(reconciled, "file:src/app.ts").map((tab) => tab.id)).toEqual(
@@ -384,7 +434,8 @@ describe("thread editor workspace", () => {
     const initial = createThreadEditorWorkspace(["files"]);
     const filesTab = findSurfaceTabs(initial, "files")[0]!;
     const groupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
-    const split = splitThreadEditorTab(initial, {
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitTab",
       groupId,
       tabId: filesTab.id,
       direction: "right",

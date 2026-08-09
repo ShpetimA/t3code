@@ -1463,12 +1463,10 @@ function OpenCommandPaletteDialog(props: {
       shortcutCommand: "editor.toggleFocus",
       run: async () => {
         if (!activeEditorWorkspace) return;
-        useEditorWorkspaceStore
-          .getState()
-          .toggleGroupMaximized(
-            activeEditorThreadRef,
-            activeEditorWorkspace.workspace.focusedGroupId,
-          );
+        useEditorWorkspaceStore.getState().transition(activeEditorThreadRef, {
+          _tag: "ToggleGroupMaximized",
+          groupId: activeEditorWorkspace.workspace.focusedGroupId,
+        });
       },
     });
   }
