@@ -13,10 +13,12 @@ import {
   findSurfaceTabs,
   mergeThreadEditorGroups,
   moveThreadEditorTabToGroup,
+  moveThreadEditorTabToSplit,
   parsePersistedEditorWorkspaceState,
   reconcileThreadEditorWorkspace,
   reorderThreadEditorTab,
   splitThreadEditorTab,
+  swapThreadEditorGroups,
 } from "./editorWorkspaceStore";
 
 function activeTabId(state: ReturnType<typeof createThreadEditorWorkspace>): EditorTabId | null {
@@ -175,6 +177,41 @@ describe("thread editor workspace", () => {
       expect.objectContaining({ _tag: "Surface", surfaceId: "diff" }),
     ]);
     expect(targetGroup?.activeTabId).toBe(diffTab.id);
+  });
+
+  test("moves a tab to a target edge and swaps complete groups", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const columns = splitThreadEditorTab(initial, {
+      groupId: sourceGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "move",
+    });
+    const rightGroupId = findEditorWorkspaceTabGroup(columns, filesTab.id)!;
+    const diffTab = findSurfaceTabs(columns, "diff")[0]!;
+    const splitAtTarget = moveThreadEditorTabToSplit(columns, {
+      sourceGroupId,
+      targetGroupId: rightGroupId,
+      tabId: diffTab.id,
+      direction: "down",
+    });
+
+    expect(findEditorWorkspaceTabGroup(splitAtTarget, diffTab.id)).not.toBe(sourceGroupId);
+    expect(splitAtTarget.workspace.focusedGroupId).toBe(
+      findEditorWorkspaceTabGroup(splitAtTarget, diffTab.id),
+    );
+
+    const swapped = swapThreadEditorGroups(columns, {
+      sourceGroupId,
+      targetGroupId: rightGroupId,
+    });
+    expect(swapped.workspace.root._tag).toBe("Split");
+    if (swapped.workspace.root._tag !== "Split") return;
+    expect(
+      swapped.workspace.root.first._tag === "Group" ? swapped.workspace.root.first.id : null,
+    ).toBe(rightGroupId);
   });
 
   test("pins the thread first when moving it into an existing group", () => {

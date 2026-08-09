@@ -4,6 +4,13 @@ export type EditorTabId = `editor-tab:${string}`;
 
 export type EditorSplitDirection = "up" | "down" | "left" | "right";
 export type EditorSplitOrientation = "horizontal" | "vertical";
+export type EditorGroupDropZone = EditorSplitDirection | "center";
+
+/** Identifies the editor tab currently being dragged. */
+export interface EditorTabDragData {
+  readonly sourceGroupId: EditorGroupId;
+  readonly sourceTabId: EditorTabId;
+}
 
 export interface EditorGroupNode {
   readonly _tag: "Group";
@@ -45,6 +52,14 @@ export interface MoveEditorTabInput {
   readonly targetGroupId: EditorGroupId;
   readonly tabId: EditorTabId;
   readonly targetIndex?: number;
+}
+
+/** Moves one tab into a new split positioned around an existing target group. */
+export interface MoveEditorTabToSplitInput extends EditorTabDragData {
+  readonly targetGroupId: EditorGroupId;
+  readonly newGroupId: EditorGroupId;
+  readonly splitId: EditorSplitId;
+  readonly direction: EditorSplitDirection;
 }
 
 /** The closest editor group in each direction from a source group. */
@@ -251,6 +266,86 @@ export function moveEditorTabToGroup(
     focusedGroupId: targetGroup.id,
     maximizedGroupId: workspace.maximizedGroupId ? targetGroup.id : null,
   };
+}
+
+/** Moves a tab to a new split at an arbitrary target group. */
+export function moveEditorTabToSplit(
+  workspace: EditorWorkspace,
+  input: MoveEditorTabToSplitInput,
+): EditorWorkspace {
+  if (input.sourceGroupId === input.targetGroupId) {
+    return splitEditorTab(workspace, {
+      sourceGroupId: input.sourceGroupId,
+      sourceTabId: input.sourceTabId,
+      targetTabId: input.sourceTabId,
+      targetGroupId: input.newGroupId,
+      splitId: input.splitId,
+      direction: input.direction,
+      mode: "move",
+    });
+  }
+
+  const sourceGroup = findEditorGroup(workspace.root, input.sourceGroupId);
+  const targetGroup = findEditorGroup(workspace.root, input.targetGroupId);
+  if (
+    !sourceGroup?.tabIds.includes(input.sourceTabId) ||
+    !targetGroup ||
+    findEditorGroup(workspace.root, input.newGroupId)
+  ) {
+    return workspace;
+  }
+
+  const sourceAfterMove = removeTabFromGroup(sourceGroup, input.sourceTabId);
+  let root = mapEditorNode(workspace.root, (node) =>
+    node._tag === "Group" && node.id === sourceGroup.id ? sourceAfterMove : node,
+  );
+  if (sourceAfterMove.tabIds.length === 0) {
+    root = collapseEditorGroup(root, sourceGroup.id) ?? root;
+  }
+  const targetAfterMove = findEditorGroup(root, targetGroup.id);
+  if (!targetAfterMove) return workspace;
+
+  const movedGroup: EditorGroupNode = {
+    _tag: "Group",
+    id: input.newGroupId,
+    tabIds: [input.sourceTabId],
+    activeTabId: input.sourceTabId,
+  };
+  const movedGroupFirst = input.direction === "left" || input.direction === "up";
+  const split: EditorSplitNode = {
+    _tag: "Split",
+    id: input.splitId,
+    orientation:
+      input.direction === "left" || input.direction === "right" ? "horizontal" : "vertical",
+    ratio: 0.5,
+    first: movedGroupFirst ? movedGroup : targetAfterMove,
+    second: movedGroupFirst ? targetAfterMove : movedGroup,
+  };
+  root = replaceEditorGroup(root, targetAfterMove.id, split);
+  return {
+    root,
+    focusedGroupId: movedGroup.id,
+    maximizedGroupId: null,
+  };
+}
+
+/** Swaps two editor groups in-place without changing either group's tabs. */
+export function swapEditorGroups(
+  workspace: EditorWorkspace,
+  sourceGroupId: EditorGroupId,
+  targetGroupId: EditorGroupId,
+): EditorWorkspace {
+  if (sourceGroupId === targetGroupId) return workspace;
+  const sourceGroup = findEditorGroup(workspace.root, sourceGroupId);
+  const targetGroup = findEditorGroup(workspace.root, targetGroupId);
+  if (!sourceGroup || !targetGroup) return workspace;
+  const root = mapEditorNode(workspace.root, (node) => {
+    if (node._tag !== "Group") return node;
+    if (node.id === sourceGroup.id) return targetGroup;
+    if (node.id === targetGroup.id) return sourceGroup;
+    return node;
+  });
+  return root === workspace.root ? workspace : { ...workspace, root };
 }
 
 /** Joins one editor group into another group and removes the source split. */

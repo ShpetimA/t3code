@@ -11,7 +11,11 @@ import {
 } from "~/editorWorkspace";
 
 import { EditorWorkspaceGrid } from "./EditorWorkspaceGrid";
-import { calculateEditorSplitRatio, resolveKeyboardResizeDelta } from "./EditorWorkspaceGrid.logic";
+import {
+  calculateEditorSplitRatio,
+  resolveEditorGroupDropZone,
+  resolveKeyboardResizeDelta,
+} from "./EditorWorkspaceGrid.logic";
 
 const group = (value: string) => `editor-group:${value}` as EditorGroupId;
 const split = (value: string) => `editor-split:${value}` as EditorSplitId;
@@ -103,5 +107,21 @@ describe("EditorWorkspaceGrid", () => {
     expect(resolveKeyboardResizeDelta("ArrowUp", "vertical")).toBe(-0.05);
     expect(resolveKeyboardResizeDelta("ArrowDown", "vertical")).toBe(0.05);
     expect(resolveKeyboardResizeDelta("ArrowRight", "vertical")).toBeNull();
+  });
+
+  test("maps pane pointer positions to center and edge drop previews", () => {
+    const bounds = { left: 100, top: 50, width: 800, height: 600 };
+    expect(resolveEditorGroupDropZone({ clientX: 500, clientY: 350, bounds })).toBe("center");
+    expect(resolveEditorGroupDropZone({ clientX: 110, clientY: 350, bounds })).toBe("left");
+    expect(resolveEditorGroupDropZone({ clientX: 890, clientY: 350, bounds })).toBe("right");
+    expect(resolveEditorGroupDropZone({ clientX: 500, clientY: 60, bounds })).toBe("up");
+    expect(resolveEditorGroupDropZone({ clientX: 500, clientY: 640, bounds })).toBe("down");
+    expect(
+      resolveEditorGroupDropZone({
+        clientX: 500,
+        clientY: 350,
+        bounds: { ...bounds, width: 0 },
+      }),
+    ).toBeNull();
   });
 });

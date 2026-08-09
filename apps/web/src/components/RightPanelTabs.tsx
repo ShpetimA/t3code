@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
   type ReactNode,
@@ -76,6 +77,10 @@ interface RightPanelTabsProps {
   onReorderTab?: (target: EditorTabContextTarget, direction: "left" | "right") => void;
   onMoveTabToGroup?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
   onMergeGroup?: (direction: EditorSplitDirection) => void;
+  onTabDragStart?: (target: EditorTabContextTarget) => void;
+  onTabDragEnd?: () => void;
+  onTabDrop?: (target: EditorTabContextTarget, position: "before" | "after") => void;
+  onTabDropAtEnd?: () => void;
   adjacentGroups?: AdjacentEditorGroups;
   canCopyTabToSplit?: (target: EditorTabContextTarget) => boolean;
   canMoveTabToSplit?: (target: EditorTabContextTarget) => boolean;
@@ -368,6 +373,73 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
     ownsDesktopTitleBar && (props.mode === "inline" || props.layoutControls !== undefined);
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
+  const [tabDropPreview, setTabDropPreview] = useState<{
+    readonly key: string;
+    readonly position: "before" | "after" | "end";
+  } | null>(null);
+
+  const tabTargetKey = (target: EditorTabContextTarget) =>
+    target._tag === "Thread" ? "thread" : target.surface.id;
+  const handleTabDragStart = (
+    event: ReactDragEvent<HTMLElement>,
+    target: EditorTabContextTarget,
+    label: string,
+  ) => {
+    if (!props.onTabDragStart) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", label);
+    props.onTabDragStart(target);
+  };
+  const handleTabDragEnd = () => {
+    setTabDropPreview(null);
+    props.onTabDragEnd?.();
+  };
+  const handleTabDragOver = (
+    event: ReactDragEvent<HTMLElement>,
+    target: EditorTabContextTarget,
+  ) => {
+    if (!props.onTabDrop) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = event.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
+    const key = tabTargetKey(target);
+    setTabDropPreview((current) =>
+      current?.key === key && current.position === position ? current : { key, position },
+    );
+  };
+  const handleTabDrop = (event: ReactDragEvent<HTMLElement>, target: EditorTabContextTarget) => {
+    if (!props.onTabDrop) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const key = tabTargetKey(target);
+    const position =
+      tabDropPreview?.key === key && tabDropPreview.position !== "end"
+        ? tabDropPreview.position
+        : "after";
+    setTabDropPreview(null);
+    props.onTabDrop(target, position);
+  };
+  const handleTabDragLeave = (event: ReactDragEvent<HTMLElement>) => {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+    setTabDropPreview(null);
+  };
+  const handleTabBarDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!props.onTabDropAtEnd) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setTabDropPreview((current) =>
+      current?.position === "end" ? current : { key: "end", position: "end" },
+    );
+  };
+  const handleTabBarDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!props.onTabDropAtEnd) return;
+    event.preventDefault();
+    setTabDropPreview(null);
+    props.onTabDropAtEnd();
+  };
 
   const handleTabContextMenu = useCallback(
     async (event: ReactMouseEvent, target: EditorTabContextTarget) => {
@@ -486,7 +558,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
   return (
     <div
       className={cn(
-        "workspace-topbar gap-1 pl-2",
+        "workspace-topbar relative z-[60] gap-1 pl-2",
         props.mode !== "inline" && !props.titleBar && "[--workspace-topbar-height:--spacing(11)]",
         props.mode === "inline" || props.layoutControls ? "pr-28" : "pr-3",
         reservesNativeControls && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
@@ -502,19 +574,43 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         className={cn("min-w-0 flex-1 rounded-none", ownsDesktopTitleBar && "drag-region")}
         data-right-panel-tab-list
       >
-        <div className="flex h-full w-max min-w-full items-center gap-1">
+        <div
+          className="flex h-full w-max min-w-full items-center gap-1"
+          onDragLeave={handleTabDragLeave}
+          onDragOver={handleTabBarDragOver}
+          onDrop={handleTabBarDrop}
+        >
           {props.threadTab ? (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
                     type="button"
+                    draggable={props.onTabDragStart !== undefined}
                     data-active-tab={props.threadTab.active}
+                    data-editor-tab="thread"
                     aria-current={props.threadTab.active ? "page" : undefined}
                     onClick={props.threadTab.onActivate}
+                    onDragEnd={handleTabDragEnd}
+                    onDragLeave={handleTabDragLeave}
+                    onDragOver={(event) => handleTabDragOver(event, { _tag: "Thread" })}
+                    onDragStart={(event) =>
+                      handleTabDragStart(
+                        event,
+                        { _tag: "Thread" },
+                        props.threadTab?.title ?? "Thread",
+                      )
+                    }
+                    onDrop={(event) => handleTabDrop(event, { _tag: "Thread" })}
                     onContextMenu={(event) => void handleTabContextMenu(event, { _tag: "Thread" })}
                     className={cn(
-                      "cursor-pointer flex h-6 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs",
+                      "cursor-pointer relative flex h-6 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs",
+                      tabDropPreview?.key === "thread" &&
+                        tabDropPreview.position === "before" &&
+                        "before:absolute before:inset-y-0.5 before:-left-1 before:w-0.5 before:rounded-full before:bg-primary",
+                      tabDropPreview?.key === "thread" &&
+                        tabDropPreview.position === "after" &&
+                        "after:absolute after:inset-y-0.5 after:-right-1 after:w-0.5 after:rounded-full after:bg-primary",
                       props.threadTab.active
                         ? "bg-accent text-foreground"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -542,14 +638,29 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
             return (
               <div
                 key={surface.id}
+                draggable={props.onTabDragStart !== undefined}
                 data-active-tab={active}
+                data-editor-tab={surface.id}
+                onDragEnd={handleTabDragEnd}
+                onDragLeave={handleTabDragLeave}
+                onDragOver={(event) => handleTabDragOver(event, { _tag: "Surface", surface })}
+                onDragStart={(event) =>
+                  handleTabDragStart(event, { _tag: "Surface", surface }, title)
+                }
+                onDrop={(event) => handleTabDrop(event, { _tag: "Surface", surface })}
                 onMouseDown={handleTabMouseDown}
                 onAuxClick={(event) => handleTabAuxClick(event, surface)}
                 onContextMenu={(event) =>
                   void handleTabContextMenu(event, { _tag: "Surface", surface })
                 }
                 className={cn(
-                  "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
+                  "cursor-pointer group/tab relative flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
+                  tabDropPreview?.key === surface.id &&
+                    tabDropPreview.position === "before" &&
+                    "before:absolute before:inset-y-0.5 before:-left-1 before:w-0.5 before:rounded-full before:bg-primary",
+                  tabDropPreview?.key === surface.id &&
+                    tabDropPreview.position === "after" &&
+                    "after:absolute after:inset-y-0.5 after:-right-1 after:w-0.5 after:rounded-full after:bg-primary",
                   active
                     ? "bg-accent text-foreground"
                     : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -593,6 +704,9 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
               </div>
             );
           })}
+          {tabDropPreview?.position === "end" ? (
+            <span className="h-5 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
+          ) : null}
           {props.surfaces.length > 0 || props.threadTab ? (
             <Menu>
               <MenuTrigger

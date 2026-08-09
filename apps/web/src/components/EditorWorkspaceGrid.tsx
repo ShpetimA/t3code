@@ -1,29 +1,60 @@
-import { type KeyboardEvent, type PointerEvent, type ReactNode, useCallback, useRef } from "react";
+import {
+  type DragEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   clampEditorSplitRatio,
+  findEditorGroup,
   getVisibleEditorWorkspaceRoot,
+  type EditorGroupDropZone,
   type EditorGroupId,
   type EditorGroupNode,
   type EditorSplitId,
   type EditorSplitNode,
+  type EditorTabDragData,
   type EditorWorkspace,
   type EditorWorkspaceNode,
 } from "~/editorWorkspace";
 import { cn } from "~/lib/utils";
 
-import { calculateEditorSplitRatio, resolveKeyboardResizeDelta } from "./EditorWorkspaceGrid.logic";
+import {
+  calculateEditorSplitRatio,
+  resolveEditorGroupDropZone,
+  resolveKeyboardResizeDelta,
+} from "./EditorWorkspaceGrid.logic";
 
 interface EditorWorkspaceGridProps {
   workspace: EditorWorkspace;
   renderGroup: (group: EditorGroupNode) => ReactNode;
   onFocusGroup: (groupId: EditorGroupId) => void;
   onResizeSplit: (splitId: EditorSplitId, ratio: number) => void;
+  draggedTab?: EditorTabDragData | null;
+  onDropTab?: (input: {
+    readonly draggedTab: EditorTabDragData;
+    readonly targetGroupId: EditorGroupId;
+    readonly zone: EditorGroupDropZone;
+  }) => void;
   className?: string;
+}
+
+interface EditorGroupDropPreview {
+  readonly groupId: EditorGroupId;
+  readonly zone: EditorGroupDropZone;
 }
 
 export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
   const visibleRoot = getVisibleEditorWorkspaceRoot(props.workspace);
+  const [dropPreview, setDropPreview] = useState<EditorGroupDropPreview | null>(null);
+  useEffect(() => {
+    if (!props.draggedTab) setDropPreview(null);
+  }, [props.draggedTab]);
   return (
     <div
       className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", props.className)}
@@ -35,6 +66,11 @@ export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
         renderGroup={props.renderGroup}
         onFocusGroup={props.onFocusGroup}
         onResizeSplit={props.onResizeSplit}
+        workspace={props.workspace}
+        draggedTab={props.draggedTab ?? null}
+        onDropTab={props.onDropTab}
+        dropPreview={dropPreview}
+        setDropPreview={setDropPreview}
       />
     </div>
   );
@@ -46,6 +82,11 @@ interface EditorWorkspaceBranchProps {
   renderGroup: (group: EditorGroupNode) => ReactNode;
   onFocusGroup: (groupId: EditorGroupId) => void;
   onResizeSplit: (splitId: EditorSplitId, ratio: number) => void;
+  workspace: EditorWorkspace;
+  draggedTab: EditorTabDragData | null;
+  onDropTab: EditorWorkspaceGridProps["onDropTab"];
+  dropPreview: EditorGroupDropPreview | null;
+  setDropPreview: (preview: EditorGroupDropPreview | null) => void;
 }
 
 function EditorWorkspaceBranch(props: EditorWorkspaceBranchProps) {
@@ -53,12 +94,22 @@ function EditorWorkspaceBranch(props: EditorWorkspaceBranchProps) {
     const group = props.node;
     return (
       <section
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
         data-editor-group={group.id}
         data-editor-group-focused={group.id === props.focusedGroupId ? "true" : "false"}
         onPointerDown={() => props.onFocusGroup(group.id)}
       >
         {props.renderGroup(group)}
+        {props.draggedTab && props.onDropTab ? (
+          <EditorGroupDropTarget
+            workspace={props.workspace}
+            group={group}
+            draggedTab={props.draggedTab}
+            preview={props.dropPreview?.groupId === group.id ? props.dropPreview : null}
+            onPreviewChange={props.setDropPreview}
+            onDrop={props.onDropTab}
+          />
+        ) : null}
       </section>
     );
   }
@@ -83,6 +134,111 @@ function EditorWorkspaceBranch(props: EditorWorkspaceBranchProps) {
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <EditorWorkspaceBranch {...props} node={props.node.second} />
       </div>
+    </div>
+  );
+}
+
+function canDropEditorTab(
+  workspace: EditorWorkspace,
+  draggedTab: EditorTabDragData,
+  targetGroupId: EditorGroupId,
+  zone: EditorGroupDropZone,
+): boolean {
+  const sourceGroup = findEditorGroup(workspace.root, draggedTab.sourceGroupId);
+  const targetGroup = findEditorGroup(workspace.root, targetGroupId);
+  if (!sourceGroup?.tabIds.includes(draggedTab.sourceTabId) || !targetGroup) return false;
+  if (zone === "center") return sourceGroup.id !== targetGroup.id;
+  return sourceGroup.id !== targetGroup.id || sourceGroup.tabIds.length > 1;
+}
+
+function EditorGroupDropTarget(props: {
+  readonly workspace: EditorWorkspace;
+  readonly group: EditorGroupNode;
+  readonly draggedTab: EditorTabDragData;
+  readonly preview: EditorGroupDropPreview | null;
+  readonly onPreviewChange: (preview: EditorGroupDropPreview | null) => void;
+  readonly onDrop: NonNullable<EditorWorkspaceGridProps["onDropTab"]>;
+}) {
+  const resolveDropZone = (event: DragEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return resolveEditorGroupDropZone({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      bounds: {
+        left: bounds.left,
+        top: bounds.top,
+        width: bounds.width,
+        height: bounds.height,
+      },
+    });
+  };
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const zone = resolveDropZone(event);
+    if (!zone || !canDropEditorTab(props.workspace, props.draggedTab, props.group.id, zone)) {
+      event.dataTransfer.dropEffect = "none";
+      props.onPreviewChange(null);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    if (props.preview?.zone !== zone) {
+      props.onPreviewChange({ groupId: props.group.id, zone });
+    }
+  };
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+    props.onPreviewChange(null);
+  };
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    const zone = resolveDropZone(event);
+    if (!zone || !canDropEditorTab(props.workspace, props.draggedTab, props.group.id, zone)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    props.onPreviewChange(null);
+    props.onDrop({ draggedTab: props.draggedTab, targetGroupId: props.group.id, zone });
+  };
+
+  return (
+    <div
+      className="absolute inset-0 z-50"
+      data-editor-group-drop-target={props.group.id}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {props.preview ? <EditorGroupDropOverlay zone={props.preview.zone} /> : null}
+    </div>
+  );
+}
+
+function EditorGroupDropOverlay({ zone }: { readonly zone: EditorGroupDropZone }) {
+  const label =
+    zone === "center"
+      ? "Swap editor groups"
+      : zone === "up"
+        ? "Split above"
+        : zone === "down"
+          ? "Split below"
+          : zone === "left"
+            ? "Split left"
+            : "Split right";
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute flex items-center justify-center rounded-lg bg-primary/20 ring-2 ring-inset ring-primary/80 transition-[inset,width,height,opacity] duration-100 ease-out",
+        zone === "center" && "inset-2",
+        zone === "left" && "inset-y-2 left-2 w-[calc(50%-0.5rem)]",
+        zone === "right" && "inset-y-2 right-2 w-[calc(50%-0.5rem)]",
+        zone === "up" && "inset-x-2 top-2 h-[calc(50%-0.5rem)]",
+        zone === "down" && "inset-x-2 bottom-2 h-[calc(50%-0.5rem)]",
+      )}
+      data-editor-drop-zone={zone}
+    >
+      <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
+        {label}
+      </span>
     </div>
   );
 }

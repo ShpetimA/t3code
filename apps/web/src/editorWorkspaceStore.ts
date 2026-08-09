@@ -14,10 +14,12 @@ import {
   getEditorGroups,
   mergeEditorGroups,
   moveEditorTabToGroup,
+  moveEditorTabToSplit,
   openEditorTab,
   reorderEditorTab,
   resizeEditorSplit,
   splitEditorTab,
+  swapEditorGroups,
   toggleMaximizedEditorGroup,
   type EditorGroupId,
   type EditorSplitId,
@@ -69,6 +71,19 @@ interface EditorWorkspaceStoreState {
     sourceGroupId: EditorGroupId,
     targetGroupId: EditorGroupId,
     tabId: EditorTabId,
+    targetIndex?: number,
+  ) => void;
+  readonly moveTabToSplit: (
+    ref: ScopedThreadRef,
+    sourceGroupId: EditorGroupId,
+    targetGroupId: EditorGroupId,
+    tabId: EditorTabId,
+    direction: EditorSplitDirection,
+  ) => void;
+  readonly swapGroups: (
+    ref: ScopedThreadRef,
+    sourceGroupId: EditorGroupId,
+    targetGroupId: EditorGroupId,
   ) => void;
   readonly mergeGroups: (
     ref: ScopedThreadRef,
@@ -312,6 +327,7 @@ export function moveThreadEditorTabToGroup(
     readonly sourceGroupId: EditorGroupId;
     readonly targetGroupId: EditorGroupId;
     readonly tabId: EditorTabId;
+    readonly targetIndex?: number;
   },
 ): ThreadEditorWorkspace {
   const tab = current.tabsById[input.tabId];
@@ -330,10 +346,55 @@ export function moveThreadEditorTabToGroup(
     );
     return workspace === withoutSource.workspace ? withoutSource : { ...withoutSource, workspace };
   }
+  const threadIndex = targetGroup.tabIds.findIndex(
+    (tabId) => current.tabsById[tabId]?._tag === "Thread",
+  );
+  const requestedTargetIndex =
+    tab._tag === "Thread"
+      ? 0
+      : input.targetIndex === undefined || threadIndex < 0
+        ? input.targetIndex
+        : Math.max(threadIndex + 1, input.targetIndex);
   const workspace = moveEditorTabToGroup(current.workspace, {
     ...input,
-    ...(tab._tag === "Thread" ? { targetIndex: 0 } : {}),
+    ...(requestedTargetIndex !== undefined ? { targetIndex: requestedTargetIndex } : {}),
   });
+  return workspace === current.workspace ? current : { ...current, workspace };
+}
+
+/** Moves one thread-workspace tab into a new split around a target group. */
+export function moveThreadEditorTabToSplit(
+  current: ThreadEditorWorkspace,
+  input: {
+    readonly sourceGroupId: EditorGroupId;
+    readonly targetGroupId: EditorGroupId;
+    readonly tabId: EditorTabId;
+    readonly direction: EditorSplitDirection;
+  },
+): ThreadEditorWorkspace {
+  if (!current.tabsById[input.tabId]) return current;
+  const workspace = moveEditorTabToSplit(current.workspace, {
+    sourceGroupId: input.sourceGroupId,
+    sourceTabId: input.tabId,
+    targetGroupId: input.targetGroupId,
+    newGroupId: `editor-group:${current.nextId}` as EditorGroupId,
+    splitId: `editor-split:${current.nextId + 1}` as EditorSplitId,
+    direction: input.direction,
+  });
+  return workspace === current.workspace
+    ? current
+    : { ...current, workspace, nextId: current.nextId + 2 };
+}
+
+/** Swaps two complete editor groups while preserving their tab contents. */
+export function swapThreadEditorGroups(
+  current: ThreadEditorWorkspace,
+  input: {
+    readonly sourceGroupId: EditorGroupId;
+    readonly targetGroupId: EditorGroupId;
+  },
+): ThreadEditorWorkspace {
+  const workspace = swapEditorGroups(current.workspace, input.sourceGroupId, input.targetGroupId);
   return workspace === current.workspace ? current : { ...current, workspace };
 }
 
@@ -751,14 +812,32 @@ export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
             reorderThreadEditorTab(current, { groupId, tabId, targetIndex }),
           ),
         })),
-      moveTabToGroup: (ref, sourceGroupId, targetGroupId, tabId) =>
+      moveTabToGroup: (ref, sourceGroupId, targetGroupId, tabId, targetIndex) =>
         set((state) => ({
           byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
             moveThreadEditorTabToGroup(current, {
               sourceGroupId,
               targetGroupId,
               tabId,
+              ...(targetIndex !== undefined ? { targetIndex } : {}),
             }),
+          ),
+        })),
+      moveTabToSplit: (ref, sourceGroupId, targetGroupId, tabId, direction) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            moveThreadEditorTabToSplit(current, {
+              sourceGroupId,
+              targetGroupId,
+              tabId,
+              direction,
+            }),
+          ),
+        })),
+      swapGroups: (ref, sourceGroupId, targetGroupId) =>
+        set((state) => ({
+          byThreadKey: updateThreadWorkspace(state.byThreadKey, ref, (current) =>
+            swapThreadEditorGroups(current, { sourceGroupId, targetGroupId }),
           ),
         })),
       mergeGroups: (ref, sourceGroupId, targetGroupId) =>

@@ -16,10 +16,12 @@ import {
   getEditorGroups,
   mergeEditorGroups,
   moveEditorTabToGroup,
+  moveEditorTabToSplit,
   openEditorTab,
   reorderEditorTab,
   resizeEditorSplit,
   splitEditorTab,
+  swapEditorGroups,
   toggleMaximizedEditorGroup,
   type EditorGroupId,
   type EditorSplitId,
@@ -191,6 +193,59 @@ describe("editor workspace", () => {
       activeTabId: tab("thread"),
     });
     expect(moved.focusedGroupId).toBe(group("right"));
+  });
+
+  test("moves a tab into a split around another editor group", () => {
+    const columns = splitEditorTab(
+      createEditorWorkspace({
+        groupId: group("left"),
+        tabIds: [tab("thread"), tab("diff")],
+      }),
+      {
+        sourceGroupId: group("left"),
+        sourceTabId: tab("diff"),
+        targetTabId: tab("file"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const moved = moveEditorTabToSplit(columns, {
+      sourceGroupId: group("left"),
+      sourceTabId: tab("diff"),
+      targetGroupId: group("right"),
+      newGroupId: group("bottom-right"),
+      splitId: split("right-rows"),
+      direction: "down",
+    });
+
+    expect(findEditorGroup(moved.root, group("left"))?.tabIds).toEqual([tab("thread")]);
+    expect(findEditorGroup(moved.root, group("right"))?.tabIds).toEqual([tab("file")]);
+    expect(findEditorGroup(moved.root, group("bottom-right"))?.tabIds).toEqual([tab("diff")]);
+    expect(moved.focusedGroupId).toBe(group("bottom-right"));
+  });
+
+  test("swaps complete editor groups without changing their contents", () => {
+    const columns = splitEditorTab(
+      createEditorWorkspace({ groupId: group("left"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("left"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("file"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const swapped = swapEditorGroups(columns, group("left"), group("right"));
+
+    expect(swapped.root._tag).toBe("Split");
+    if (swapped.root._tag !== "Split") return;
+    expect(swapped.root.first).toEqual(findEditorGroup(columns.root, group("right")));
+    expect(swapped.root.second).toEqual(findEditorGroup(columns.root, group("left")));
+    expect(swapped.focusedGroupId).toBe(columns.focusedGroupId);
   });
 
   test("merges all source tabs into an existing group", () => {

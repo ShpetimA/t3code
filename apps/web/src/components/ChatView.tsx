@@ -132,9 +132,11 @@ import {
 } from "../rightPanelStore";
 import type {
   EditorGroupId,
+  EditorGroupDropZone,
   EditorGroupNode,
   EditorSplitDirection,
   EditorTabId,
+  EditorTabDragData,
 } from "../editorWorkspace";
 import {
   findAdjacentEditorGroups,
@@ -1366,6 +1368,7 @@ function ChatViewContent(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
+  const [draggedEditorTab, setDraggedEditorTab] = useState<EditorTabDragData | null>(null);
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
   const [terminalUiLaunchContext, setTerminalUiLaunchContext] =
@@ -6750,6 +6753,51 @@ function ChatViewContent(props: ChatViewProps) {
       useEditorWorkspaceStore.getState().focusGroup(activeThreadRef, group.id);
       action();
     };
+    const startTabDrag = (target: EditorTabContextTarget) => {
+      const tabId = tabIdForTarget(target);
+      if (!tabId) return;
+      setDraggedEditorTab({ sourceGroupId: group.id, sourceTabId: tabId });
+    };
+    const dropTabAtIndex = (targetIndex: number) => {
+      if (!draggedEditorTab) return;
+      const sourceGroup = findEditorGroup(
+        editorWorkspaceState.workspace.root,
+        draggedEditorTab.sourceGroupId,
+      );
+      if (!sourceGroup?.tabIds.includes(draggedEditorTab.sourceTabId)) return;
+      if (draggedEditorTab.sourceGroupId === group.id) {
+        const sourceIndex = sourceGroup.tabIds.indexOf(draggedEditorTab.sourceTabId);
+        const adjustedTargetIndex =
+          sourceIndex < targetIndex ? Math.max(0, targetIndex - 1) : targetIndex;
+        useEditorWorkspaceStore
+          .getState()
+          .reorderTab(
+            activeThreadRef,
+            group.id,
+            draggedEditorTab.sourceTabId,
+            Math.min(adjustedTargetIndex, group.tabIds.length - 1),
+          );
+      } else {
+        mutateEditorTabsAndCleanup(() =>
+          useEditorWorkspaceStore
+            .getState()
+            .moveTabToGroup(
+              activeThreadRef,
+              draggedEditorTab.sourceGroupId,
+              group.id,
+              draggedEditorTab.sourceTabId,
+              targetIndex,
+            ),
+        );
+      }
+      setDraggedEditorTab(null);
+    };
+    const dropTab = (target: EditorTabContextTarget, position: "before" | "after") => {
+      const targetTabId = tabIdForTarget(target);
+      const targetTabIndex = targetTabId ? group.tabIds.indexOf(targetTabId) : -1;
+      if (targetTabIndex < 0) return;
+      dropTabAtIndex(targetTabIndex + (position === "after" ? 1 : 0));
+    };
 
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -6815,6 +6863,10 @@ function ChatViewContent(props: ChatViewProps) {
           onReorderTab={reorderTab}
           onMoveTabToGroup={moveTabToGroup}
           onMergeGroup={mergeGroup}
+          onTabDragStart={startTabDrag}
+          onTabDragEnd={() => setDraggedEditorTab(null)}
+          onTabDrop={dropTab}
+          onTabDropAtEnd={() => dropTabAtIndex(group.tabIds.length)}
           adjacentGroups={adjacentGroups}
           canCopyTabToSplit={(target) => target._tag === "Surface"}
           canMoveTabToSplit={() => group.tabIds.length > 1}
@@ -6849,8 +6901,34 @@ function ChatViewContent(props: ChatViewProps) {
       {workspaceMode && editorWorkspaceState && activeThreadRef ? (
         <EditorWorkspaceGrid
           workspace={editorWorkspaceState.workspace}
+          draggedTab={draggedEditorTab}
           renderGroup={renderEditorGroup}
           onFocusGroup={focusEditorGroup}
+          onDropTab={(input: {
+            readonly draggedTab: EditorTabDragData;
+            readonly targetGroupId: EditorGroupId;
+            readonly zone: EditorGroupDropZone;
+          }) => {
+            mutateEditorTabsAndCleanup(() => {
+              const store = useEditorWorkspaceStore.getState();
+              if (input.zone === "center") {
+                store.swapGroups(
+                  activeThreadRef,
+                  input.draggedTab.sourceGroupId,
+                  input.targetGroupId,
+                );
+                return;
+              }
+              store.moveTabToSplit(
+                activeThreadRef,
+                input.draggedTab.sourceGroupId,
+                input.targetGroupId,
+                input.draggedTab.sourceTabId,
+                input.zone,
+              );
+            });
+            setDraggedEditorTab(null);
+          }}
           onResizeSplit={(splitId, ratio) =>
             useEditorWorkspaceStore.getState().resizeSplit(activeThreadRef, splitId, ratio)
           }

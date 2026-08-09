@@ -39,6 +39,10 @@ describe("RightPanelTabBar", () => {
         onCloseSurfacesToRight={NOOP}
         onCloseAllSurfaces={NOOP}
         onCopyFilePath={NOOP}
+        onTabDragStart={NOOP}
+        onTabDragEnd={NOOP}
+        onTabDrop={NOOP}
+        onTabDropAtEnd={NOOP}
         onAddBrowser={NOOP}
         onAddTerminal={NOOP}
         onAddDiff={NOOP}
@@ -56,6 +60,8 @@ describe("RightPanelTabBar", () => {
     expect(markup).toContain('aria-label="Working"');
     expect(markup).toContain("animate-status-pulse");
     expect(markup).toContain('aria-label="Add panel surface"');
+    expect(markup).toContain('data-editor-tab="thread"');
+    expect(markup).toContain('draggable="true"');
     expect(markup).not.toContain('aria-label="Close New thread"');
   });
 
