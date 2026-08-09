@@ -6,7 +6,7 @@ import * as Schema from "effect/Schema";
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
 import { applyPreviewServerSnapshot, isPreviewSupportedInRuntime } from "~/previewStateStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { transitionThreadWorkspace } from "~/threadWorkspace";
 
 const terminalLinkErrorContext = {
   environmentId: Schema.String,
@@ -101,7 +101,10 @@ export async function openTerminalLinkInPreview<E>(
     }
     recordVisitForThread(input.threadRef, input.url);
     applyPreviewServerSnapshot(input.threadRef, result.value);
-    useRightPanelStore.getState().openBrowser(input.threadRef, result.value.tabId);
+    transitionThreadWorkspace(input.threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: result.value.tabId },
+    });
     return;
   }
 

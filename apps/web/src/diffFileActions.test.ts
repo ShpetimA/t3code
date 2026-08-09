@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { openDiffFilePrimaryAction } from "./diffFileActions";
 import { selectThreadRightPanelState, useRightPanelStore } from "./rightPanelStore";
+import { useEditorWorkspaceStore } from "./editorWorkspaceStore";
 
 const THREAD_REF = scopeThreadRef(
   EnvironmentId.make("environment-local"),
@@ -13,6 +14,7 @@ const THREAD_REF = scopeThreadRef(
 describe("openDiffFilePrimaryAction", () => {
   beforeEach(() => {
     useRightPanelStore.setState({ byThreadKey: {} });
+    useEditorWorkspaceStore.setState({ byThreadKey: {} });
   });
 
   it("opens diff files in the thread file viewer", () => {

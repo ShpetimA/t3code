@@ -145,10 +145,11 @@ import {
   getVisibleEditorWorkspaceRoot,
 } from "../editorWorkspace";
 import {
-  findSurfaceTabs,
   selectThreadEditorWorkspace,
   useEditorWorkspaceStore,
+  type ThreadEditorWorkspaceTransition,
 } from "../editorWorkspaceStore";
+import { transitionThreadWorkspace } from "../threadWorkspace";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -1608,18 +1609,15 @@ function ChatViewContent(props: ChatViewProps) {
   const workspaceMode = !shouldUseRightPanelSheet;
   useLayoutEffect(() => {
     if (!activeThreadRef || shouldUseRightPanelSheet) return;
-    const workspaceStore = useEditorWorkspaceStore.getState();
-    workspaceStore.transition(activeThreadRef, {
-      _tag: "ReconcileSurfaces",
-      surfaceIds: rightPanelState.surfaces.map((surface) => surface.id),
-    });
+    transitionThreadWorkspace(activeThreadRef, { _tag: "ReconcileSurfaces" });
   }, [activeThreadRef, rightPanelState.surfaces, shouldUseRightPanelSheet]);
 
   useEffect(() => {
     if (!activeThreadRef) return;
-    useRightPanelStore
-      .getState()
-      .reconcileBrowserSurfaces(activeThreadRef, Object.keys(activePreviewState.sessions));
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "ReconcileBrowserSurfaces",
+      tabIds: Object.keys(activePreviewState.sessions),
+    });
   }, [activePreviewState.sessions, activeThreadRef]);
 
   useEffect(() => {
@@ -1725,7 +1723,10 @@ function ChatViewContent(props: ChatViewProps) {
 
   useEffect(() => {
     if (!activeThreadRef || !activeEnvironmentBootstrapComplete) return;
-    useRightPanelStore.getState().reconcileFileSurfaces(activeThreadRef, activeProject !== null);
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "ReconcileFileSurfaces",
+      workspaceAvailable: activeProject !== null,
+    });
   }, [activeEnvironmentBootstrapComplete, activeProject, activeThreadRef]);
 
   // Compute the list of environments this logical project spans, used to
@@ -2678,7 +2679,7 @@ function ChatViewContent(props: ChatViewProps) {
       onDiffPanelOpen?.();
     }
     if (activeThreadRef) {
-      useRightPanelStore.getState().toggle(activeThreadRef, "diff");
+      transitionThreadWorkspace(activeThreadRef, { _tag: "ToggleSurface", kind: "diff" });
     }
   }, [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen]);
 
@@ -3230,56 +3231,49 @@ function ChatViewContent(props: ChatViewProps) {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
   const workspaceSurfacePresentation = workspaceMode ? "preserve-panel" : "show-panel";
-  const openWorkspaceSurface = useCallback(
-    (surfaceId: string) => {
-      if (!workspaceMode || !activeThreadRef) return;
-      useEditorWorkspaceStore
-        .getState()
-        .transition(activeThreadRef, { _tag: "OpenSurface", surfaceId });
-    },
-    [activeThreadRef, workspaceMode],
-  );
   const createBrowserSurface = useCallback(() => {
     if (!activeThreadRef) return;
     void addBrowserSurface({
       threadRef: activeThreadRef,
       openPreview,
       presentation: workspaceSurfacePresentation,
-      onOpenSurface: openWorkspaceSurface,
     });
-  }, [activeThreadRef, openPreview, openWorkspaceSurface, workspaceSurfacePresentation]);
+  }, [activeThreadRef, openPreview, workspaceSurfacePresentation]);
   const addDiffSurface = useCallback(() => {
     if (!activeThreadRef || !isServerThread || !isGitRepo) return;
-    useRightPanelStore.getState().open(activeThreadRef, "diff", workspaceSurfacePresentation);
-    openWorkspaceSurface("diff");
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Diff" },
+      presentation: workspaceSurfacePresentation,
+    });
     onDiffPanelOpen?.();
-  }, [
-    activeThreadRef,
-    isGitRepo,
-    isServerThread,
-    onDiffPanelOpen,
-    openWorkspaceSurface,
-    workspaceSurfacePresentation,
-  ]);
+  }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen, workspaceSurfacePresentation]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
-    useRightPanelStore.getState().open(activeThreadRef, "files", workspaceSurfacePresentation);
-    openWorkspaceSurface("files");
-  }, [activeProject, activeThreadRef, openWorkspaceSurface, workspaceSurfacePresentation]);
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Files" },
+      presentation: workspaceSurfacePresentation,
+    });
+  }, [activeProject, activeThreadRef, workspaceSurfacePresentation]);
   const addAgentsSurface = useCallback(() => {
     if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "agents", workspaceSurfacePresentation);
-    openWorkspaceSurface("agents");
-  }, [activeThreadRef, openWorkspaceSurface, workspaceSurfacePresentation]);
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Agents" },
+      presentation: workspaceSurfacePresentation,
+    });
+  }, [activeThreadRef, workspaceSurfacePresentation]);
   const openFileSurface = useCallback(
     (relativePath: string) => {
       if (!activeThreadRef || !activeProject) return;
-      useRightPanelStore
-        .getState()
-        .openFile(activeThreadRef, relativePath, undefined, workspaceSurfacePresentation);
-      openWorkspaceSurface(`file:${relativePath}`);
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "OpenSurface",
+        surface: { _tag: "File", relativePath },
+        presentation: workspaceSurfacePresentation,
+      });
     },
-    [activeProject, activeThreadRef, openWorkspaceSurface, workspaceSurfacePresentation],
+    [activeProject, activeThreadRef, workspaceSurfacePresentation],
   );
   const togglePreviewPanel = useCallback(() => {
     if (!activeThreadRef || !isPreviewSupportedInRuntime()) return;
@@ -3289,10 +3283,11 @@ function ChatViewContent(props: ChatViewProps) {
     }
     const activeTabId = activePreviewState.activeTabId;
     if (activeTabId) {
-      useRightPanelStore
-        .getState()
-        .openBrowser(activeThreadRef, activeTabId, workspaceSurfacePresentation);
-      openWorkspaceSurface(`browser:${activeTabId}`);
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "OpenSurface",
+        surface: { _tag: "Browser", tabId: activeTabId },
+        presentation: workspaceSurfacePresentation,
+      });
     } else {
       createBrowserSurface();
     }
@@ -3300,7 +3295,6 @@ function ChatViewContent(props: ChatViewProps) {
     activePreviewState.activeTabId,
     activeThreadRef,
     createBrowserSurface,
-    openWorkspaceSurface,
     previewPanelOpen,
     workspaceSurfacePresentation,
   ]);
@@ -3313,10 +3307,11 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef || !activeThreadId || !activeProject) return;
     const cwd = gitCwd ?? activeProject.workspaceRoot;
     const terminalId = nextTerminalId(allocatableActiveTerminalIds);
-    useRightPanelStore
-      .getState()
-      .openTerminal(activeThreadRef, terminalId, workspaceSurfacePresentation);
-    openWorkspaceSurface(`terminal:${terminalId}`);
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Terminal", terminalId },
+      presentation: workspaceSurfacePresentation,
+    });
     setTerminalFocusRequestId((value) => value + 1);
     void openTerminal({
       environmentId: activeThreadRef.environmentId,
@@ -3338,7 +3333,6 @@ function ChatViewContent(props: ChatViewProps) {
     activeThreadWorktreePath,
     allocatableActiveTerminalIds,
     gitCwd,
-    openWorkspaceSurface,
     openTerminal,
     workspaceSurfacePresentation,
   ]);
@@ -3357,9 +3351,12 @@ function ChatViewContent(props: ChatViewProps) {
       }
       const terminalId = nextTerminalId(allocatableActiveTerminalIds);
       const cwd = gitCwd ?? activeProject.workspaceRoot;
-      useRightPanelStore
-        .getState()
-        .splitTerminal(activeThreadRef, surface.id, terminalId, direction);
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "SplitTerminal",
+        surfaceId: surface.id,
+        terminalId,
+        direction,
+      });
       setTerminalFocusRequestId((value) => value + 1);
       void openTerminal({
         environmentId: activeThreadRef.environmentId,
@@ -3395,7 +3392,11 @@ function ChatViewContent(props: ChatViewProps) {
   const activatePanelSurfaceTerminal = useCallback(
     (surface: Extract<RightPanelSurface, { kind: "terminal" }>, terminalId: string) => {
       if (!activeThreadRef) return;
-      useRightPanelStore.getState().activateTerminal(activeThreadRef, surface.id, terminalId);
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "ActivateTerminal",
+        surfaceId: surface.id,
+        terminalId,
+      });
       setTerminalFocusRequestId((value) => value + 1);
     },
     [activeThreadRef],
@@ -3408,7 +3409,11 @@ function ChatViewContent(props: ChatViewProps) {
         input: { threadId: activeThreadRef.threadId, terminalId, deleteHistory: true },
       });
       storeCloseTerminal(activeThreadRef, terminalId);
-      useRightPanelStore.getState().closeTerminal(activeThreadRef, surface.id, terminalId);
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "CloseTerminal",
+        surfaceId: surface.id,
+        terminalId,
+      });
       setTerminalFocusRequestId((value) => value + 1);
     },
     [activeThreadRef, closeTerminalMutation, storeCloseTerminal],
@@ -3423,15 +3428,11 @@ function ChatViewContent(props: ChatViewProps) {
   const activateRightPanelSurface = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
-      const rightPanelStore = useRightPanelStore.getState();
-      if (workspaceMode) {
-        rightPanelStore.selectSurface(activeThreadRef, surface.id);
-      } else {
-        rightPanelStore.activateSurface(activeThreadRef, surface.id);
-      }
-      useEditorWorkspaceStore
-        .getState()
-        .transition(activeThreadRef, { _tag: "ActivateSurface", surfaceId: surface.id });
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "ActivateSurface",
+        surfaceId: surface.id,
+        presentation: workspaceSurfacePresentation,
+      });
       if (surface.kind === "preview" && surface.resourceId) {
         setActivePreviewTab(activeThreadRef, surface.resourceId);
       }
@@ -3442,7 +3443,7 @@ function ChatViewContent(props: ChatViewProps) {
         onDiffPanelOpen?.();
       }
     },
-    [activeThreadRef, diffOpen, onDiffPanelOpen, workspaceMode],
+    [activeThreadRef, diffOpen, onDiffPanelOpen, workspaceSurfacePresentation],
   );
   const toggleRightPanel = useCallback(() => {
     if (!activeThreadRef) return;
@@ -3523,8 +3524,11 @@ function ChatViewContent(props: ChatViewProps) {
   const closeRightPanelSurface = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
-      cleanupRightPanelSurfaces([surface]);
-      useRightPanelStore.getState().closeSurface(activeThreadRef, surface.id);
+      const result = transitionThreadWorkspace(activeThreadRef, {
+        _tag: "CloseSurface",
+        surfaceId: surface.id,
+      });
+      cleanupRightPanelSurfaces(result.removedSurfaces);
       syncActivePreviewSurface();
     },
     [activeThreadRef, cleanupRightPanelSurfaces, syncActivePreviewSurface],
@@ -3532,40 +3536,32 @@ function ChatViewContent(props: ChatViewProps) {
   const closeOtherRightPanelSurfaces = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
-      const surfaces = rightPanelState.surfaces.filter((entry) => entry.id !== surface.id);
-      cleanupRightPanelSurfaces(surfaces);
-      useRightPanelStore.getState().closeOtherSurfaces(activeThreadRef, surface.id);
+      const result = transitionThreadWorkspace(activeThreadRef, {
+        _tag: "CloseOtherSurfaces",
+        surfaceId: surface.id,
+      });
+      cleanupRightPanelSurfaces(result.removedSurfaces);
       syncActivePreviewSurface();
     },
-    [
-      activeThreadRef,
-      cleanupRightPanelSurfaces,
-      rightPanelState.surfaces,
-      syncActivePreviewSurface,
-    ],
+    [activeThreadRef, cleanupRightPanelSurfaces, syncActivePreviewSurface],
   );
   const closeRightPanelSurfacesToRight = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
-      const surfaceIndex = rightPanelState.surfaces.findIndex((entry) => entry.id === surface.id);
-      if (surfaceIndex < 0) return;
-      const surfaces = rightPanelState.surfaces.slice(surfaceIndex + 1);
-      cleanupRightPanelSurfaces(surfaces);
-      useRightPanelStore.getState().closeSurfacesToRight(activeThreadRef, surface.id);
+      const result = transitionThreadWorkspace(activeThreadRef, {
+        _tag: "CloseSurfacesToRight",
+        surfaceId: surface.id,
+      });
+      cleanupRightPanelSurfaces(result.removedSurfaces);
       syncActivePreviewSurface();
     },
-    [
-      activeThreadRef,
-      cleanupRightPanelSurfaces,
-      rightPanelState.surfaces,
-      syncActivePreviewSurface,
-    ],
+    [activeThreadRef, cleanupRightPanelSurfaces, syncActivePreviewSurface],
   );
   const closeAllRightPanelSurfaces = useCallback(() => {
     if (!activeThreadRef) return;
-    cleanupRightPanelSurfaces(rightPanelState.surfaces);
-    useRightPanelStore.getState().closeAllSurfaces(activeThreadRef);
-  }, [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces]);
+    const result = transitionThreadWorkspace(activeThreadRef, { _tag: "CloseAllSurfaces" });
+    cleanupRightPanelSurfaces(result.removedSurfaces);
+  }, [activeThreadRef, cleanupRightPanelSurfaces]);
   const copyRightPanelFilePath = useCallback((relativePath: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
       toastManager.add(
@@ -6011,17 +6007,14 @@ function ChatViewContent(props: ChatViewProps) {
     (turnId: TurnId, filePath?: string) => {
       if (!isServerThread || !activeThreadRef) return;
       useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath);
-      useRightPanelStore.getState().open(activeThreadRef, "diff", workspaceSurfacePresentation);
-      openWorkspaceSurface("diff");
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "OpenSurface",
+        surface: { _tag: "Diff" },
+        presentation: workspaceSurfacePresentation,
+      });
       onDiffPanelOpen?.();
     },
-    [
-      activeThreadRef,
-      isServerThread,
-      onDiffPanelOpen,
-      openWorkspaceSurface,
-      workspaceSurfacePresentation,
-    ],
+    [activeThreadRef, isServerThread, onDiffPanelOpen, workspaceSurfacePresentation],
   );
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
@@ -6168,35 +6161,22 @@ function ChatViewContent(props: ChatViewProps) {
   const rightPanelSurfaceById = new Map<string, RightPanelSurface>(
     rightPanelState.surfaces.map((surface) => [surface.id, surface] as const),
   );
-  const mutateEditorTabsAndCleanup = (mutate: () => void) => {
+  const mutateEditorTabsAndCleanup = (transition: ThreadEditorWorkspaceTransition) => {
     if (!activeThreadRef) return;
-    const before = selectThreadEditorWorkspace(
-      useEditorWorkspaceStore.getState().byThreadKey,
-      activeThreadRef,
-    );
-    mutate();
-    const after = selectThreadEditorWorkspace(
-      useEditorWorkspaceStore.getState().byThreadKey,
-      activeThreadRef,
-    );
-    if (!before || !after) return;
-    const orphanedSurfaces = rightPanelState.surfaces.filter(
-      (surface) =>
-        findSurfaceTabs(before, surface.id).length > 0 &&
-        findSurfaceTabs(after, surface.id).length === 0,
-    );
-    cleanupRightPanelSurfaces(orphanedSurfaces);
-    for (const surface of orphanedSurfaces) {
-      useRightPanelStore.getState().closeSurface(activeThreadRef, surface.id);
-    }
+    const result = transitionThreadWorkspace(activeThreadRef, {
+      _tag: "ApplyEditorTransition",
+      transition,
+    });
+    cleanupRightPanelSurfaces(result.removedSurfaces);
     syncActivePreviewSurface();
+    const after = result.editorWorkspace;
+    if (!after) return;
     const focusedGroup = findEditorGroup(after.workspace.root, after.workspace.focusedGroupId);
     const focusedTab = focusedGroup?.activeTabId ? after.tabsById[focusedGroup.activeTabId] : null;
     if (focusedTab?._tag === "Thread") {
       activateThreadWorkspaceTab();
-    } else if (focusedTab?._tag === "Surface") {
-      const surface = rightPanelSurfaceById.get(focusedTab.surfaceId);
-      if (surface) activateRightPanelSurface(surface);
+    } else if (result.selectedSurface) {
+      activateRightPanelSurface(result.selectedSurface);
     }
   };
 
@@ -6675,22 +6655,20 @@ function ChatViewContent(props: ChatViewProps) {
       const tabId = tabIdForTarget(target);
       const targetGroupId = adjacentGroups[direction];
       if (!tabId || !targetGroupId) return;
-      mutateEditorTabsAndCleanup(() =>
-        useEditorWorkspaceStore.getState().transition(activeThreadRef, {
-          _tag: "MoveTabToGroup",
-          sourceGroupId: group.id,
-          targetGroupId,
-          tabId,
-        }),
-      );
+      mutateEditorTabsAndCleanup({
+        _tag: "MoveTabToGroup",
+        sourceGroupId: group.id,
+        targetGroupId,
+        tabId,
+      });
     };
     const mutateSurfaceTabs = (
       surface: RightPanelSurface,
-      mutate: (tabId: EditorTabId) => void,
+      transitionForTab: (tabId: EditorTabId) => ThreadEditorWorkspaceTransition,
     ) => {
       const tabId = tabIdForTarget({ _tag: "Surface", surface });
       if (!tabId) return;
-      mutateEditorTabsAndCleanup(() => mutate(tabId));
+      mutateEditorTabsAndCleanup(transitionForTab(tabId));
     };
     const focusThen = (action: () => void) => {
       useEditorWorkspaceStore
@@ -6721,15 +6699,13 @@ function ChatViewContent(props: ChatViewProps) {
           targetIndex: Math.min(adjustedTargetIndex, group.tabIds.length - 1),
         });
       } else {
-        mutateEditorTabsAndCleanup(() =>
-          useEditorWorkspaceStore.getState().transition(activeThreadRef, {
-            _tag: "MoveTabToGroup",
-            sourceGroupId: draggedEditorTab.sourceGroupId,
-            targetGroupId: group.id,
-            tabId: draggedEditorTab.sourceTabId,
-            targetIndex,
-          }),
-        );
+        mutateEditorTabsAndCleanup({
+          _tag: "MoveTabToGroup",
+          sourceGroupId: draggedEditorTab.sourceGroupId,
+          targetGroupId: group.id,
+          tabId: draggedEditorTab.sourceTabId,
+          targetIndex,
+        });
       }
       setDraggedEditorTab(null);
     };
@@ -6779,39 +6755,31 @@ function ChatViewContent(props: ChatViewProps) {
             }
           }}
           onCloseSurface={(surface) =>
-            mutateSurfaceTabs(surface, (tabId) =>
-              useEditorWorkspaceStore.getState().transition(activeThreadRef, {
-                _tag: "CloseSurfaceTab",
-                groupId: group.id,
-                tabId,
-              }),
-            )
+            mutateSurfaceTabs(surface, (tabId) => ({
+              _tag: "CloseSurfaceTab",
+              groupId: group.id,
+              tabId,
+            }))
           }
           onCloseOtherSurfaces={(surface) =>
-            mutateSurfaceTabs(surface, (tabId) =>
-              useEditorWorkspaceStore.getState().transition(activeThreadRef, {
-                _tag: "CloseOtherSurfaceTabs",
-                groupId: group.id,
-                tabId,
-              }),
-            )
+            mutateSurfaceTabs(surface, (tabId) => ({
+              _tag: "CloseOtherSurfaceTabs",
+              groupId: group.id,
+              tabId,
+            }))
           }
           onCloseSurfacesToRight={(surface) =>
-            mutateSurfaceTabs(surface, (tabId) =>
-              useEditorWorkspaceStore.getState().transition(activeThreadRef, {
-                _tag: "CloseSurfaceTabsToRight",
-                groupId: group.id,
-                tabId,
-              }),
-            )
+            mutateSurfaceTabs(surface, (tabId) => ({
+              _tag: "CloseSurfaceTabsToRight",
+              groupId: group.id,
+              tabId,
+            }))
           }
           onCloseAllSurfaces={() =>
-            mutateEditorTabsAndCleanup(() =>
-              useEditorWorkspaceStore.getState().transition(activeThreadRef, {
-                _tag: "CloseAllSurfaceTabs",
-                groupId: group.id,
-              }),
-            )
+            mutateEditorTabsAndCleanup({
+              _tag: "CloseAllSurfaceTabs",
+              groupId: group.id,
+            })
           }
           onSplitTab={(target, direction) => splitTab(target, direction, "copy")}
           onMoveTabToSplit={(target, direction) => splitTab(target, direction, "move")}
@@ -6871,24 +6839,21 @@ function ChatViewContent(props: ChatViewProps) {
             readonly targetGroupId: EditorGroupId;
             readonly zone: EditorGroupDropZone;
           }) => {
-            mutateEditorTabsAndCleanup(() => {
-              const store = useEditorWorkspaceStore.getState();
-              if (input.zone === "center") {
-                store.transition(activeThreadRef, {
-                  _tag: "SwapGroups",
-                  sourceGroupId: input.draggedTab.sourceGroupId,
-                  targetGroupId: input.targetGroupId,
-                });
-                return;
-              }
-              store.transition(activeThreadRef, {
-                _tag: "MoveTabToSplit",
-                sourceGroupId: input.draggedTab.sourceGroupId,
-                targetGroupId: input.targetGroupId,
-                tabId: input.draggedTab.sourceTabId,
-                direction: input.zone,
-              });
-            });
+            mutateEditorTabsAndCleanup(
+              input.zone === "center"
+                ? {
+                    _tag: "SwapGroups",
+                    sourceGroupId: input.draggedTab.sourceGroupId,
+                    targetGroupId: input.targetGroupId,
+                  }
+                : {
+                    _tag: "MoveTabToSplit",
+                    sourceGroupId: input.draggedTab.sourceGroupId,
+                    targetGroupId: input.targetGroupId,
+                    tabId: input.draggedTab.sourceTabId,
+                    direction: input.zone,
+                  },
+            );
             setDraggedEditorTab(null);
           }}
           onResizeSplit={(splitId, ratio) =>

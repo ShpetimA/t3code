@@ -7,7 +7,7 @@ import {
 import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { transitionThreadWorkspace } from "~/threadWorkspace";
 import { openPreviewSession } from "./openPreviewSession";
 
 export async function openDiscoveredPort<E>(input: {
@@ -23,6 +23,9 @@ export async function openDiscoveredPort<E>(input: {
   });
   return mapAtomCommandResult(result, (snapshot) => {
     recordVisitForThread(input.threadRef, input.port.url);
-    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
+    transitionThreadWorkspace(input.threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: snapshot.tabId },
+    });
   });
 }

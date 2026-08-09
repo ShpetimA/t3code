@@ -10,7 +10,7 @@ import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { useThreadPreviewState } from "~/previewStateStore";
 import { selectThreadPreviewMiniPlayer, usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { transitionThreadWorkspace } from "~/threadWorkspace";
 
 import { previewBridge } from "./previewBridge";
 import {
@@ -63,7 +63,10 @@ export function ThreadPreviewMiniPlayer({ threadRef, tabId, bottomInset }: Props
 
   const openInPanel = () => {
     usePreviewMiniPlayerStore.getState().close(threadRef);
-    useRightPanelStore.getState().openBrowser(threadRef, tabId);
+    transitionThreadWorkspace(threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId },
+    });
   };
 
   const toggleNativePictureInPicture = () => {

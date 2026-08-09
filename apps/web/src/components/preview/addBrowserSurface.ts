@@ -5,7 +5,8 @@ import {
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
-import { type RightPanelSurfacePresentation, useRightPanelStore } from "~/rightPanelStore";
+import type { RightPanelSurfacePresentation } from "~/rightPanelStore";
+import { transitionThreadWorkspace } from "~/threadWorkspace";
 
 import { openPreviewSession } from "./openPreviewSession";
 
@@ -14,14 +15,16 @@ export async function addBrowserSurface<E>(input: {
   readonly threadRef: ScopedThreadRef;
   readonly openPreview: OpenPreviewMutation<E>;
   readonly presentation?: RightPanelSurfacePresentation;
-  readonly onOpenSurface?: (surfaceId: `browser:${string}`) => void;
 }): Promise<AtomCommandResult<void, E>> {
   const result = await openPreviewSession({
     openPreview: input.openPreview,
     threadRef: input.threadRef,
   });
   return mapAtomCommandResult(result, (snapshot) => {
-    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId, input.presentation);
-    input.onOpenSurface?.(`browser:${snapshot.tabId}`);
+    transitionThreadWorkspace(input.threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: snapshot.tabId },
+      ...(input.presentation ? { presentation: input.presentation } : {}),
+    });
   });
 }

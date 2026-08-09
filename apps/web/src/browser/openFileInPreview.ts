@@ -20,7 +20,7 @@ import {
   isPreviewSupportedInRuntime,
   rememberPreviewUrl,
 } from "~/previewStateStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { transitionThreadWorkspace } from "~/threadWorkspace";
 
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
@@ -48,7 +48,10 @@ export async function openUrlInPreview<E>(input: {
   return mapAtomCommandResult(result, (snapshot) => {
     applyPreviewServerSnapshot(input.threadRef, snapshot);
     rememberPreviewUrl(input.threadRef, input.url);
-    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
+    transitionThreadWorkspace(input.threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: snapshot.tabId },
+    });
   });
 }
 

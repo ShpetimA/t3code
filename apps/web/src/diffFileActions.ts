@@ -1,6 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
-import { useRightPanelStore } from "./rightPanelStore";
+import { transitionThreadWorkspace } from "./threadWorkspace";
 import { resolvePathLinkTarget } from "./terminal-links";
 
 interface OpenDiffFilePrimaryActionInput {
@@ -17,7 +17,10 @@ export function openDiffFilePrimaryAction({
   openInEditor,
 }: OpenDiffFilePrimaryActionInput): void {
   if (threadRef) {
-    useRightPanelStore.getState().openFile(threadRef, filePath);
+    transitionThreadWorkspace(threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "File", relativePath: filePath },
+    });
     return;
   }
 

@@ -7,6 +7,7 @@ import {
   readThreadPreviewState,
   resetPreviewStateForTests,
 } from "~/previewStateStore";
+import { useEditorWorkspaceStore } from "~/editorWorkspaceStore";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
 import { addBrowserSurface } from "./addBrowserSurface";
@@ -27,6 +28,7 @@ const snapshot = (tabId: string): PreviewSessionSnapshot => ({
 
 beforeEach(() => {
   resetPreviewStateForTests();
+  useEditorWorkspaceStore.setState({ byThreadKey: {} });
   useRightPanelStore.setState({ byThreadKey: {} });
 });
 
