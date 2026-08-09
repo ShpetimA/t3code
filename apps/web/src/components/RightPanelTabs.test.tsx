@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { RightPanelTabBar } from "./RightPanelTabs";
+import {
+  buildEditorTabContextMenuItems,
+  resolveEditorTabSplitAction,
+  RightPanelTabBar,
+} from "./RightPanelTabs";
 
 const NOOP = () => {};
 
@@ -51,5 +55,70 @@ describe("RightPanelTabBar", () => {
     expect(markup).toContain("animate-status-pulse");
     expect(markup).toContain('aria-label="Add panel surface"');
     expect(markup).not.toContain('aria-label="Close New thread"');
+  });
+
+  it("adds copy and move split actions to a surface tab menu", () => {
+    expect(
+      buildEditorTabContextMenuItems({
+        target: {
+          _tag: "Surface",
+          surface: {
+            id: "file:src/app.ts",
+            kind: "file",
+            relativePath: "src/app.ts",
+            revealLine: null,
+            revealRequestId: 0,
+          },
+        },
+        surfaceCount: 3,
+        surfaceIndex: 1,
+        splitAvailable: true,
+        moveToSplitAvailable: true,
+      }),
+    ).toEqual([
+      { id: "copy-path", label: "Copy path" },
+      { id: "close", label: "Close" },
+      { id: "close-others", label: "Close others", disabled: false },
+      { id: "close-to-right", label: "Close to the right", disabled: false },
+      { id: "close-all", label: "Close all", disabled: false },
+      { id: "split-right", label: "Split Right" },
+      { id: "split-down", label: "Split Down" },
+      {
+        id: "split-and-move",
+        label: "Split & Move",
+        disabled: false,
+        children: [
+          { id: "move-up", label: "Split Up" },
+          { id: "move-down", label: "Split Down" },
+          { id: "move-left", label: "Split Left" },
+          { id: "move-right", label: "Split Right" },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps the pinned thread menu limited to layout actions", () => {
+    const items = buildEditorTabContextMenuItems({
+      target: { _tag: "Thread" },
+      surfaceCount: 0,
+      surfaceIndex: -1,
+      splitAvailable: true,
+      moveToSplitAvailable: false,
+    });
+
+    expect(items.map((item) => item.id)).toEqual(["split-right", "split-down", "split-and-move"]);
+    expect(items[2]?.disabled).toBe(true);
+  });
+
+  it("resolves split menu actions into copy and move commands", () => {
+    expect(resolveEditorTabSplitAction("split-right")).toEqual({
+      mode: "copy",
+      direction: "right",
+    });
+    expect(resolveEditorTabSplitAction("move-up")).toEqual({
+      mode: "move",
+      direction: "up",
+    });
+    expect(resolveEditorTabSplitAction("close")).toBeNull();
   });
 });

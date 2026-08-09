@@ -21,6 +21,7 @@ import {
 } from "react";
 
 import { isElectron } from "~/env";
+import type { EditorSplitDirection } from "~/editorWorkspace";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
@@ -55,6 +56,9 @@ interface RightPanelTabsProps {
   onCloseOtherSurfaces: (surface: RightPanelSurface) => void;
   onCloseSurfacesToRight: (surface: RightPanelSurface) => void;
   onCloseAllSurfaces: () => void;
+  onSplitTab?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
+  onMoveTabToSplit?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
+  canMoveTabToSplit?: (target: EditorTabContextTarget) => boolean;
   onCopyFilePath: (relativePath: string) => void;
   onAddBrowser: () => void;
   onAddTerminal: () => void;
@@ -71,13 +75,101 @@ interface RightPanelTabsProps {
 
 type RightPanelTabBarProps = Omit<RightPanelTabsProps, "children">;
 
+export type EditorTabContextTarget =
+  | { readonly _tag: "Thread" }
+  | { readonly _tag: "Surface"; readonly surface: RightPanelSurface };
+
 const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the T3 Code desktop app.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
 } as const;
 
-type TabContextMenuAction = "copy-path" | "close" | "close-others" | "close-to-right" | "close-all";
+export type TabContextMenuAction =
+  | "copy-path"
+  | "close"
+  | "close-others"
+  | "close-to-right"
+  | "close-all"
+  | "split-right"
+  | "split-down"
+  | "split-and-move"
+  | "move-up"
+  | "move-down"
+  | "move-left"
+  | "move-right";
+
+export function buildEditorTabContextMenuItems(input: {
+  readonly target: EditorTabContextTarget;
+  readonly surfaceCount: number;
+  readonly surfaceIndex: number;
+  readonly splitAvailable: boolean;
+  readonly moveToSplitAvailable: boolean;
+}): readonly ContextMenuItem<TabContextMenuAction>[] {
+  const items: ContextMenuItem<TabContextMenuAction>[] = [];
+  if (input.target._tag === "Surface") {
+    if (input.target.surface.kind === "file") {
+      items.push({ id: "copy-path", label: "Copy path" });
+    }
+    items.push(
+      { id: "close", label: "Close" },
+      {
+        id: "close-others",
+        label: "Close others",
+        disabled: input.surfaceCount <= 1,
+      },
+      {
+        id: "close-to-right",
+        label: "Close to the right",
+        disabled: input.surfaceIndex >= input.surfaceCount - 1,
+      },
+      {
+        id: "close-all",
+        label: "Close all",
+        disabled: input.surfaceCount === 0,
+      },
+    );
+  }
+  if (input.splitAvailable) {
+    items.push(
+      { id: "split-right", label: "Split Right" },
+      { id: "split-down", label: "Split Down" },
+      {
+        id: "split-and-move",
+        label: "Split & Move",
+        disabled: !input.moveToSplitAvailable,
+        children: [
+          { id: "move-up", label: "Split Up" },
+          { id: "move-down", label: "Split Down" },
+          { id: "move-left", label: "Split Left" },
+          { id: "move-right", label: "Split Right" },
+        ],
+      },
+    );
+  }
+  return items;
+}
+
+export function resolveEditorTabSplitAction(
+  action: TabContextMenuAction | null,
+): { readonly mode: "copy" | "move"; readonly direction: EditorSplitDirection } | null {
+  switch (action) {
+    case "split-right":
+      return { mode: "copy", direction: "right" };
+    case "split-down":
+      return { mode: "copy", direction: "down" };
+    case "move-up":
+      return { mode: "move", direction: "up" };
+    case "move-down":
+      return { mode: "move", direction: "down" };
+    case "move-left":
+      return { mode: "move", direction: "left" };
+    case "move-right":
+      return { mode: "move", direction: "right" };
+    default:
+      return null;
+  }
+}
 
 function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement }) {
   return (
@@ -339,56 +431,62 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
   const tabListRef = useRef<HTMLDivElement>(null);
 
   const handleTabContextMenu = useCallback(
-    async (event: ReactMouseEvent, surface: RightPanelSurface) => {
+    async (event: ReactMouseEvent, target: EditorTabContextTarget) => {
       event.preventDefault();
       event.stopPropagation();
 
       const api = readLocalApi();
       if (!api) return;
 
-      const surfaceIndex = props.surfaces.findIndex((entry) => entry.id === surface.id);
-      if (surfaceIndex < 0) return;
+      const surface = target._tag === "Surface" ? target.surface : null;
+      const surfaceIndex = surface
+        ? props.surfaces.findIndex((entry) => entry.id === surface.id)
+        : -1;
+      if (surface && surfaceIndex < 0) return;
 
-      const items: ContextMenuItem<TabContextMenuAction>[] = [];
-      if (surface.kind === "file") {
-        items.push({ id: "copy-path", label: "Copy path" });
-      }
-      items.push(
-        { id: "close", label: "Close" },
-        {
-          id: "close-others",
-          label: "Close others",
-          disabled: props.surfaces.length <= 1,
-        },
-        {
-          id: "close-to-right",
-          label: "Close to the right",
-          disabled: surfaceIndex >= props.surfaces.length - 1,
-        },
-        {
-          id: "close-all",
-          label: "Close all",
-          disabled: props.surfaces.length === 0,
-        },
-      );
+      const items = buildEditorTabContextMenuItems({
+        target,
+        surfaceCount: props.surfaces.length,
+        surfaceIndex,
+        splitAvailable: props.onSplitTab !== undefined,
+        moveToSplitAvailable:
+          props.onMoveTabToSplit !== undefined && (props.canMoveTabToSplit?.(target) ?? true),
+      });
+      if (items.length === 0) return;
 
       const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
+      const splitAction = resolveEditorTabSplitAction(action);
+      if (splitAction?.mode === "copy") {
+        props.onSplitTab?.(target, splitAction.direction);
+        return;
+      }
+      if (splitAction?.mode === "move") {
+        props.onMoveTabToSplit?.(target, splitAction.direction);
+        return;
+      }
       switch (action) {
         case "copy-path":
-          if (surface.kind === "file") props.onCopyFilePath(surface.relativePath);
+          if (surface?.kind === "file") props.onCopyFilePath(surface.relativePath);
           break;
         case "close":
-          props.onCloseSurface(surface);
+          if (surface) props.onCloseSurface(surface);
           break;
         case "close-others":
-          props.onCloseOtherSurfaces(surface);
+          if (surface) props.onCloseOtherSurfaces(surface);
           break;
         case "close-to-right":
-          props.onCloseSurfacesToRight(surface);
+          if (surface) props.onCloseSurfacesToRight(surface);
           break;
         case "close-all":
           props.onCloseAllSurfaces();
           break;
+        case "split-right":
+        case "split-down":
+        case "split-and-move":
+        case "move-up":
+        case "move-down":
+        case "move-left":
+        case "move-right":
         case null:
           break;
       }
@@ -442,6 +540,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
                     data-active-tab={props.threadTab.active}
                     aria-current={props.threadTab.active ? "page" : undefined}
                     onClick={props.threadTab.onActivate}
+                    onContextMenu={(event) => void handleTabContextMenu(event, { _tag: "Thread" })}
                     className={cn(
                       "cursor-pointer flex h-6 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs",
                       props.threadTab.active
@@ -474,7 +573,9 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
                 data-active-tab={active}
                 onMouseDown={handleTabMouseDown}
                 onAuxClick={(event) => handleTabAuxClick(event, surface)}
-                onContextMenu={(event) => void handleTabContextMenu(event, surface)}
+                onContextMenu={(event) =>
+                  void handleTabContextMenu(event, { _tag: "Surface", surface })
+                }
                 className={cn(
                   "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
                   active
