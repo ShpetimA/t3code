@@ -167,6 +167,43 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("selects a workspace surface without reopening the inline panel", () => {
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "agents");
+    useRightPanelStore.getState().close(refA);
+
+    useRightPanelStore.getState().selectSurface(refA, "diff");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: "diff",
+      surfaces: [
+        { id: "diff", kind: "diff" },
+        { id: "agents", kind: "agents" },
+      ],
+    });
+  });
+
+  it("opens workspace surfaces without changing inline panel visibility", () => {
+    useRightPanelStore.getState().open(refA, "diff", "preserve-inline");
+    useRightPanelStore.getState().openFile(refA, "src/index.ts", undefined, "preserve-inline");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: "file:src/index.ts",
+      surfaces: [
+        { id: "diff", kind: "diff" },
+        {
+          id: "file:src/index.ts",
+          kind: "file",
+          relativePath: "src/index.ts",
+          revealLine: null,
+          revealRequestId: 1,
+        },
+      ],
+    });
+  });
+
   it("keeps files as a singleton surface", () => {
     useRightPanelStore.getState().open(refA, "files");
     useRightPanelStore.getState().open(refA, "files");

@@ -42,40 +42,48 @@ const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
 
 describe("thread workspace view", () => {
-  it("keeps the maximized layout when selecting another sidebar thread", () => {
-    const maximized = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
-      _tag: "Maximize",
-      hasActiveSurface: true,
-    });
-
-    expect(reduceThreadWorkspaceView(maximized, { _tag: "SelectThread" })).toEqual({
-      _tag: "Maximized",
-      activeContent: "thread",
-    });
+  it("enters workspace mode without requiring panel state", () => {
+    expect(
+      reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, { _tag: "EnterWorkspace" }),
+    ).toEqual({ _tag: "Workspace" });
   });
 
-  it("restores the split layout explicitly", () => {
-    const maximized = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
+  it("keeps workspace mode when selecting another sidebar thread", () => {
+    const workspace = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
+      _tag: "EnterWorkspace",
+    });
+
+    expect(reduceThreadWorkspaceView(workspace, { _tag: "SelectThread" })).toEqual(workspace);
+  });
+
+  it("returns to conversation mode explicitly", () => {
+    const workspace = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
       _tag: "ApplyDefault",
       layout: "maximized",
     });
 
-    expect(reduceThreadWorkspaceView(maximized, { _tag: "Restore" })).toEqual({
-      _tag: "Split",
+    expect(reduceThreadWorkspaceView(workspace, { _tag: "ExitWorkspace" })).toEqual({
+      _tag: "Conversation",
     });
   });
 
-  it("switches between the thread and surface content inside maximized mode", () => {
-    const maximized = reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
-      _tag: "Maximize",
-      hasActiveSurface: false,
-    });
-    const surfaceActive = reduceThreadWorkspaceView(maximized, { _tag: "ActivateSurface" });
-
-    expect(surfaceActive).toEqual({ _tag: "Maximized", activeContent: "surface" });
-    expect(reduceThreadWorkspaceView(surfaceActive, { _tag: "ActivateThread" })).toEqual({
-      _tag: "Maximized",
-      activeContent: "thread",
+  it("applies both workspace defaults", () => {
+    expect(
+      reduceThreadWorkspaceView(INITIAL_THREAD_WORKSPACE_VIEW, {
+        _tag: "ApplyDefault",
+        layout: "maximized",
+      }),
+    ).toEqual({ _tag: "Workspace" });
+    expect(
+      reduceThreadWorkspaceView(
+        { _tag: "Workspace" },
+        {
+          _tag: "ApplyDefault",
+          layout: "split",
+        },
+      ),
+    ).toEqual({
+      _tag: "Conversation",
     });
   });
 });

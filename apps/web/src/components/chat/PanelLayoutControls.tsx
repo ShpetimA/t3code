@@ -1,32 +1,45 @@
-import { Maximize2Icon, Minimize2Icon, PanelBottomIcon, PanelRightIcon } from "lucide-react";
+import {
+  Columns2Icon,
+  Maximize2Icon,
+  Minimize2Icon,
+  PanelBottomIcon,
+  PanelRightIcon,
+} from "lucide-react";
 import { memo } from "react";
 
+import { Button } from "../ui/button";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
+type RightLayoutControl =
+  | {
+      readonly _tag: "Panel";
+      readonly available: boolean;
+      readonly open: boolean;
+      readonly shortcutLabel: string | null;
+      readonly liveAgentCount: number;
+      readonly onToggle: () => void;
+    }
+  | {
+      readonly _tag: "Split";
+      readonly available: boolean;
+      readonly onSplitRight: () => void;
+    };
 
 interface PanelLayoutControlsProps {
   terminalAvailable: boolean;
   terminalOpen: boolean;
   terminalShortcutLabel: string | null;
-  rightPanelAvailable: boolean;
-  rightPanelOpen: boolean;
-  rightPanelShortcutLabel: string | null;
-  /** Running + waiting subagents in this thread; badges the right panel toggle. */
-  liveAgentCount: number;
+  rightControl: RightLayoutControl;
   onToggleTerminal: () => void;
-  onToggleRightPanel: () => void;
 }
 
 export const PanelLayoutControls = memo(function PanelLayoutControls({
   terminalAvailable,
   terminalOpen,
   terminalShortcutLabel,
-  rightPanelAvailable,
-  rightPanelOpen,
-  rightPanelShortcutLabel,
-  liveAgentCount,
+  rightControl,
   onToggleTerminal,
-  onToggleRightPanel,
 }: PanelLayoutControlsProps) {
   return (
     <div
@@ -55,69 +68,93 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
             : "Terminal drawer is unavailable"}
         </TooltipPopup>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Toggle
-              className="shrink-0 [-webkit-app-region:no-drag]"
-              pressed={rightPanelOpen}
-              onPressedChange={onToggleRightPanel}
-              aria-label={
-                liveAgentCount > 0
-                  ? `Toggle right panel, ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
-                  : "Toggle right panel"
-              }
-              variant="ghost"
-              size="sm"
-              disabled={!rightPanelAvailable}
-            >
-              <PanelRightIcon className="size-3.5" />
-              {liveAgentCount > 0 ? (
-                <span
-                  aria-hidden
-                  className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-[9px] font-semibold tabular-nums text-white"
-                >
-                  {liveAgentCount}
-                </span>
-              ) : null}
-            </Toggle>
-          }
-        />
-        <TooltipPopup side="bottom">
-          {rightPanelAvailable
-            ? `Toggle right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}${
-                liveAgentCount > 0
-                  ? ` · ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
-                  : ""
-              }`
-            : "Right panel is unavailable"}
-        </TooltipPopup>
-      </Tooltip>
+      {rightControl._tag === "Panel" ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0 [-webkit-app-region:no-drag]"
+                pressed={rightControl.open}
+                onPressedChange={rightControl.onToggle}
+                aria-label={
+                  rightControl.liveAgentCount > 0
+                    ? `Toggle right panel, ${rightControl.liveAgentCount} ${rightControl.liveAgentCount === 1 ? "agent" : "agents"} working`
+                    : "Toggle right panel"
+                }
+                variant="ghost"
+                size="sm"
+                disabled={!rightControl.available}
+              >
+                <PanelRightIcon className="size-3.5" />
+                {rightControl.liveAgentCount > 0 ? (
+                  <span
+                    aria-hidden
+                    className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-[9px] font-semibold tabular-nums text-white"
+                  >
+                    {rightControl.liveAgentCount}
+                  </span>
+                ) : null}
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {rightControl.available
+              ? `Toggle right panel${rightControl.shortcutLabel ? ` (${rightControl.shortcutLabel})` : ""}${
+                  rightControl.liveAgentCount > 0
+                    ? ` · ${rightControl.liveAgentCount} ${rightControl.liveAgentCount === 1 ? "agent" : "agents"} working`
+                    : ""
+                }`
+              : "Right panel is unavailable"}
+          </TooltipPopup>
+        </Tooltip>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                className="shrink-0 [-webkit-app-region:no-drag]"
+                onClick={rightControl.onSplitRight}
+                aria-label="Split editor right"
+                variant="ghost"
+                size="icon-sm"
+                disabled={!rightControl.available}
+              >
+                <Columns2Icon className="size-3.5" />
+              </Button>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {rightControl.available
+              ? "Split editor right"
+              : "Open a tool tab before splitting the editor"}
+          </TooltipPopup>
+        </Tooltip>
+      )}
     </div>
   );
 });
 
-export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl({
-  maximized,
+export const WorkspaceModeControl = memo(function WorkspaceModeControl({
+  active,
   onToggle,
 }: {
-  maximized: boolean;
+  active: boolean;
   onToggle: () => void;
 }) {
-  const label = maximized ? "Restore panel size" : "Maximize panel";
+  const label = active ? "Return to conversation" : "Open workspace";
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Toggle
             className="shrink-0 [-webkit-app-region:no-drag]"
-            pressed={maximized}
+            pressed={active}
             onPressedChange={onToggle}
             aria-label={label}
             variant="ghost"
             size="sm"
           >
-            {maximized ? (
+            {active ? (
               <Minimize2Icon className="size-3.5" />
             ) : (
               <Maximize2Icon className="size-3.5" />

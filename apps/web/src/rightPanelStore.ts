@@ -24,6 +24,9 @@ export const RIGHT_PANEL_KINDS = [
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
+/** Whether opening a surface should reveal the inline conversation panel. */
+export type RightPanelSurfacePresentation = "show-inline" | "preserve-inline";
+
 export type RightPanelSurface =
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
   | { id: "browser:new"; kind: "preview"; resourceId: null }
@@ -58,10 +61,27 @@ export interface ThreadRightPanelState {
 
 interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
-  open: (ref: ScopedThreadRef, kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
-  openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
-  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
-  openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
+  open: (
+    ref: ScopedThreadRef,
+    kind: Exclude<RightPanelKind, "file" | "terminal">,
+    presentation?: RightPanelSurfacePresentation,
+  ) => void;
+  openBrowser: (
+    ref: ScopedThreadRef,
+    tabId: string | null,
+    presentation?: RightPanelSurfacePresentation,
+  ) => void;
+  openFile: (
+    ref: ScopedThreadRef,
+    relativePath: string,
+    line?: number,
+    presentation?: RightPanelSurfacePresentation,
+  ) => void;
+  openTerminal: (
+    ref: ScopedThreadRef,
+    terminalId: string,
+    presentation?: RightPanelSurfacePresentation,
+  ) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
     surfaceId: string,
@@ -71,6 +91,7 @@ interface RightPanelStoreState {
   activateTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   closeTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
+  selectSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeOtherSurfaces: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
@@ -132,8 +153,9 @@ const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
+  presentation: RightPanelSurfacePresentation = "show-inline",
 ): ThreadRightPanelState => ({
-  isOpen: true,
+  isOpen: presentation === "show-inline" ? true : current.isOpen,
   surfaces: current.surfaces.some((entry) => entry.id === surface.id)
     ? current.surfaces
     : [...current.surfaces, surface],
@@ -258,27 +280,32 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
     (set) => ({
       byThreadKey: {},
-      open: (ref, kind) =>
+      open: (ref, kind, presentation) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             if (kind === "preview") {
               const existing = current.surfaces.find((surface) => surface.kind === "preview");
-              return upsertSurface(current, existing ?? browserSurface(null));
+              return upsertSurface(current, existing ?? browserSurface(null), true, presentation);
             }
-            return upsertSurface(current, singletonSurface(kind));
+            return upsertSurface(current, singletonSurface(kind), true, presentation);
           }),
         })),
-      openBrowser: (ref, tabId) =>
+      openBrowser: (ref, tabId, presentation) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             const surface = browserSurface(tabId);
             const withoutPlaceholder = tabId
               ? current.surfaces.filter((entry) => entry.id !== "browser:new")
               : current.surfaces;
-            return upsertSurface({ ...current, surfaces: withoutPlaceholder }, surface);
+            return upsertSurface(
+              { ...current, surfaces: withoutPlaceholder },
+              surface,
+              true,
+              presentation,
+            );
           }),
         })),
-      openFile: (ref, relativePath, line) =>
+      openFile: (ref, relativePath, line, presentation = "show-inline") =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             const withoutStandaloneExplorer = current.surfaces.filter(
@@ -295,7 +322,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (existing?.revealRequestId ?? 0) + 1,
             );
             return {
-              isOpen: true,
+              isOpen: presentation === "show-inline" ? true : current.isOpen,
               activeSurfaceId: surface.id,
               surfaces: existing
                 ? withoutStandaloneExplorer.map((entry) =>
@@ -305,10 +332,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             };
           }),
         })),
-      openTerminal: (ref, terminalId) =>
+      openTerminal: (ref, terminalId, presentation) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
-            upsertSurface(current, terminalSurface(terminalId)),
+            upsertSurface(current, terminalSurface(terminalId), true, presentation),
           ),
         })),
       splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal") =>
@@ -389,6 +416,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
             current.surfaces.some((surface) => surface.id === surfaceId)
               ? { ...current, isOpen: true, activeSurfaceId: surfaceId }
+              : current,
+          ),
+        })),
+      selectSurface: (ref, surfaceId) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            current.surfaces.some((surface) => surface.id === surfaceId)
+              ? { ...current, activeSurfaceId: surfaceId }
               : current,
           ),
         })),
