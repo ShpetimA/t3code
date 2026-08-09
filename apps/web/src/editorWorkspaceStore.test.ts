@@ -122,6 +122,23 @@ describe("thread editor workspace", () => {
     expect(next.nextId).toBe(initial.nextId + 2);
   });
 
+  test("closes an empty editor group without requiring a temporary surface", () => {
+    const initial = createThreadEditorWorkspace();
+    const split = transitionThreadEditorWorkspace(initial, {
+      _tag: "SplitGroup",
+      groupId: initial.workspace.focusedGroupId,
+      direction: "right",
+    });
+    const closed = transitionThreadEditorWorkspace(split, {
+      _tag: "CloseEmptyGroup",
+      groupId: split.workspace.focusedGroupId,
+    });
+
+    expect(closed.workspace.root).toEqual(initial.workspace.root);
+    expect(closed.workspace.focusedGroupId).toBe(initial.workspace.focusedGroupId);
+    expect(closed.tabsById).toEqual(initial.tabsById);
+  });
+
   test("moves a surface and prevents moving the only tab from a group", () => {
     const initial = createThreadEditorWorkspace(["files", "diff"]);
     const fileTab = findSurfaceTabs(initial, "files")[0]!;

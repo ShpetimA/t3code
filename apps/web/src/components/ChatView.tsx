@@ -6627,6 +6627,8 @@ function ChatViewContent(props: ChatViewProps) {
       activeTab?._tag === "Surface"
         ? (rightPanelSurfaceById.get(activeTab.surfaceId) ?? null)
         : null;
+    const canCloseEmptyGroup =
+      group.tabIds.length === 0 && editorWorkspaceState.workspace.root._tag === "Split";
     const tabIdForTarget = (target: EditorTabContextTarget): EditorTabId | null => {
       if (target._tag === "Thread") return threadTab?.id ?? null;
       return surfaceTabs.find((entry) => entry.surface.id === target.surface.id)?.tabId ?? null;
@@ -6722,6 +6724,12 @@ function ChatViewContent(props: ChatViewProps) {
           mode="embedded"
           titleBar={topEditorGroupIds.has(group.id)}
           sidebarTitleBarInset={topLeftEditorGroupId === group.id}
+          {...(canCloseEmptyGroup
+            ? {
+                onCloseGroup: () =>
+                  mutateEditorTabsAndCleanup({ _tag: "CloseEmptyGroup", groupId: group.id }),
+              }
+            : {})}
           focusView={{
             active: editorWorkspaceState.workspace.maximizedGroupId === group.id,
             shortcutLabel: shortcutLabelForCommand(keybindings, "editor.toggleFocus"),

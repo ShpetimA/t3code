@@ -51,6 +51,7 @@ interface RightPanelTabsProps {
   titleBar?: boolean;
   sidebarTitleBarInset?: boolean;
   layoutControls?: ReactNode;
+  onCloseGroup?: () => void;
   focusView?: {
     readonly active: boolean;
     readonly shortcutLabel: string | null;
@@ -727,7 +728,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
           ) : null}
         </div>
       </ScrollArea>
-      {props.focusView || props.layoutControls ? (
+      {props.focusView || props.layoutControls || props.onCloseGroup ? (
         <div className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
           {props.focusView ? (
             <Tooltip>
@@ -758,6 +759,24 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
             </Tooltip>
           ) : null}
           {props.layoutControls}
+          {props.onCloseGroup ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label="Close editor group"
+                    onClick={props.onCloseGroup}
+                    className="text-foreground [--control-icon-color:currentColor] transition-[color,background-color,scale] duration-150 active:scale-[0.96]"
+                    variant="ghost"
+                    size="icon-sm"
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipPopup>Close editor group</TooltipPopup>
+            </Tooltip>
+          ) : null}
         </div>
       ) : null}
     </div>

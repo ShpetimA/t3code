@@ -7,6 +7,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import {
   activateEditorTab,
   clampEditorSplitRatio,
+  closeEmptyEditorGroup,
   closeEditorTab,
   createEditorWorkspace,
   findEditorGroup,
@@ -112,7 +113,8 @@ export type ThreadEditorWorkspaceTransition =
       readonly groupId: EditorGroupId;
       readonly tabId: EditorTabId;
     }
-  | { readonly _tag: "CloseAllSurfaceTabs"; readonly groupId: EditorGroupId };
+  | { readonly _tag: "CloseAllSurfaceTabs"; readonly groupId: EditorGroupId }
+  | { readonly _tag: "CloseEmptyGroup"; readonly groupId: EditorGroupId };
 
 const ROOT_GROUP_ID = "editor-group:root" as EditorGroupId;
 const THREAD_TAB_ID = "editor-tab:thread" as EditorTabId;
@@ -262,6 +264,10 @@ export function transitionThreadEditorWorkspace(
       return closeThreadEditorSurfaceTabsToRight(current, input.groupId, input.tabId);
     case "CloseAllSurfaceTabs":
       return closeAllThreadEditorSurfaceTabs(current, input.groupId);
+    case "CloseEmptyGroup": {
+      const workspace = closeEmptyEditorGroup(current.workspace, input.groupId);
+      return workspace === current.workspace ? current : { ...current, workspace };
+    }
   }
 }
 

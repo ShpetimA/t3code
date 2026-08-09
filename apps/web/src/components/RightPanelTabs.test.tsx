@@ -71,6 +71,7 @@ describe("RightPanelTabBar", () => {
         mode="embedded"
         focusView={{ active: true, shortcutLabel: "⌘⇧↵", onToggle: NOOP }}
         layoutControls={<button aria-label="Split editor right" />}
+        onCloseGroup={NOOP}
         surfaces={[]}
         activeSurfaceId={null}
         pendingSurfaceIds={new Set()}
@@ -99,6 +100,9 @@ describe("RightPanelTabBar", () => {
     expect(markup).toContain("[--control-icon-color:currentColor]");
     expect(markup.indexOf('aria-label="Restore editor layout"')).toBeLessThan(
       markup.indexOf('aria-label="Split editor right"'),
+    );
+    expect(markup.indexOf('aria-label="Split editor right"')).toBeLessThan(
+      markup.indexOf('aria-label="Close editor group"'),
     );
     expect(markup).not.toContain("pr-28");
   });

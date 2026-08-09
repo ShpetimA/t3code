@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   activateEditorTab,
   closeAllEditorTabs,
+  closeEmptyEditorGroup,
   closeEditorTab,
   closeEditorTabsToRight,
   closeOtherEditorTabs,
@@ -267,6 +268,27 @@ describe("editor workspace", () => {
       activeTabId: null,
     });
     expect(next.focusedGroupId).toBe(group("right"));
+  });
+
+  test("closes an empty split group but preserves populated and root groups", () => {
+    const initial = createEditorWorkspace({
+      groupId: group("left"),
+      tabIds: [tab("thread")],
+    });
+    const splitWorkspace = splitEditorGroup(initial, {
+      sourceGroupId: group("left"),
+      targetGroupId: group("right"),
+      splitId: split("columns"),
+      direction: "right",
+    });
+    const closed = closeEmptyEditorGroup(splitWorkspace, group("right"));
+
+    expect(closed.root).toEqual(initial.root);
+    expect(closed.focusedGroupId).toBe(group("left"));
+    expect(closeEmptyEditorGroup(splitWorkspace, group("left"))).toBe(splitWorkspace);
+    expect(
+      closeEmptyEditorGroup(createEditorWorkspace({ groupId: group("only") }), group("only")),
+    ).toEqual(createEditorWorkspace({ groupId: group("only") }));
   });
 
   test("does not move the only tab out of a group", () => {

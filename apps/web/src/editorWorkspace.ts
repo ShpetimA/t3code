@@ -497,6 +497,16 @@ export function closeAllEditorTabs(
   }));
 }
 
+/** Collapses an unused split without allowing populated or root groups to disappear. */
+export function closeEmptyEditorGroup(
+  workspace: EditorWorkspace,
+  groupId: EditorGroupId,
+): EditorWorkspace {
+  const group = findEditorGroup(workspace.root, groupId);
+  if (!group || group.tabIds.length > 0 || workspace.root._tag === "Group") return workspace;
+  return removeEditorGroup(workspace, groupId);
+}
+
 export function resizeEditorSplit(
   workspace: EditorWorkspace,
   splitId: EditorSplitId,
