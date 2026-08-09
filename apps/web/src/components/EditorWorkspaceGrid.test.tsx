@@ -12,6 +12,7 @@ import {
 
 import { EditorWorkspaceGrid } from "./EditorWorkspaceGrid";
 import {
+  calculateEditorWorkspaceLayout,
   calculateEditorSplitRatio,
   resolveEditorGroupDropZone,
   resolveKeyboardResizeDelta,
@@ -68,6 +69,47 @@ describe("EditorWorkspaceGrid", () => {
     expect(calculateEditorSplitRatio(0, 100, 500)).toBe(0.1);
     expect(calculateEditorSplitRatio(1_000, 100, 500)).toBe(0.9);
     expect(calculateEditorSplitRatio(100, 100, 0)).toBeNull();
+  });
+
+  test("projects nested split geometry into one stable group layer", () => {
+    const columns = splitEditorTab(
+      createEditorWorkspace({ groupId: group("one"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("one"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("file"),
+        targetGroupId: group("two"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const nested = splitEditorTab(columns, {
+      sourceGroupId: group("two"),
+      sourceTabId: tab("file"),
+      targetTabId: tab("diff"),
+      targetGroupId: group("three"),
+      splitId: split("rows"),
+      direction: "down",
+      mode: "copy",
+    });
+
+    const layout = calculateEditorWorkspaceLayout(nested.root);
+
+    expect(layout.groups.map(({ group: editorGroup }) => editorGroup.id)).toEqual([
+      group("one"),
+      group("two"),
+      group("three"),
+    ]);
+    expect(layout.groups.map(({ bounds }) => bounds)).toEqual([
+      { top: 0, right: 0.5, bottom: 1, left: 0 },
+      { top: 0, right: 1, bottom: 0.5, left: 0.5 },
+      { top: 0.5, right: 1, bottom: 1, left: 0.5 },
+    ]);
+    expect(layout.splits.map(({ split: editorSplit }) => editorSplit.id)).toEqual([
+      split("columns"),
+      split("rows"),
+    ]);
   });
 
   test("renders only the focused group while preserving the split workspace", () => {

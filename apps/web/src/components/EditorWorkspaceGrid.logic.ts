@@ -1,10 +1,66 @@
 import {
   clampEditorSplitRatio,
   type EditorGroupDropZone,
+  type EditorGroupNode,
   type EditorSplitOrientation,
+  type EditorSplitNode,
+  type EditorWorkspaceNode,
 } from "~/editorWorkspace";
 
 const EDITOR_GROUP_EDGE_DROP_RATIO = 0.25;
+
+export interface EditorWorkspaceBounds {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+export interface EditorWorkspaceGroupLayout {
+  readonly group: EditorGroupNode;
+  readonly bounds: EditorWorkspaceBounds;
+}
+
+export interface EditorWorkspaceSplitLayout {
+  readonly split: EditorSplitNode;
+  readonly bounds: EditorWorkspaceBounds;
+}
+
+export interface EditorWorkspaceLayout {
+  readonly groups: readonly EditorWorkspaceGroupLayout[];
+  readonly splits: readonly EditorWorkspaceSplitLayout[];
+}
+
+/** Projects the split tree into stable, normalized group and divider geometry. */
+export function calculateEditorWorkspaceLayout(root: EditorWorkspaceNode): EditorWorkspaceLayout {
+  const groups: EditorWorkspaceGroupLayout[] = [];
+  const splits: EditorWorkspaceSplitLayout[] = [];
+  collectEditorWorkspaceLayout(root, { top: 0, right: 1, bottom: 1, left: 0 }, groups, splits);
+  return { groups, splits };
+}
+
+function collectEditorWorkspaceLayout(
+  node: EditorWorkspaceNode,
+  bounds: EditorWorkspaceBounds,
+  groups: EditorWorkspaceGroupLayout[],
+  splits: EditorWorkspaceSplitLayout[],
+): void {
+  if (node._tag === "Group") {
+    groups.push({ group: node, bounds });
+    return;
+  }
+
+  splits.push({ split: node, bounds });
+  if (node.orientation === "horizontal") {
+    const splitAt = bounds.left + (bounds.right - bounds.left) * node.ratio;
+    collectEditorWorkspaceLayout(node.first, { ...bounds, right: splitAt }, groups, splits);
+    collectEditorWorkspaceLayout(node.second, { ...bounds, left: splitAt }, groups, splits);
+    return;
+  }
+  const splitAt = bounds.top + (bounds.bottom - bounds.top) * node.ratio;
+  collectEditorWorkspaceLayout(node.first, { ...bounds, bottom: splitAt }, groups, splits);
+  collectEditorWorkspaceLayout(node.second, { ...bounds, top: splitAt }, groups, splits);
+}
 
 /** Resolves the pane action preview from a pointer position inside a group. */
 export function resolveEditorGroupDropZone(input: {

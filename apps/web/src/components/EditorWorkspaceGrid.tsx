@@ -1,8 +1,10 @@
 import {
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useRef,
@@ -20,14 +22,15 @@ import {
   type EditorSplitNode,
   type EditorTabDragData,
   type EditorWorkspace,
-  type EditorWorkspaceNode,
 } from "~/editorWorkspace";
 import { cn } from "~/lib/utils";
 
 import {
+  calculateEditorWorkspaceLayout,
   calculateEditorSplitRatio,
   resolveEditorGroupDropZone,
   resolveKeyboardResizeDelta,
+  type EditorWorkspaceBounds,
 } from "./EditorWorkspaceGrid.logic";
 
 interface EditorWorkspaceGridProps {
@@ -51,37 +54,52 @@ interface EditorGroupDropPreview {
 
 export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
   const visibleRoot = getVisibleEditorWorkspaceRoot(props.workspace);
+  const layout = calculateEditorWorkspaceLayout(visibleRoot);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [dropPreview, setDropPreview] = useState<EditorGroupDropPreview | null>(null);
   useEffect(() => {
     if (!props.draggedTab) setDropPreview(null);
   }, [props.draggedTab]);
   return (
     <div
-      className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", props.className)}
+      ref={containerRef}
+      className={cn("relative min-h-0 min-w-0 flex-1 overflow-hidden", props.className)}
       data-editor-focus-view={props.workspace.maximizedGroupId ? "true" : "false"}
     >
-      <EditorWorkspaceBranch
-        node={visibleRoot}
-        focusedGroupId={props.workspace.focusedGroupId}
-        renderGroup={props.renderGroup}
-        onFocusGroup={props.onFocusGroup}
-        onResizeSplit={props.onResizeSplit}
-        workspace={props.workspace}
-        draggedTab={props.draggedTab ?? null}
-        onDropTab={props.onDropTab}
-        dropPreview={dropPreview}
-        setDropPreview={setDropPreview}
-      />
+      {layout.groups.map(({ group, bounds }) => (
+        <EditorWorkspaceGroup
+          key={group.id}
+          bounds={bounds}
+          group={group}
+          focusedGroupId={props.workspace.focusedGroupId}
+          renderGroup={props.renderGroup}
+          onFocusGroup={props.onFocusGroup}
+          workspace={props.workspace}
+          draggedTab={props.draggedTab ?? null}
+          onDropTab={props.onDropTab}
+          dropPreview={dropPreview}
+          setDropPreview={setDropPreview}
+        />
+      ))}
+      {layout.splits.map(({ split, bounds }) => (
+        <EditorSplitHandle
+          key={split.id}
+          bounds={bounds}
+          containerRef={containerRef}
+          split={split}
+          onResize={props.onResizeSplit}
+        />
+      ))}
     </div>
   );
 }
 
-interface EditorWorkspaceBranchProps {
-  node: EditorWorkspaceNode;
+interface EditorWorkspaceGroupProps {
+  bounds: EditorWorkspaceBounds;
+  group: EditorGroupNode;
   focusedGroupId: EditorGroupId;
   renderGroup: (group: EditorGroupNode) => ReactNode;
   onFocusGroup: (groupId: EditorGroupId) => void;
-  onResizeSplit: (splitId: EditorSplitId, ratio: number) => void;
   workspace: EditorWorkspace;
   draggedTab: EditorTabDragData | null;
   onDropTab: EditorWorkspaceGridProps["onDropTab"];
@@ -89,53 +107,38 @@ interface EditorWorkspaceBranchProps {
   setDropPreview: (preview: EditorGroupDropPreview | null) => void;
 }
 
-function EditorWorkspaceBranch(props: EditorWorkspaceBranchProps) {
-  if (props.node._tag === "Group") {
-    const group = props.node;
-    return (
-      <section
-        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
-        data-editor-group={group.id}
-        data-editor-group-focused={group.id === props.focusedGroupId ? "true" : "false"}
-        onPointerDown={() => props.onFocusGroup(group.id)}
-      >
-        {props.renderGroup(group)}
-        {props.draggedTab && props.onDropTab ? (
-          <EditorGroupDropTarget
-            workspace={props.workspace}
-            group={group}
-            draggedTab={props.draggedTab}
-            preview={props.dropPreview?.groupId === group.id ? props.dropPreview : null}
-            onPreviewChange={props.setDropPreview}
-            onDrop={props.onDropTab}
-          />
-        ) : null}
-      </section>
-    );
-  }
-
-  const horizontal = props.node.orientation === "horizontal";
+function EditorWorkspaceGroup(props: EditorWorkspaceGroupProps) {
+  const { group } = props;
   return (
-    <div
-      className={cn(
-        "flex min-h-0 min-w-0 flex-1 overflow-hidden",
-        horizontal ? "flex-row" : "flex-col",
-      )}
-      data-editor-split={props.node.id}
-      data-editor-split-orientation={props.node.orientation}
+    <section
+      className="absolute flex min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+      style={editorWorkspaceBoundsStyle(props.bounds)}
+      data-editor-group={group.id}
+      data-editor-group-focused={group.id === props.focusedGroupId ? "true" : "false"}
+      onPointerDown={() => props.onFocusGroup(group.id)}
     >
-      <div
-        className="flex min-h-0 min-w-0 shrink-0 overflow-hidden"
-        style={{ flexBasis: `${props.node.ratio * 100}%` }}
-      >
-        <EditorWorkspaceBranch {...props} node={props.node.first} />
-      </div>
-      <EditorSplitHandle split={props.node} onResize={props.onResizeSplit} />
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <EditorWorkspaceBranch {...props} node={props.node.second} />
-      </div>
-    </div>
+      {props.renderGroup(group)}
+      {props.draggedTab && props.onDropTab ? (
+        <EditorGroupDropTarget
+          workspace={props.workspace}
+          group={group}
+          draggedTab={props.draggedTab}
+          preview={props.dropPreview?.groupId === group.id ? props.dropPreview : null}
+          onPreviewChange={props.setDropPreview}
+          onDrop={props.onDropTab}
+        />
+      ) : null}
+    </section>
   );
+}
+
+function editorWorkspaceBoundsStyle(bounds: EditorWorkspaceBounds): CSSProperties {
+  return {
+    top: `${bounds.top * 100}%`,
+    left: `${bounds.left * 100}%`,
+    width: `${(bounds.right - bounds.left) * 100}%`,
+    height: `${(bounds.bottom - bounds.top) * 100}%`,
+  };
 }
 
 function canDropEditorTab(
@@ -254,6 +257,8 @@ interface DragState {
 }
 
 function EditorSplitHandle(props: {
+  bounds: EditorWorkspaceBounds;
+  containerRef: RefObject<HTMLDivElement | null>;
   split: EditorSplitNode;
   onResize: (splitId: EditorSplitId, ratio: number) => void;
 }) {
@@ -280,9 +285,15 @@ function EditorSplitHandle(props: {
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
-      const container = event.currentTarget.parentElement;
+      const container = props.containerRef.current;
       if (!container) return;
-      const bounds = container.getBoundingClientRect();
+      const workspaceBounds = container.getBoundingClientRect();
+      const start = horizontal
+        ? workspaceBounds.left + workspaceBounds.width * props.bounds.left
+        : workspaceBounds.top + workspaceBounds.height * props.bounds.top;
+      const size = horizontal
+        ? workspaceBounds.width * (props.bounds.right - props.bounds.left)
+        : workspaceBounds.height * (props.bounds.bottom - props.bounds.top);
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {
@@ -290,8 +301,8 @@ function EditorSplitHandle(props: {
       }
       dragStateRef.current = {
         pointerId: event.pointerId,
-        start: horizontal ? bounds.left : bounds.top,
-        size: horizontal ? bounds.width : bounds.height,
+        start,
+        size,
         startRatio: split.ratio,
         pendingRatio: split.ratio,
         frameId: null,
@@ -302,7 +313,7 @@ function EditorSplitHandle(props: {
       event.preventDefault();
       event.stopPropagation();
     },
-    [horizontal, split.ratio],
+    [horizontal, props.bounds, props.containerRef, split.ratio],
   );
 
   const handlePointerMove = useCallback(
@@ -356,6 +367,21 @@ function EditorSplitHandle(props: {
     },
     [onResize, split],
   );
+  const splitPosition =
+    split.orientation === "horizontal"
+      ? props.bounds.left + (props.bounds.right - props.bounds.left) * split.ratio
+      : props.bounds.top + (props.bounds.bottom - props.bounds.top) * split.ratio;
+  const style: CSSProperties = horizontal
+    ? {
+        top: `${props.bounds.top * 100}%`,
+        left: `${splitPosition * 100}%`,
+        height: `${(props.bounds.bottom - props.bounds.top) * 100}%`,
+      }
+    : {
+        top: `${splitPosition * 100}%`,
+        left: `${props.bounds.left * 100}%`,
+        width: `${(props.bounds.right - props.bounds.left) * 100}%`,
+      };
 
   return (
     <div
@@ -366,11 +392,14 @@ function EditorSplitHandle(props: {
       aria-valuemin={10}
       aria-valuemax={90}
       aria-valuenow={Math.round(split.ratio * 100)}
+      data-editor-split={split.id}
+      data-editor-split-orientation={split.orientation}
       className={cn(
-        "group/split relative z-10 shrink-0 touch-none bg-border outline-none",
+        "group/split absolute z-10 touch-none bg-border outline-none",
         "focus-visible:bg-primary/70",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}
+      style={style}
       onDoubleClick={() => onResize(split.id, 0.5)}
       onKeyDown={handleKeyDown}
       onPointerCancel={handlePointerCancel}
