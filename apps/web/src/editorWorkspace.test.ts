@@ -7,12 +7,16 @@ import {
   closeEditorTabsToRight,
   closeOtherEditorTabs,
   createEditorWorkspace,
+  findAdjacentEditorGroups,
   findEditorGroup,
   findTopRightEditorGroup,
   getTopEditorGroups,
   focusEditorGroup,
   getEditorGroups,
+  mergeEditorGroups,
+  moveEditorTabToGroup,
   openEditorTab,
+  reorderEditorTab,
   resizeEditorSplit,
   splitEditorTab,
   type EditorGroupId,
@@ -101,6 +105,91 @@ describe("editor workspace", () => {
       tabIds: [tab("file")],
       activeTabId: tab("file"),
     });
+  });
+
+  test("reorders tabs within a group without changing its active tab", () => {
+    const initial = createEditorWorkspace({
+      groupId: group("one"),
+      tabIds: [tab("thread"), tab("file"), tab("diff")],
+      activeTabId: tab("thread"),
+    });
+    const reordered = reorderEditorTab(initial, {
+      groupId: group("one"),
+      tabId: tab("diff"),
+      targetIndex: 1,
+    });
+
+    expect(findEditorGroup(reordered.root, group("one"))).toMatchObject({
+      tabIds: [tab("thread"), tab("diff"), tab("file")],
+      activeTabId: tab("thread"),
+    });
+    expect(
+      reorderEditorTab(reordered, {
+        groupId: group("one"),
+        tabId: tab("diff"),
+        targetIndex: 10,
+      }),
+    ).toBe(reordered);
+  });
+
+  test("moves a tab into an existing group and collapses an empty source", () => {
+    const initial = splitEditorTab(
+      createEditorWorkspace({ groupId: group("left"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("left"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("file"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const moved = moveEditorTabToGroup(initial, {
+      sourceGroupId: group("left"),
+      targetGroupId: group("right"),
+      tabId: tab("thread"),
+      targetIndex: 0,
+    });
+
+    expect(moved.root).toEqual({
+      _tag: "Group",
+      id: group("right"),
+      tabIds: [tab("thread"), tab("file")],
+      activeTabId: tab("thread"),
+    });
+    expect(moved.focusedGroupId).toBe(group("right"));
+  });
+
+  test("merges all source tabs into an existing group", () => {
+    const initial = splitEditorTab(
+      createEditorWorkspace({
+        groupId: group("left"),
+        tabIds: [tab("thread"), tab("diff")],
+        activeTabId: tab("diff"),
+      }),
+      {
+        sourceGroupId: group("left"),
+        sourceTabId: tab("diff"),
+        targetTabId: tab("file"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const merged = mergeEditorGroups(initial, {
+      sourceGroupId: group("right"),
+      targetGroupId: group("left"),
+    });
+
+    expect(merged.root).toEqual({
+      _tag: "Group",
+      id: group("left"),
+      tabIds: [tab("thread"), tab("diff"), tab("file")],
+      activeTabId: tab("file"),
+    });
+    expect(merged.focusedGroupId).toBe(group("left"));
   });
 
   test("does not move the only tab out of a group", () => {
@@ -236,5 +325,42 @@ describe("editor workspace", () => {
       group("left"),
       group("right"),
     ]);
+  });
+
+  test("finds directional neighbors in nested editor splits", () => {
+    const columns = splitEditorTab(
+      createEditorWorkspace({ groupId: group("top-left"), tabIds: [tab("thread")] }),
+      {
+        sourceGroupId: group("top-left"),
+        sourceTabId: tab("thread"),
+        targetTabId: tab("right"),
+        targetGroupId: group("right"),
+        splitId: split("columns"),
+        direction: "right",
+        mode: "copy",
+      },
+    );
+    const nested = splitEditorTab(columns, {
+      sourceGroupId: group("top-left"),
+      sourceTabId: tab("thread"),
+      targetTabId: tab("bottom-left"),
+      targetGroupId: group("bottom-left"),
+      splitId: split("left-rows"),
+      direction: "down",
+      mode: "copy",
+    });
+
+    expect(findAdjacentEditorGroups(nested, group("top-left"))).toEqual({
+      up: null,
+      down: group("bottom-left"),
+      left: null,
+      right: group("right"),
+    });
+    expect(findAdjacentEditorGroups(nested, group("right"))).toEqual({
+      up: null,
+      down: null,
+      left: group("top-left"),
+      right: null,
+    });
   });
 });

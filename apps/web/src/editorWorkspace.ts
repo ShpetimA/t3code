@@ -38,6 +38,22 @@ export interface SplitEditorTabInput {
   readonly mode: "copy" | "move";
 }
 
+/** Moves one tab from its current editor group into an existing group. */
+export interface MoveEditorTabInput {
+  readonly sourceGroupId: EditorGroupId;
+  readonly targetGroupId: EditorGroupId;
+  readonly tabId: EditorTabId;
+  readonly targetIndex?: number;
+}
+
+/** The closest editor group in each direction from a source group. */
+export interface AdjacentEditorGroups {
+  readonly up: EditorGroupId | null;
+  readonly down: EditorGroupId | null;
+  readonly left: EditorGroupId | null;
+  readonly right: EditorGroupId | null;
+}
+
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
 
@@ -85,6 +101,29 @@ export function getTopEditorGroups(node: EditorWorkspaceNode): readonly EditorGr
     : getTopEditorGroups(node.first);
 }
 
+/** Finds the closest spatially adjacent editor group in every direction. */
+export function findAdjacentEditorGroups(
+  workspace: EditorWorkspace,
+  groupId: EditorGroupId,
+): AdjacentEditorGroups {
+  const bounds = collectEditorGroupBounds(workspace.root, {
+    top: 0,
+    right: 1,
+    bottom: 1,
+    left: 0,
+  });
+  const source = bounds.find((entry) => entry.groupId === groupId);
+  if (!source) {
+    return { up: null, down: null, left: null, right: null };
+  }
+  return {
+    up: findDirectionalEditorGroup(bounds, source, "up"),
+    down: findDirectionalEditorGroup(bounds, source, "down"),
+    left: findDirectionalEditorGroup(bounds, source, "left"),
+    right: findDirectionalEditorGroup(bounds, source, "right"),
+  };
+}
+
 export function focusEditorGroup(
   workspace: EditorWorkspace,
   groupId: EditorGroupId,
@@ -120,6 +159,92 @@ export function activateEditorTab(
     })),
     focusedGroupId: groupId,
   };
+}
+
+/** Reorders a tab within one group while preserving the active tab. */
+export function reorderEditorTab(
+  workspace: EditorWorkspace,
+  input: {
+    readonly groupId: EditorGroupId;
+    readonly tabId: EditorTabId;
+    readonly targetIndex: number;
+  },
+): EditorWorkspace {
+  const group = findEditorGroup(workspace.root, input.groupId);
+  const sourceIndex = group?.tabIds.indexOf(input.tabId) ?? -1;
+  if (
+    !group ||
+    sourceIndex < 0 ||
+    !Number.isSafeInteger(input.targetIndex) ||
+    input.targetIndex < 0 ||
+    input.targetIndex >= group.tabIds.length ||
+    sourceIndex === input.targetIndex
+  ) {
+    return workspace;
+  }
+  const tabIds = [...group.tabIds];
+  tabIds.splice(sourceIndex, 1);
+  tabIds.splice(input.targetIndex, 0, input.tabId);
+  return updateEditorGroup(workspace, group.id, (current) => ({ ...current, tabIds }));
+}
+
+/** Moves a tab into an existing group and collapses an emptied source group. */
+export function moveEditorTabToGroup(
+  workspace: EditorWorkspace,
+  input: MoveEditorTabInput,
+): EditorWorkspace {
+  if (input.sourceGroupId === input.targetGroupId) return workspace;
+  const sourceGroup = findEditorGroup(workspace.root, input.sourceGroupId);
+  const targetGroup = findEditorGroup(workspace.root, input.targetGroupId);
+  if (!sourceGroup?.tabIds.includes(input.tabId) || !targetGroup) return workspace;
+  const targetIndex = input.targetIndex ?? targetGroup.tabIds.length;
+  if (
+    !Number.isSafeInteger(targetIndex) ||
+    targetIndex < 0 ||
+    targetIndex > targetGroup.tabIds.length ||
+    targetGroup.tabIds.includes(input.tabId)
+  ) {
+    return workspace;
+  }
+  const sourceAfterMove = removeTabFromGroup(sourceGroup, input.tabId);
+  const targetTabIds = [...targetGroup.tabIds];
+  targetTabIds.splice(targetIndex, 0, input.tabId);
+  let root = mapEditorNode(workspace.root, (node) => {
+    if (node._tag !== "Group") return node;
+    if (node.id === sourceGroup.id) return sourceAfterMove;
+    if (node.id === targetGroup.id) {
+      return { ...node, tabIds: targetTabIds, activeTabId: input.tabId };
+    }
+    return node;
+  });
+  if (sourceAfterMove.tabIds.length === 0) {
+    root = collapseEditorGroup(root, sourceGroup.id) ?? root;
+  }
+  return { root, focusedGroupId: targetGroup.id };
+}
+
+/** Joins one editor group into another group and removes the source split. */
+export function mergeEditorGroups(
+  workspace: EditorWorkspace,
+  input: {
+    readonly sourceGroupId: EditorGroupId;
+    readonly targetGroupId: EditorGroupId;
+  },
+): EditorWorkspace {
+  if (input.sourceGroupId === input.targetGroupId) return workspace;
+  const sourceGroup = findEditorGroup(workspace.root, input.sourceGroupId);
+  const targetGroup = findEditorGroup(workspace.root, input.targetGroupId);
+  if (!sourceGroup || !targetGroup) return workspace;
+  const sourceTabIds = sourceGroup.tabIds.filter((tabId) => !targetGroup.tabIds.includes(tabId));
+  const targetTabIds = [...targetGroup.tabIds, ...sourceTabIds];
+  const activeTabId = sourceGroup.activeTabId ?? targetGroup.activeTabId;
+  const updatedRoot = mapEditorNode(workspace.root, (node) =>
+    node._tag === "Group" && node.id === targetGroup.id
+      ? { ...node, tabIds: targetTabIds, activeTabId }
+      : node,
+  );
+  const root = collapseEditorGroup(updatedRoot, sourceGroup.id);
+  return root ? { root, focusedGroupId: targetGroup.id } : workspace;
 }
 
 export function splitEditorTab(
@@ -276,6 +401,77 @@ function mapEditorNode(
   const first = mapEditorNode(node.first, map);
   const second = mapEditorNode(node.second, map);
   return map(first === node.first && second === node.second ? node : { ...node, first, second });
+}
+
+interface EditorGroupBounds {
+  readonly groupId: EditorGroupId;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+function collectEditorGroupBounds(
+  node: EditorWorkspaceNode,
+  bounds: Omit<EditorGroupBounds, "groupId">,
+): readonly EditorGroupBounds[] {
+  if (node._tag === "Group") return [{ ...bounds, groupId: node.id }];
+  if (node.orientation === "horizontal") {
+    const splitAt = bounds.left + (bounds.right - bounds.left) * node.ratio;
+    return [
+      ...collectEditorGroupBounds(node.first, { ...bounds, right: splitAt }),
+      ...collectEditorGroupBounds(node.second, { ...bounds, left: splitAt }),
+    ];
+  }
+  const splitAt = bounds.top + (bounds.bottom - bounds.top) * node.ratio;
+  return [
+    ...collectEditorGroupBounds(node.first, { ...bounds, bottom: splitAt }),
+    ...collectEditorGroupBounds(node.second, { ...bounds, top: splitAt }),
+  ];
+}
+
+function findDirectionalEditorGroup(
+  bounds: readonly EditorGroupBounds[],
+  source: EditorGroupBounds,
+  direction: EditorSplitDirection,
+): EditorGroupId | null {
+  const candidates = bounds.flatMap((candidate, order) => {
+    if (candidate.groupId === source.groupId) return [];
+    const verticalOverlap =
+      Math.min(source.bottom, candidate.bottom) - Math.max(source.top, candidate.top);
+    const horizontalOverlap =
+      Math.min(source.right, candidate.right) - Math.max(source.left, candidate.left);
+    const overlap =
+      direction === "left" || direction === "right" ? verticalOverlap : horizontalOverlap;
+    if (overlap <= 0) return [];
+    const distance = editorGroupDistance(source, candidate, direction);
+    return distance < 0 ? [] : [{ groupId: candidate.groupId, distance, overlap, order }];
+  });
+  candidates.sort((left, right) =>
+    left.distance !== right.distance
+      ? left.distance - right.distance
+      : left.overlap !== right.overlap
+        ? right.overlap - left.overlap
+        : left.order - right.order,
+  );
+  return candidates[0]?.groupId ?? null;
+}
+
+function editorGroupDistance(
+  source: EditorGroupBounds,
+  candidate: EditorGroupBounds,
+  direction: EditorSplitDirection,
+): number {
+  switch (direction) {
+    case "up":
+      return source.top - candidate.bottom;
+    case "down":
+      return candidate.top - source.bottom;
+    case "left":
+      return source.left - candidate.right;
+    case "right":
+      return candidate.left - source.right;
+  }
 }
 
 function removeTabFromGroup(group: EditorGroupNode, tabId: EditorTabId): EditorGroupNode {

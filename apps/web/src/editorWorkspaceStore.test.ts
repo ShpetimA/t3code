@@ -11,8 +11,11 @@ import {
   createThreadEditorWorkspace,
   findEditorWorkspaceTabGroup,
   findSurfaceTabs,
+  mergeThreadEditorGroups,
+  moveThreadEditorTabToGroup,
   parsePersistedEditorWorkspaceState,
   reconcileThreadEditorWorkspace,
+  reorderThreadEditorTab,
   splitThreadEditorTab,
 } from "./editorWorkspaceStore";
 
@@ -100,6 +103,95 @@ describe("thread editor workspace", () => {
 
     expect(diffMoved).toBe(moved);
     expect(findEditorWorkspaceTabGroup(moved, diffTab.id)).toBe(rootGroupId);
+  });
+
+  test("reorders tabs within one group", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const diffTab = findSurfaceTabs(initial, "diff")[0]!;
+    const reordered = reorderThreadEditorTab(initial, {
+      groupId: initial.workspace.focusedGroupId,
+      tabId: diffTab.id,
+      targetIndex: 1,
+    });
+    const root = reordered.workspace.root;
+
+    expect(root._tag).toBe("Group");
+    if (root._tag !== "Group") return;
+    expect(
+      root.tabIds.map((tabId) => {
+        const tab = reordered.tabsById[tabId];
+        return tab?._tag === "Thread" ? "thread" : tab?.surfaceId;
+      }),
+    ).toEqual(["thread", "diff", "files"]);
+  });
+
+  test("moves tabs into existing groups without creating another split", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const sourceGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId: sourceGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "move",
+    });
+    const targetGroupId = findEditorWorkspaceTabGroup(split, filesTab.id)!;
+    const diffTab = findSurfaceTabs(split, "diff")[0]!;
+    const moved = moveThreadEditorTabToGroup(split, {
+      sourceGroupId,
+      targetGroupId,
+      tabId: diffTab.id,
+    });
+    const targetGroup =
+      moved.workspace.root._tag === "Split" && moved.workspace.root.second._tag === "Group"
+        ? moved.workspace.root.second
+        : null;
+
+    expect(targetGroup?.tabIds.map((tabId) => moved.tabsById[tabId])).toEqual([
+      expect.objectContaining({ _tag: "Surface", surfaceId: "files" }),
+      expect.objectContaining({ _tag: "Surface", surfaceId: "diff" }),
+    ]);
+    expect(targetGroup?.activeTabId).toBe(diffTab.id);
+  });
+
+  test("deduplicates copied surfaces when moving or merging groups", () => {
+    const initial = createThreadEditorWorkspace(["files", "diff"]);
+    const filesTab = findSurfaceTabs(initial, "files")[0]!;
+    const rootGroupId = findEditorWorkspaceTabGroup(initial, filesTab.id)!;
+    const split = splitThreadEditorTab(initial, {
+      groupId: rootGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "copy",
+    });
+    const copiedFilesTab = findSurfaceTabs(split, "files").find((tab) => tab.id !== filesTab.id)!;
+    const copiedGroupId = findEditorWorkspaceTabGroup(split, copiedFilesTab.id)!;
+    const moved = moveThreadEditorTabToGroup(split, {
+      sourceGroupId: copiedGroupId,
+      targetGroupId: rootGroupId,
+      tabId: copiedFilesTab.id,
+    });
+
+    expect(findSurfaceTabs(moved, "files")).toHaveLength(1);
+    expect(moved.workspace.root._tag).toBe("Group");
+
+    const copiedAgain = splitThreadEditorTab(initial, {
+      groupId: rootGroupId,
+      tabId: filesTab.id,
+      direction: "right",
+      mode: "copy",
+    });
+    const duplicate = findSurfaceTabs(copiedAgain, "files").find((tab) => tab.id !== filesTab.id)!;
+    const duplicateGroupId = findEditorWorkspaceTabGroup(copiedAgain, duplicate.id)!;
+    const merged = mergeThreadEditorGroups(copiedAgain, {
+      sourceGroupId: duplicateGroupId,
+      targetGroupId: rootGroupId,
+    });
+
+    expect(findSurfaceTabs(merged, "files")).toHaveLength(1);
+    expect(merged.workspace.root._tag).toBe("Group");
+    if (merged.workspace.root._tag !== "Group") return;
+    expect(merged.workspace.root.activeTabId).toBe(filesTab.id);
   });
 
   test("closes only one copied view until the last resource tab closes", () => {
