@@ -71,6 +71,7 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import { MessageCopyButton } from "./MessageCopyButton";
+import type { AgentPanelRevealTarget } from "../AgentsPanel";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
@@ -143,7 +144,7 @@ interface TimelineRowSharedState {
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   agentPanelModel: AgentPanelModel;
-  onOpenAgents: () => void;
+  onOpenAgents: (target: AgentPanelRevealTarget) => void;
 }
 
 interface TimelineRowActivityState {
@@ -203,7 +204,7 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
 
 interface MessagesTimelineProps {
   agentPanelModel?: AgentPanelModel;
-  onOpenAgents?: () => void;
+  onOpenAgents?: (target: AgentPanelRevealTarget) => void;
   isWorking: boolean;
   workingStepLabel?: string | null;
   activeTurnInProgress: boolean;
@@ -2191,7 +2192,13 @@ const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: Time
   return (
     <button
       type="button"
-      onClick={onOpenAgents}
+      onClick={() =>
+        onOpenAgents(
+          spawn.workflowId
+            ? { _tag: "Workflow", workflowId: spawn.workflowId }
+            : { _tag: "Agents", agentIds: spawn.agentTaskIds },
+        )
+      }
       className="-mx-1 flex w-full items-center gap-2 rounded-md border border-border/60 bg-card/50 px-2.5 py-1.5 text-left text-[13px] transition hover:bg-accent/50"
     >
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", dotClass)} />

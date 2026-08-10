@@ -8,6 +8,7 @@ import {
   closeEmptyPane,
   closePaneTab,
   createPaneTree,
+  findAdjacentPanes,
   findPane,
   focusPane,
   getPanes,
@@ -554,10 +555,7 @@ export function findThreadWorkspaceTabGroup(
   current: ThreadWorkspaceTabFields,
   tabId: PaneTabId,
 ): PaneId | null {
-  return (
-    getPanes(current.paneTree.root).find((group) => group.tabIds.includes(tabId))?.id ??
-    null
-  );
+  return getPanes(current.paneTree.root).find((group) => group.tabIds.includes(tabId))?.id ?? null;
 }
 
 export function findSurfaceTabs(
@@ -568,6 +566,66 @@ export function findSurfaceTabs(
     (tab): tab is Extract<ThreadWorkspaceTab, { _tag: "Surface" }> =>
       tab._tag === "Surface" && tab.surfaceId === surfaceId,
   );
+}
+
+/**
+ * Reveals a contextual surface beside the thread without creating duplicate
+ * placements. Existing placements outside the thread pane keep the user's
+ * layout; a placement inside the thread pane moves right so the conversation
+ * remains visible.
+ */
+export function revealThreadWorkspaceSurfaceBesideThread(
+  current: ThreadWorkspaceTabFields,
+  surfaceId: string,
+): ThreadWorkspaceTabFields {
+  const threadTab = Object.values(current.tabsById).find((tab) => tab._tag === "Thread");
+  const threadPaneId = threadTab ? findThreadWorkspaceTabGroup(current, threadTab.id) : null;
+  const existingTabs = findSurfaceTabs(current, surfaceId);
+  const existingOutsideThreadPane = existingTabs.find(
+    (tab) => findThreadWorkspaceTabGroup(current, tab.id) !== threadPaneId,
+  );
+
+  if (existingOutsideThreadPane) {
+    return restorePaneTree(activateWorkspaceTab(current, existingOutsideThreadPane.id));
+  }
+
+  if (!threadPaneId) {
+    const revealed = existingTabs[0]
+      ? activateWorkspaceTab(current, existingTabs[0].id)
+      : addSurfaceTab(current, surfaceId);
+    return restorePaneTree(revealed);
+  }
+
+  const rightPaneId = findAdjacentPanes(current.paneTree, threadPaneId).right;
+  const existingThreadTab = existingTabs[0];
+  if (existingThreadTab) {
+    const moved = rightPaneId
+      ? moveThreadWorkspaceTabToPane(current, {
+          sourcePaneId: threadPaneId,
+          targetPaneId: rightPaneId,
+          tabId: existingThreadTab.id,
+        })
+      : moveThreadWorkspaceTabToSplit(current, {
+          sourcePaneId: threadPaneId,
+          targetPaneId: threadPaneId,
+          tabId: existingThreadTab.id,
+          direction: "right",
+        });
+    return restorePaneTree(moved);
+  }
+
+  const targetWorkspace = rightPaneId
+    ? { ...current, paneTree: focusPane(current.paneTree, rightPaneId) }
+    : splitThreadWorkspacePane(current, threadPaneId, "right");
+  return restorePaneTree(addSurfaceTab(targetWorkspace, surfaceId));
+}
+
+function restorePaneTree(current: ThreadWorkspaceTabFields): ThreadWorkspaceTabFields {
+  if (current.paneTree.maximizedPaneId === null) return current;
+  return {
+    ...current,
+    paneTree: { ...current.paneTree, maximizedPaneId: null },
+  };
 }
 
 function addSurfaceTab(
@@ -614,9 +672,7 @@ function closeWorkspaceTab(
 }
 
 function withoutUnreferencedTabs(current: ThreadWorkspaceTabFields): ThreadWorkspaceTabFields {
-  const referencedIds = new Set(
-    getPanes(current.paneTree.root).flatMap((group) => group.tabIds),
-  );
+  const referencedIds = new Set(getPanes(current.paneTree.root).flatMap((group) => group.tabIds));
   const tabsById = Object.fromEntries(
     Object.entries(current.tabsById).filter(([tabId]) => referencedIds.has(tabId as PaneTabId)),
   );
@@ -625,10 +681,7 @@ function withoutUnreferencedTabs(current: ThreadWorkspaceTabFields): ThreadWorks
     : { ...current, tabsById };
 }
 
-function workspaceTabsShareContent(
-  left: ThreadWorkspaceTab,
-  right: ThreadWorkspaceTab,
-): boolean {
+function workspaceTabsShareContent(left: ThreadWorkspaceTab, right: ThreadWorkspaceTab): boolean {
   if (left._tag === "Thread" || right._tag === "Thread") {
     return left._tag === right._tag;
   }

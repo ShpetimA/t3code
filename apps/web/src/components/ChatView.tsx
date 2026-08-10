@@ -164,7 +164,11 @@ import {
 import { RightPanelEmptyState, RightPanelTabBar, RightPanelTabs } from "./RightPanelTabs";
 import type { WorkspaceTabContextTarget } from "./RightPanelTabs.logic";
 import { SplitPaneGrid } from "./SplitPaneGrid";
-import { AgentsPanel } from "./AgentsPanel";
+import {
+  AgentsPanel,
+  type AgentPanelRevealRequest,
+  type AgentPanelRevealTarget,
+} from "./AgentsPanel";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -1561,6 +1565,12 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThreadEnvironmentId, activeThreadId],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const [agentPanelRevealByThreadKey, setAgentPanelRevealByThreadKey] = useState<
+    ReadonlyMap<string, AgentPanelRevealRequest>
+  >(() => new Map());
+  const activeAgentPanelRevealRequest = activeThreadKey
+    ? (agentPanelRevealByThreadKey.get(activeThreadKey) ?? null)
+    : null;
   const [timelineAnchor, setTimelineAnchor] = useState<{
     readonly threadKey: string | null;
     readonly messageId: MessageId | null;
@@ -3262,6 +3272,26 @@ function ChatViewContent(props: ChatViewProps) {
       presentation: workspaceSurfacePresentation,
     });
   }, [activeThreadRef, workspaceSurfacePresentation]);
+  const revealAgentsFromTimeline = useCallback(
+    (target: AgentPanelRevealTarget) => {
+      if (!activeThreadRef || !activeThreadKey) return;
+      if (workspaceMode) {
+        transitionThreadWorkspace(activeThreadRef, { _tag: "RevealAgentsBesideThread" });
+      } else {
+        addAgentsSurface();
+      }
+      setAgentPanelRevealByThreadKey((current) => {
+        const previous = current.get(activeThreadKey);
+        const next = new Map(current);
+        next.set(activeThreadKey, {
+          requestId: (previous?.requestId ?? 0) + 1,
+          target,
+        });
+        return next;
+      });
+    },
+    [activeThreadKey, activeThreadRef, addAgentsSurface, workspaceMode],
+  );
   const openFileSurface = useCallback(
     (relativePath: string) => {
       if (!activeThreadRef || !activeProject) return;
@@ -6034,10 +6064,7 @@ function ChatViewContent(props: ChatViewProps) {
   }
 
   const focusedWorkspaceGroup = threadWorkspaceState
-    ? findPane(
-        threadWorkspaceState.paneTree.root,
-        threadWorkspaceState.paneTree.focusedPaneId,
-      )
+    ? findPane(threadWorkspaceState.paneTree.root, threadWorkspaceState.paneTree.focusedPaneId)
     : null;
   const canSplitFocusedEditorRight = focusedWorkspaceGroup !== null;
   const panelToggleControls = (
@@ -6128,6 +6155,7 @@ function ChatViewContent(props: ChatViewProps) {
           model={agentPanelModel}
           environmentId={activeThreadRef?.environmentId ?? null}
           threadId={activeThreadRef?.threadId ?? null}
+          revealRequest={activeAgentPanelRevealRequest}
         />
       ) : (surface.kind === "files" || surface.kind === "file") &&
         activeProject &&
@@ -6273,7 +6301,7 @@ function ChatViewContent(props: ChatViewProps) {
             {/* Messages — LegendList handles virtualization and scrolling internally */}
             <MessagesTimeline
               agentPanelModel={agentPanelModel}
-              onOpenAgents={addAgentsSurface}
+              onOpenAgents={revealAgentsFromTimeline}
               key={activeThread.id}
               isWorking={isWorking}
               workingStepLabel={workingStepLabel}
@@ -6566,7 +6594,6 @@ function ChatViewContent(props: ChatViewProps) {
         {/* end chat column */}
       </div>
       {/* end horizontal flex container */}
-
     </div>
   );
 
@@ -6592,12 +6619,8 @@ function ChatViewContent(props: ChatViewProps) {
   );
 
   const visiblePaneTreeRoot = getVisiblePaneTreeRoot(threadWorkspaceState.paneTree);
-  const topRightPaneId = visiblePaneTreeRoot
-    ? findTopRightPane(visiblePaneTreeRoot).id
-    : null;
-  const topPanes = visiblePaneTreeRoot
-    ? getTopPanes(visiblePaneTreeRoot)
-    : [];
+  const topRightPaneId = visiblePaneTreeRoot ? findTopRightPane(visiblePaneTreeRoot).id : null;
+  const topPanes = visiblePaneTreeRoot ? getTopPanes(visiblePaneTreeRoot) : [];
   const topPaneIds = new Set(topPanes.map((pane) => pane.id));
   const topLeftPaneId = topPanes[0]?.id ?? null;
 

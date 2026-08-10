@@ -3,6 +3,7 @@ import { DEFAULT_THREAD_TERMINAL_HEIGHT } from "./types";
 import {
   createThreadWorkspaceTabFields,
   findSurfaceTabs,
+  revealThreadWorkspaceSurfaceBesideThread,
   transitionThreadWorkspaceTabs,
   type ThreadWorkspaceLayoutTransition,
   type ThreadWorkspaceTab,
@@ -45,6 +46,7 @@ export type ThreadWorkspaceTransition =
       readonly surfaceId: string;
       readonly presentation?: RightPanelSurfacePresentation;
     }
+  | { readonly _tag: "RevealAgentsBesideThread" }
   | { readonly _tag: "CloseSurface"; readonly surfaceId: string }
   | { readonly _tag: "CloseOtherSurfaces"; readonly surfaceId: string }
   | { readonly _tag: "CloseSurfacesToRight"; readonly surfaceId: string }
@@ -139,6 +141,16 @@ export function transitionThreadWorkspaceState(
         surfaceId: input.surfaceId,
       });
       break;
+    case "RevealAgentsBesideThread": {
+      const opened = openThreadWorkspaceSurface(
+        surfaceFields,
+        { _tag: "Agents" },
+        "preserve-panel",
+      );
+      surfaceFields = opened.surfaceFields;
+      tabFields = revealThreadWorkspaceSurfaceBesideThread(tabFields, opened.surfaceId);
+      break;
+    }
     case "ActivateThread":
     case "ActivateTab":
     case "FocusPane":
@@ -286,7 +298,8 @@ export function transitionThreadWorkspaceState(
     state,
     removedSurfaces,
     selectedSurface:
-      surfaceFields.surfaces.find((surface) => surface.id === surfaceFields.activeSurfaceId) ?? null,
+      surfaceFields.surfaces.find((surface) => surface.id === surfaceFields.activeSurfaceId) ??
+      null,
   };
 }
 
@@ -374,13 +387,8 @@ function selectFocusedWorkspaceSurface(
   workspace: ThreadWorkspaceTabFields,
   surfaceFields: ThreadWorkspaceSurfaceFields,
 ): ThreadWorkspaceSurfaceFields {
-  const focusedGroup = findPane(
-    workspace.paneTree.root,
-    workspace.paneTree.focusedPaneId,
-  );
-  const activeTab = focusedGroup?.activeTabId
-    ? workspace.tabsById[focusedGroup.activeTabId]
-    : null;
+  const focusedGroup = findPane(workspace.paneTree.root, workspace.paneTree.focusedPaneId);
+  const activeTab = focusedGroup?.activeTabId ? workspace.tabsById[focusedGroup.activeTabId] : null;
   return activeTab?._tag === "Surface"
     ? transitionThreadWorkspaceSurfaces(surfaceFields, {
         _tag: "SelectSurface",

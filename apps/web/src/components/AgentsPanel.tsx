@@ -23,11 +23,22 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Bot, Braces, Check, ChevronDown, ChevronRight, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
+
+/** The subagent run or direct-spawn batch a contextual View action should reveal. */
+export type AgentPanelRevealTarget =
+  | { readonly _tag: "Workflow"; readonly workflowId: string }
+  | { readonly _tag: "Agents"; readonly agentIds: readonly string[] };
+
+/** One repeatable request to reveal a target inside the Agents surface. */
+export interface AgentPanelRevealRequest {
+  readonly requestId: number;
+  readonly target: AgentPanelRevealTarget;
+}
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -137,7 +148,15 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
 }
 
 /** Flat, non-interactive agent status line. No unfold. */
-function AgentRow({ agent }: { agent: RuntimeSubagent }) {
+function AgentRow({
+  agent,
+  selected = false,
+  revealRef,
+}: {
+  agent: RuntimeSubagent;
+  selected?: boolean;
+  revealRef?: ((element: HTMLDivElement | null) => void) | undefined;
+}) {
   const visuals = STATUS_VISUALS[agent.status];
   const activity = agentActivityText(agent);
   const modelLabel = formatSubagentModelLabel(agent.model, agent.effort);
@@ -153,7 +172,13 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
   ].filter((value): value is string => value !== null);
 
   return (
-    <div className="grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1">
+    <div
+      ref={revealRef}
+      className={cn(
+        "grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1",
+        selected && "bg-info/10 ring-1 ring-inset ring-info/30",
+      )}
+    >
       <span className="col-start-1 row-start-1 flex items-center">
         <StatusDot status={agent.status} />
       </span>
@@ -377,11 +402,15 @@ function ExpandedWorkflowSection({
   environmentId,
   threadId,
   onCollapse,
+  selected,
+  revealRef,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
   onCollapse: () => void;
+  selected: boolean;
+  revealRef?: ((element: HTMLElement | null) => void) | undefined;
 }) {
   const [scriptOpen, setScriptOpen] = useState(false);
   const members = workflowMembers(group);
@@ -395,7 +424,13 @@ function ExpandedWorkflowSection({
   const scriptPath = group.workflow.runHandles?.scriptPath;
   const canShowScript = scriptPath !== undefined && environmentId !== null && threadId !== null;
   return (
-    <section className="rounded-lg border border-border/50 bg-card/30 p-1.5">
+    <section
+      ref={revealRef}
+      className={cn(
+        "rounded-lg border border-border/50 bg-card/30 p-1.5",
+        selected && "border-info/40 bg-info/5 ring-1 ring-inset ring-info/20",
+      )}
+    >
       <div className="flex items-center gap-2 px-1.5 pt-0.5 text-[.65rem] font-medium uppercase tracking-wider text-muted-foreground">
         <StatusDot status={group.workflow.status} />
         <span className="min-w-0 truncate">
@@ -455,9 +490,13 @@ function ExpandedWorkflowSection({
 function CollapsedWorkflowSection({
   group,
   onExpand,
+  selected,
+  revealRef,
 }: {
   group: AgentPanelWorkflowGroup;
   onExpand: () => void;
+  selected: boolean;
+  revealRef?: ((element: HTMLElement | null) => void) | undefined;
 }) {
   const members = workflowMembers(group);
   const failed = members.filter((member) => member.status === "failed").length;
@@ -472,7 +511,10 @@ function CollapsedWorkflowSection({
       ? elapsedBetween(group.workflow.startedAt, group.workflow.completedAt)
       : null;
   return (
-    <section>
+    <section
+      ref={revealRef}
+      className={cn("rounded-md", selected && "bg-info/5 ring-1 ring-inset ring-info/20")}
+    >
       <button
         type="button"
         onClick={onExpand}
@@ -500,21 +542,40 @@ function WorkflowSection({
   group,
   environmentId,
   threadId,
+  revealRequest,
+  revealRef,
 }: {
   group: AgentPanelWorkflowGroup;
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
+  revealRequest: AgentPanelRevealRequest | null;
+  revealRef?: ((element: HTMLElement | null) => void) | undefined;
 }) {
-  const [open, setOpen] = useState(() => workflowIsLive(group));
+  const selected =
+    revealRequest?.target._tag === "Workflow" &&
+    revealRequest.target.workflowId === group.workflow.id;
+  const [open, setOpen] = useState(() => workflowIsLive(group) || selected);
+  useEffect(() => {
+    if (selected) {
+      setOpen(true);
+    }
+  }, [revealRequest?.requestId, selected]);
   return open ? (
     <ExpandedWorkflowSection
       group={group}
       environmentId={environmentId}
       threadId={threadId}
       onCollapse={() => setOpen(false)}
+      selected={selected}
+      revealRef={revealRef}
     />
   ) : (
-    <CollapsedWorkflowSection group={group} onExpand={() => setOpen(true)} />
+    <CollapsedWorkflowSection
+      group={group}
+      onExpand={() => setOpen(true)}
+      selected={selected}
+      revealRef={revealRef}
+    />
   );
 }
 
@@ -522,11 +583,36 @@ export function AgentsPanel({
   model,
   environmentId = null,
   threadId = null,
+  revealRequest = null,
 }: {
   model: AgentPanelModel;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
+  revealRequest?: AgentPanelRevealRequest | null;
 }) {
+  const revealElementRef = useRef<HTMLElement | null>(null);
+  const setRevealElement = useCallback((element: HTMLElement | null) => {
+    revealElementRef.current = element;
+  }, []);
+  const workflowRevealId =
+    revealRequest?.target._tag === "Workflow" ? revealRequest.target.workflowId : null;
+  const directRevealIds =
+    revealRequest?.target._tag === "Agents" ? revealRequest.target.agentIds : [];
+  const firstDirectRevealId =
+    model.directAgents.find((agent) => directRevealIds.includes(agent.id))?.id ?? null;
+  const revealTargetAvailable =
+    (workflowRevealId !== null &&
+      model.workflows.some((group) => group.workflow.id === workflowRevealId)) ||
+    firstDirectRevealId !== null;
+
+  useEffect(() => {
+    if (!revealRequest || !revealTargetAvailable) return;
+    const frameId = window.requestAnimationFrame(() => {
+      revealElementRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [revealRequest, revealTargetAvailable]);
+
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -550,6 +636,8 @@ export function AgentsPanel({
               group={group}
               environmentId={environmentId}
               threadId={threadId}
+              revealRequest={revealRequest}
+              revealRef={group.workflow.id === workflowRevealId ? setRevealElement : undefined}
             />
           ))}
           {model.directAgents.length > 0 ? (
@@ -558,7 +646,12 @@ export function AgentsPanel({
                 Direct spawns
               </div>
               {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
+                <AgentRow
+                  key={agent.id}
+                  agent={agent}
+                  selected={directRevealIds.includes(agent.id)}
+                  revealRef={agent.id === firstDirectRevealId ? setRevealElement : undefined}
+                />
               ))}
             </section>
           ) : null}

@@ -2,6 +2,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { findThreadWorkspaceTabGroup, findSurfaceTabs } from "./threadWorkspace";
+import { getPanes } from "./splitPaneTree";
 import {
   selectThreadWorkspaceOrDefault,
   transitionThreadWorkspace,
@@ -46,6 +47,124 @@ describe("thread workspace lifecycle", () => {
 
     expect(result.state.surfaces).toEqual([{ id: "files", kind: "files" }]);
     expect(findSurfaceTabs(result.state, "files")).toHaveLength(1);
+  });
+
+  test("reveals agents in a new pane beside the thread", () => {
+    const result = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "RevealAgentsBesideThread",
+    });
+    const agentTab = findSurfaceTabs(result.state, "agents")[0];
+    const threadTab = Object.values(result.state.tabsById).find((tab) => tab._tag === "Thread");
+
+    expect(agentTab).toBeDefined();
+    expect(threadTab).toBeDefined();
+    if (!agentTab || !threadTab) return;
+
+    const agentPaneId = findThreadWorkspaceTabGroup(result.state, agentTab.id);
+    const threadPaneId = findThreadWorkspaceTabGroup(result.state, threadTab.id);
+    expect(agentPaneId).not.toBe(threadPaneId);
+    expect(result.state.paneTree.root).toMatchObject({
+      _tag: "Split",
+      orientation: "horizontal",
+      first: { id: threadPaneId },
+      second: { id: agentPaneId },
+    });
+    expect(result.state.paneTree).toMatchObject({
+      focusedPaneId: agentPaneId,
+      maximizedPaneId: null,
+    });
+  });
+
+  test("uses the thread's existing right pane for a new Agents tab", () => {
+    const initial = selectThreadWorkspaceOrDefault(
+      useThreadWorkspaceStore.getState().byThreadKey,
+      THREAD_REF,
+    );
+    const threadPaneId = initial.paneTree.focusedPaneId;
+    const split = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "SplitPane",
+      paneId: threadPaneId,
+      direction: "right",
+    }).state;
+    const rightPaneId = split.paneTree.focusedPaneId;
+    transitionThreadWorkspace(THREAD_REF, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Files" },
+    });
+    transitionThreadWorkspace(THREAD_REF, { _tag: "ActivateThread" });
+
+    const revealed = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "RevealAgentsBesideThread",
+    }).state;
+    const agentTab = findSurfaceTabs(revealed, "agents")[0];
+
+    expect(agentTab).toBeDefined();
+    if (!agentTab) return;
+    expect(getPanes(revealed.paneTree.root)).toHaveLength(2);
+    expect(findThreadWorkspaceTabGroup(revealed, agentTab.id)).toBe(rightPaneId);
+    expect(revealed.paneTree).toMatchObject({
+      focusedPaneId: rightPaneId,
+      maximizedPaneId: null,
+    });
+  });
+
+  test("moves an Agents tab out of the thread pane when View needs side-by-side context", () => {
+    const opened = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Agents" },
+    }).state;
+    const agentTab = findSurfaceTabs(opened, "agents")[0];
+
+    expect(agentTab).toBeDefined();
+    if (!agentTab) return;
+    const threadPaneId = findThreadWorkspaceTabGroup(opened, agentTab.id);
+    expect(threadPaneId).not.toBeNull();
+    if (!threadPaneId) return;
+    transitionThreadWorkspace(THREAD_REF, {
+      _tag: "TogglePaneMaximized",
+      paneId: threadPaneId,
+    });
+
+    const revealed = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "RevealAgentsBesideThread",
+    }).state;
+
+    expect(findSurfaceTabs(revealed, "agents")).toHaveLength(1);
+    expect(findThreadWorkspaceTabGroup(revealed, agentTab.id)).not.toBe(threadPaneId);
+    expect(getPanes(revealed.paneTree.root)).toHaveLength(2);
+    expect(revealed.paneTree.maximizedPaneId).toBeNull();
+  });
+
+  test("focuses an existing Agents pane without duplicating it", () => {
+    const firstReveal = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "RevealAgentsBesideThread",
+    }).state;
+    const agentTab = findSurfaceTabs(firstReveal, "agents")[0];
+    const threadTab = Object.values(firstReveal.tabsById).find((tab) => tab._tag === "Thread");
+
+    expect(agentTab).toBeDefined();
+    expect(threadTab).toBeDefined();
+    if (!agentTab || !threadTab) return;
+    const agentPaneId = findThreadWorkspaceTabGroup(firstReveal, agentTab.id);
+    const threadPaneId = findThreadWorkspaceTabGroup(firstReveal, threadTab.id);
+    expect(agentPaneId).not.toBeNull();
+    expect(threadPaneId).not.toBeNull();
+    if (!agentPaneId || !threadPaneId) return;
+    transitionThreadWorkspace(THREAD_REF, {
+      _tag: "TogglePaneMaximized",
+      paneId: threadPaneId,
+    });
+
+    const revealedAgain = transitionThreadWorkspace(THREAD_REF, {
+      _tag: "RevealAgentsBesideThread",
+    }).state;
+
+    expect(findSurfaceTabs(revealedAgain, "agents")).toHaveLength(1);
+    expect(getPanes(revealedAgain.paneTree.root)).toHaveLength(2);
+    expect(revealedAgain.paneTree).toMatchObject({
+      focusedPaneId: agentPaneId,
+      maximizedPaneId: null,
+    });
   });
 
   test("keeps a resource until its last copied placement closes", () => {
