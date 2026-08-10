@@ -6,7 +6,7 @@ import * as Schema from "effect/Schema";
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
 import { applyPreviewServerSnapshot, isPreviewSupportedInRuntime } from "~/previewStateStore";
-import { transitionThreadWorkspace } from "~/threadWorkspace";
+import { transitionThreadWorkspace } from "~/threadWorkspaceStore";
 
 const terminalLinkErrorContext = {
   environmentId: Schema.String,

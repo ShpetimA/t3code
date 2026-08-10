@@ -7,7 +7,7 @@ import {
 import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
-import { transitionThreadWorkspace } from "~/threadWorkspace";
+import { transitionThreadWorkspace } from "~/threadWorkspaceStore";
 import { openPreviewSession } from "./openPreviewSession";
 
 export async function openDiscoveredPort<E>(input: {

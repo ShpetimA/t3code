@@ -1,7 +1,7 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 
 import type { AdjacentEditorGroups, EditorSplitDirection } from "~/editorWorkspace";
-import type { RightPanelSurface } from "~/rightPanelStore";
+import type { RightPanelSurface } from "~/threadWorkspaceSurface";
 
 export type EditorTabContextTarget =
   | { readonly _tag: "Thread" }

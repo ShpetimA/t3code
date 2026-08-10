@@ -1,13 +1,8 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { beforeEach, describe, expect, test } from "vitest";
 
-import {
-  findEditorWorkspaceTabGroup,
-  findSurfaceTabs,
-  useEditorWorkspaceStore,
-} from "./editorWorkspaceStore";
-import { useRightPanelStore } from "./rightPanelStore";
-import { transitionThreadWorkspace } from "./threadWorkspace";
+import { findEditorWorkspaceTabGroup, findSurfaceTabs } from "./threadEditorWorkspace";
+import { transitionThreadWorkspace, useThreadWorkspaceStore } from "./threadWorkspaceStore";
 
 const THREAD_REF = {
   environmentId: "env-test",
@@ -15,8 +10,7 @@ const THREAD_REF = {
 } as ScopedThreadRef;
 
 beforeEach(() => {
-  useEditorWorkspaceStore.setState({ byThreadKey: {} });
-  useRightPanelStore.setState({ byThreadKey: {} });
+  useThreadWorkspaceStore.setState({ byThreadKey: {} });
 });
 
 describe("thread workspace lifecycle", () => {

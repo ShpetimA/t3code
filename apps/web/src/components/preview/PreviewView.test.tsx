@@ -150,10 +150,8 @@ vi.mock("~/previewMiniPlayerStore", () => {
   };
 });
 
-vi.mock("~/rightPanelStore", () => ({
-  useRightPanelStore: {
-    getState: () => ({ close: mocks.closeRightPanel }),
-  },
+vi.mock("~/threadWorkspaceStore", () => ({
+  transitionThreadWorkspace: mocks.closeRightPanel,
 }));
 
 vi.mock("~/components/ui/toast", () => ({
@@ -351,7 +349,9 @@ describe("PreviewView navigation", () => {
     expect(mocks.pictureInPicturePressed).toBe(false);
     mocks.togglePictureInPicture?.();
     expect(mocks.openMiniPlayer).toHaveBeenCalledWith(props.threadRef, "tab-1");
-    expect(mocks.closeRightPanel).toHaveBeenCalledWith(props.threadRef);
+    expect(mocks.closeRightPanel).toHaveBeenCalledWith(props.threadRef, {
+      _tag: "CloseRightPanel",
+    });
 
     mocks.miniPlayerTabId = "tab-1";
     renderToStaticMarkup(<PreviewView {...props} />);

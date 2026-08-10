@@ -1,8 +1,4 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
   activateEditorTab,
@@ -29,7 +25,6 @@ import {
   type EditorWorkspace,
   type EditorWorkspaceNode,
 } from "./editorWorkspace";
-import { resolveStorage } from "./lib/storage";
 
 export type EditorWorkspaceTab =
   | { readonly _tag: "Thread"; readonly id: EditorTabId }
@@ -39,12 +34,6 @@ export interface ThreadEditorWorkspace {
   readonly workspace: EditorWorkspace;
   readonly tabsById: Readonly<Record<string, EditorWorkspaceTab>>;
   readonly nextId: number;
-}
-
-interface EditorWorkspaceStoreState {
-  readonly byThreadKey: Readonly<Record<string, ThreadEditorWorkspace>>;
-  readonly transition: (ref: ScopedThreadRef, input: ThreadEditorWorkspaceTransition) => void;
-  readonly removeThread: (ref: ScopedThreadRef) => void;
 }
 
 export type ThreadEditorWorkspaceTransition =
@@ -118,8 +107,6 @@ export type ThreadEditorWorkspaceTransition =
 
 const ROOT_GROUP_ID = "editor-group:root" as EditorGroupId;
 const THREAD_TAB_ID = "editor-tab:thread" as EditorTabId;
-const EDITOR_WORKSPACE_STORAGE_KEY = "t3code:editor-workspace-state:v1";
-const EDITOR_WORKSPACE_STORAGE_VERSION = 1;
 
 interface PersistedEditorGroupNode {
   readonly _tag: "Group";
@@ -567,13 +554,6 @@ export function findSurfaceTabs(
   );
 }
 
-export function selectThreadEditorWorkspace(
-  byThreadKey: Readonly<Record<string, ThreadEditorWorkspace>>,
-  ref: ScopedThreadRef | null | undefined,
-): ThreadEditorWorkspace | null {
-  return ref ? (byThreadKey[scopedThreadKey(ref)] ?? null) : null;
-}
-
 function addSurfaceTab(
   current: ThreadEditorWorkspace,
   surfaceId: string,
@@ -637,20 +617,6 @@ function editorWorkspaceTabsShareContent(
     return left._tag === right._tag;
   }
   return left.surfaceId === right.surfaceId;
-}
-
-function transitionThreadWorkspace(
-  byThreadKey: Readonly<Record<string, ThreadEditorWorkspace>>,
-  ref: ScopedThreadRef,
-  input: ThreadEditorWorkspaceTransition,
-): Readonly<Record<string, ThreadEditorWorkspace>> {
-  const threadKey = scopedThreadKey(ref);
-  const current =
-    byThreadKey[threadKey] ??
-    (input._tag === "ReconcileSurfaces" ? createThreadEditorWorkspace() : undefined);
-  if (!current) return byThreadKey;
-  const next = transitionThreadEditorWorkspace(current, input);
-  return next === byThreadKey[threadKey] ? byThreadKey : { ...byThreadKey, [threadKey]: next };
 }
 
 export function parsePersistedEditorWorkspaceState(input: unknown): {
@@ -787,34 +753,3 @@ function parseEditorSplitId(value: string): EditorSplitId | null {
 function parseEditorTabId(value: string): EditorTabId | null {
   return value.startsWith("editor-tab:") ? (value as EditorTabId) : null;
 }
-
-export const useEditorWorkspaceStore = create<EditorWorkspaceStoreState>()(
-  persist(
-    (set) => ({
-      byThreadKey: {},
-      transition: (ref, input) =>
-        set((state) => ({
-          byThreadKey: transitionThreadWorkspace(state.byThreadKey, ref, input),
-        })),
-      removeThread: (ref) =>
-        set((state) => {
-          const threadKey = scopedThreadKey(ref);
-          if (!(threadKey in state.byThreadKey)) return state;
-          const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
-          return { byThreadKey };
-        }),
-    }),
-    {
-      name: EDITOR_WORKSPACE_STORAGE_KEY,
-      version: EDITOR_WORKSPACE_STORAGE_VERSION,
-      storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
-      ),
-      partialize: (state) => ({ byThreadKey: state.byThreadKey }),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...parsePersistedEditorWorkspaceState(persistedState),
-      }),
-    },
-  ),
-);

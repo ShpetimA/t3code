@@ -87,7 +87,6 @@ import {
 import { onOpenCommandPalette } from "../commandPaletteBus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -139,7 +138,12 @@ import { ComposerHandleContext, useComposerHandleContext } from "../composerHand
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
-import { selectThreadEditorWorkspace, useEditorWorkspaceStore } from "../editorWorkspaceStore";
+import {
+  selectActiveRightPanel,
+  selectThreadEditorWorkspace,
+  transitionThreadEditorWorkspace,
+  useThreadWorkspaceStore,
+} from "../threadWorkspaceStore";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import {
@@ -407,7 +411,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
       : false,
   );
-  const previewOpen = useRightPanelStore((state) =>
+  const previewOpen = useThreadWorkspaceStore((state) =>
     routeThreadRef
       ? selectActiveRightPanel(state.byThreadKey, routeThreadRef) === "preview"
       : false,
@@ -587,7 +591,7 @@ function OpenCommandPaletteDialog(props: {
     () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
     [activeThread],
   );
-  const activeEditorWorkspace = useEditorWorkspaceStore((state) =>
+  const activeEditorWorkspace = useThreadWorkspaceStore((state) =>
     selectThreadEditorWorkspace(state.byThreadKey, activeEditorThreadRef),
   );
   const workspaceMode = !useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
@@ -1463,7 +1467,7 @@ function OpenCommandPaletteDialog(props: {
       shortcutCommand: "editor.toggleFocus",
       run: async () => {
         if (!activeEditorWorkspace) return;
-        useEditorWorkspaceStore.getState().transition(activeEditorThreadRef, {
+        transitionThreadEditorWorkspace(activeEditorThreadRef, {
           _tag: "ToggleGroupMaximized",
           groupId: activeEditorWorkspace.workspace.focusedGroupId,
         });

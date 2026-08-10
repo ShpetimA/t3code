@@ -7,8 +7,11 @@ import {
   readThreadPreviewState,
   resetPreviewStateForTests,
 } from "~/previewStateStore";
-import { useEditorWorkspaceStore } from "~/editorWorkspaceStore";
-import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
+import {
+  selectThreadRightPanelState,
+  transitionThreadWorkspace,
+  useThreadWorkspaceStore,
+} from "~/threadWorkspaceStore";
 
 import { addBrowserSurface } from "./addBrowserSurface";
 
@@ -28,8 +31,7 @@ const snapshot = (tabId: string): PreviewSessionSnapshot => ({
 
 beforeEach(() => {
   resetPreviewStateForTests();
-  useEditorWorkspaceStore.setState({ byThreadKey: {} });
-  useRightPanelStore.setState({ byThreadKey: {} });
+  useThreadWorkspaceStore.setState({ byThreadKey: {} });
 });
 
 describe("addBrowserSurface", () => {
@@ -37,7 +39,10 @@ describe("addBrowserSurface", () => {
     const first = snapshot("tab-1");
     const second = snapshot("tab-2");
     applyPreviewServerSnapshot(threadRef, first);
-    useRightPanelStore.getState().openBrowser(threadRef, first.tabId);
+    transitionThreadWorkspace(threadRef, {
+      _tag: "OpenSurface",
+      surface: { _tag: "Browser", tabId: first.tabId },
+    });
     const openPreview = vi.fn(async (_input: PreviewOpenInput) => AsyncResult.success(second));
 
     await addBrowserSurface({ threadRef, openPreview: ({ input }) => openPreview(input) });
@@ -46,7 +51,7 @@ describe("addBrowserSurface", () => {
     expect(Object.keys(readThreadPreviewState(threadRef).sessions)).toEqual(["tab-1", "tab-2"]);
     expect(
       selectThreadRightPanelState(
-        useRightPanelStore.getState().byThreadKey,
+        useThreadWorkspaceStore.getState().byThreadKey,
         threadRef,
       ).surfaces.map((surface) => surface.id),
     ).toEqual(["browser:tab-1", "browser:tab-2"]);

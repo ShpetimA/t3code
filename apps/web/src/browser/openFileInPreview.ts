@@ -20,7 +20,7 @@ import {
   isPreviewSupportedInRuntime,
   rememberPreviewUrl,
 } from "~/previewStateStore";
-import { transitionThreadWorkspace } from "~/threadWorkspace";
+import { transitionThreadWorkspace } from "~/threadWorkspaceStore";
 
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");

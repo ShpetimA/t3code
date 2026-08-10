@@ -10,7 +10,7 @@ import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { useThreadPreviewState } from "~/previewStateStore";
 import { selectThreadPreviewMiniPlayer, usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
-import { transitionThreadWorkspace } from "~/threadWorkspace";
+import { transitionThreadWorkspace } from "~/threadWorkspaceStore";
 
 import { previewBridge } from "./previewBridge";
 import {

@@ -25,7 +25,7 @@ import {
 
 import { isElectron } from "~/env";
 import type { AdjacentEditorGroups, EditorSplitDirection } from "~/editorWorkspace";
-import type { RightPanelSurface } from "~/rightPanelStore";
+import type { RightPanelSurface } from "~/threadWorkspaceSurface";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";

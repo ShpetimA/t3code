@@ -122,13 +122,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
-import {
-  selectActiveRightPanel,
-  selectActiveRightPanelSurface,
-  selectThreadRightPanelState,
-  type RightPanelSurface,
-  useRightPanelStore,
-} from "../rightPanelStore";
+import { type RightPanelSurface } from "../threadWorkspaceSurface";
 import type {
   EditorGroupId,
   EditorGroupDropZone,
@@ -144,12 +138,16 @@ import {
   getTopEditorGroups,
   getVisibleEditorWorkspaceRoot,
 } from "../editorWorkspace";
+import { type ThreadEditorWorkspaceTransition } from "../threadEditorWorkspace";
 import {
+  selectActiveRightPanel,
+  selectActiveRightPanelSurface,
   selectThreadEditorWorkspace,
-  useEditorWorkspaceStore,
-  type ThreadEditorWorkspaceTransition,
-} from "../editorWorkspaceStore";
-import { transitionThreadWorkspace } from "../threadWorkspace";
+  selectThreadRightPanelState,
+  transitionThreadEditorWorkspace,
+  transitionThreadWorkspace,
+  useThreadWorkspaceStore,
+} from "../threadWorkspaceStore";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -690,7 +688,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     environmentId: threadRef.environmentId,
     threadId,
   });
-  const panelSurfaces = useRightPanelStore(
+  const panelSurfaces = useThreadWorkspaceStore(
     (state) => selectThreadRightPanelState(state.byThreadKey, threadRef).surfaces,
   );
   const panelTerminalIds = useMemo(
@@ -1574,17 +1572,17 @@ function ChatViewContent(props: ChatViewProps) {
     setTimelineAnchor({ threadKey: activeThreadKey, messageId: null });
   }
   const timelineAnchorMessageId = timelineAnchor.messageId;
-  const activeRightPanelKind = useRightPanelStore((state) =>
+  const activeRightPanelKind = useThreadWorkspaceStore((state) =>
     selectActiveRightPanel(state.byThreadKey, activeThreadRef),
   );
   const diffOpen = activeRightPanelKind === "diff";
-  const rightPanelState = useRightPanelStore((state) =>
+  const rightPanelState = useThreadWorkspaceStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
-  const activeRightPanelSurface = useRightPanelStore((state) =>
+  const activeRightPanelSurface = useThreadWorkspaceStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
-  const editorWorkspaceState = useEditorWorkspaceStore((state) =>
+  const editorWorkspaceState = useThreadWorkspaceStore((state) =>
     selectThreadEditorWorkspace(state.byThreadKey, activeThreadRef),
   );
   const activePreviewState = useThreadPreviewState(activeThreadRef);
@@ -3278,7 +3276,7 @@ function ChatViewContent(props: ChatViewProps) {
   const togglePreviewPanel = useCallback(() => {
     if (!activeThreadRef || !isPreviewSupportedInRuntime()) return;
     if (previewPanelOpen) {
-      useRightPanelStore.getState().close(activeThreadRef);
+      transitionThreadWorkspace(activeThreadRef, { _tag: "CloseRightPanel" });
       return;
     }
     const activeTabId = activePreviewState.activeTabId;
@@ -3300,7 +3298,7 @@ function ChatViewContent(props: ChatViewProps) {
   ]);
   const closePreviewPanel = useCallback(() => {
     if (activeThreadRef) {
-      useRightPanelStore.getState().close(activeThreadRef);
+      transitionThreadWorkspace(activeThreadRef, { _tag: "CloseRightPanel" });
     }
   }, [activeThreadRef]);
   const addTerminalSurface = useCallback(() => {
@@ -3447,22 +3445,22 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const toggleRightPanel = useCallback(() => {
     if (!activeThreadRef) return;
-    useRightPanelStore.getState().toggleVisibility(activeThreadRef);
+    transitionThreadWorkspace(activeThreadRef, { _tag: "ToggleRightPanel" });
   }, [activeThreadRef]);
   const activateThreadWorkspaceTab = useCallback(() => {
     if (!workspaceMode || !activeThreadRef) return;
-    useEditorWorkspaceStore.getState().transition(activeThreadRef, { _tag: "ActivateThread" });
+    transitionThreadEditorWorkspace(activeThreadRef, { _tag: "ActivateThread" });
   }, [activeThreadRef, workspaceMode]);
   const splitFocusedEditorRight = useCallback(() => {
     if (!workspaceMode || !activeThreadRef) return;
     const current = selectThreadEditorWorkspace(
-      useEditorWorkspaceStore.getState().byThreadKey,
+      useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
     if (!current) return;
     const focusedGroup = findEditorGroup(current.workspace.root, current.workspace.focusedGroupId);
     if (!focusedGroup) return;
-    useEditorWorkspaceStore.getState().transition(activeThreadRef, {
+    transitionThreadEditorWorkspace(activeThreadRef, {
       _tag: "SplitGroup",
       groupId: focusedGroup.id,
       direction: "right",
@@ -3471,11 +3469,11 @@ function ChatViewContent(props: ChatViewProps) {
   const toggleFocusedEditorGroup = useCallback(() => {
     if (!workspaceMode || !activeThreadRef) return;
     const current = selectThreadEditorWorkspace(
-      useEditorWorkspaceStore.getState().byThreadKey,
+      useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
     if (!current) return;
-    useEditorWorkspaceStore.getState().transition(activeThreadRef, {
+    transitionThreadEditorWorkspace(activeThreadRef, {
       _tag: "ToggleGroupMaximized",
       groupId: current.workspace.focusedGroupId,
     });
@@ -3514,7 +3512,7 @@ function ChatViewContent(props: ChatViewProps) {
   const syncActivePreviewSurface = useCallback(() => {
     if (!activeThreadRef) return;
     const nextActiveSurface = selectActiveRightPanelSurface(
-      useRightPanelStore.getState().byThreadKey,
+      useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
     if (nextActiveSurface?.kind === "preview" && nextActiveSurface.resourceId) {
@@ -6186,9 +6184,7 @@ function ChatViewContent(props: ChatViewProps) {
     target: EditorTabContextTarget,
   ) => {
     if (!activeThreadRef) return;
-    useEditorWorkspaceStore
-      .getState()
-      .transition(activeThreadRef, { _tag: "ActivateTab", groupId, tabId });
+    transitionThreadEditorWorkspace(activeThreadRef, { _tag: "ActivateTab", groupId, tabId });
     if (target._tag === "Thread") {
       activateThreadWorkspaceTab();
       return;
@@ -6198,10 +6194,9 @@ function ChatViewContent(props: ChatViewProps) {
 
   const focusEditorGroup = (groupId: EditorGroupId) => {
     if (!activeThreadRef) return;
-    const workspaceStore = useEditorWorkspaceStore.getState();
-    workspaceStore.transition(activeThreadRef, { _tag: "FocusGroup", groupId });
+    transitionThreadEditorWorkspace(activeThreadRef, { _tag: "FocusGroup", groupId });
     const next = selectThreadEditorWorkspace(
-      useEditorWorkspaceStore.getState().byThreadKey,
+      useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
     const group = next ? findEditorGroup(next.workspace.root, groupId) : null;
@@ -6640,7 +6635,7 @@ function ChatViewContent(props: ChatViewProps) {
     ) => {
       const tabId = tabIdForTarget(target);
       if (!tabId) return;
-      useEditorWorkspaceStore.getState().transition(activeThreadRef, {
+      transitionThreadEditorWorkspace(activeThreadRef, {
         _tag: "SplitTab",
         groupId: group.id,
         tabId,
@@ -6673,9 +6668,10 @@ function ChatViewContent(props: ChatViewProps) {
       mutateEditorTabsAndCleanup(transitionForTab(tabId));
     };
     const focusThen = (action: () => void) => {
-      useEditorWorkspaceStore
-        .getState()
-        .transition(activeThreadRef, { _tag: "FocusGroup", groupId: group.id });
+      transitionThreadEditorWorkspace(activeThreadRef, {
+        _tag: "FocusGroup",
+        groupId: group.id,
+      });
       action();
     };
     const startTabDrag = (target: EditorTabContextTarget) => {
@@ -6694,7 +6690,7 @@ function ChatViewContent(props: ChatViewProps) {
         const sourceIndex = sourceGroup.tabIds.indexOf(draggedEditorTab.sourceTabId);
         const adjustedTargetIndex =
           sourceIndex < targetIndex ? Math.max(0, targetIndex - 1) : targetIndex;
-        useEditorWorkspaceStore.getState().transition(activeThreadRef, {
+        transitionThreadEditorWorkspace(activeThreadRef, {
           _tag: "ReorderTab",
           groupId: group.id,
           tabId: draggedEditorTab.sourceTabId,
@@ -6734,7 +6730,7 @@ function ChatViewContent(props: ChatViewProps) {
             active: editorWorkspaceState.workspace.maximizedGroupId === group.id,
             shortcutLabel: shortcutLabelForCommand(keybindings, "editor.toggleFocus"),
             onToggle: () =>
-              useEditorWorkspaceStore.getState().transition(activeThreadRef, {
+              transitionThreadEditorWorkspace(activeThreadRef, {
                 _tag: "ToggleGroupMaximized",
                 groupId: group.id,
               }),
@@ -6865,9 +6861,11 @@ function ChatViewContent(props: ChatViewProps) {
             setDraggedEditorTab(null);
           }}
           onResizeSplit={(splitId, ratio) =>
-            useEditorWorkspaceStore
-              .getState()
-              .transition(activeThreadRef, { _tag: "ResizeSplit", splitId, ratio })
+            transitionThreadEditorWorkspace(activeThreadRef, {
+              _tag: "ResizeSplit",
+              splitId,
+              ratio,
+            })
           }
         />
       ) : (

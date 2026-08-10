@@ -1,6 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
-import { transitionThreadWorkspace } from "./threadWorkspace";
+import { transitionThreadWorkspace } from "./threadWorkspaceStore";
 import { resolvePathLinkTarget } from "./terminal-links";
 
 interface OpenDiffFilePrimaryActionInput {

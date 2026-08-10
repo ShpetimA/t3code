@@ -1,21 +1,20 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
-
 import { findEditorGroup } from "./editorWorkspace";
 import {
+  createThreadEditorWorkspace,
   findSurfaceTabs,
-  selectThreadEditorWorkspace,
-  useEditorWorkspaceStore,
+  transitionThreadEditorWorkspace,
   type ThreadEditorWorkspace,
   type ThreadEditorWorkspaceTransition,
-} from "./editorWorkspaceStore";
+} from "./threadEditorWorkspace";
 import {
-  selectThreadRightPanelState,
-  useRightPanelStore,
+  EMPTY_THREAD_RIGHT_PANEL_STATE,
+  transitionThreadRightPanel,
   type RightPanelSurface,
   type RightPanelSurfacePresentation,
   type ThreadRightPanelState,
-} from "./rightPanelStore";
+} from "./threadWorkspaceSurface";
 
+/** Identifies a surface resource that should exist in a thread workspace. */
 export type ThreadWorkspaceSurfaceRequest =
   | { readonly _tag: "Diff" }
   | { readonly _tag: "Files" }
@@ -24,6 +23,7 @@ export type ThreadWorkspaceSurfaceRequest =
   | { readonly _tag: "File"; readonly relativePath: string; readonly line?: number }
   | { readonly _tag: "Terminal"; readonly terminalId: string };
 
+/** Describes one atomic thread-workspace operation. */
 export type ThreadWorkspaceTransition =
   | {
       readonly _tag: "OpenSurface";
@@ -51,110 +51,125 @@ export type ThreadWorkspaceTransition =
     }
   | { readonly _tag: "ActivateTerminal"; readonly surfaceId: string; readonly terminalId: string }
   | { readonly _tag: "CloseTerminal"; readonly surfaceId: string; readonly terminalId: string }
+  | { readonly _tag: "ShowRightPanel" }
+  | { readonly _tag: "CloseRightPanel" }
+  | { readonly _tag: "ToggleRightPanel" }
   | { readonly _tag: "ReconcileSurfaces" };
 
+/** The complete thread-owned surface catalog, editor placement, and presentation state. */
+export interface ThreadWorkspaceState {
+  readonly editorWorkspace: ThreadEditorWorkspace;
+  readonly rightPanel: ThreadRightPanelState;
+}
+
+/** Observable outcome of one thread-workspace transition. */
 export interface ThreadWorkspaceTransitionResult {
-  readonly editorWorkspace: ThreadEditorWorkspace | null;
+  readonly state: ThreadWorkspaceState;
+  readonly editorWorkspace: ThreadEditorWorkspace;
   readonly rightPanel: ThreadRightPanelState;
   readonly removedSurfaces: readonly RightPanelSurface[];
   readonly selectedSurface: RightPanelSurface | null;
 }
 
-/**
- * Owns operations that must keep the surface catalog and editor placements in sync.
- * Resource owners can use `removedSurfaces` to perform their own async cleanup.
- */
-export function transitionThreadWorkspace(
-  ref: ScopedThreadRef,
+/** Creates a thread workspace with its always-on thread tab. */
+export function createThreadWorkspaceState(): ThreadWorkspaceState {
+  return {
+    editorWorkspace: createThreadEditorWorkspace(),
+    rightPanel: EMPTY_THREAD_RIGHT_PANEL_STATE,
+  };
+}
+
+/** Applies surface and editor rules together as one pure state transition. */
+export function transitionThreadWorkspaceState(
+  current: ThreadWorkspaceState,
   input: ThreadWorkspaceTransition,
 ): ThreadWorkspaceTransitionResult {
-  const beforePanel = currentRightPanel(ref);
-  const beforeEditor = currentEditorWorkspace(ref);
-  const rightPanelStore = useRightPanelStore.getState();
-  const editorWorkspaceStore = useEditorWorkspaceStore.getState();
+  let editorWorkspace = current.editorWorkspace;
+  let rightPanel = current.rightPanel;
 
   switch (input._tag) {
     case "OpenSurface": {
-      const { surfaceId, previousSurfaceIds } = openRightPanelSurface(
-        ref,
-        beforePanel,
-        input.surface,
-        input.presentation,
-      );
-      for (const previousSurfaceId of previousSurfaceIds) {
-        editorWorkspaceStore.transition(ref, {
+      const opened = openThreadWorkspaceSurface(rightPanel, input.surface, input.presentation);
+      rightPanel = opened.rightPanel;
+      for (const previousSurfaceId of opened.previousSurfaceIds) {
+        editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, {
           _tag: "ReplaceSurface",
           previousSurfaceId,
-          nextSurfaceId: surfaceId,
+          nextSurfaceId: opened.surfaceId,
         });
       }
-      editorWorkspaceStore.transition(ref, { _tag: "OpenSurface", surfaceId });
+      editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, {
+        _tag: "OpenSurface",
+        surfaceId: opened.surfaceId,
+      });
       break;
     }
     case "ActivateSurface":
-      if (input.presentation === "preserve-panel") {
-        rightPanelStore.selectSurface(ref, input.surfaceId);
-      } else {
-        rightPanelStore.activateSurface(ref, input.surfaceId);
-      }
-      editorWorkspaceStore.transition(ref, {
+      rightPanel = transitionThreadRightPanel(rightPanel, {
+        _tag: input.presentation === "preserve-panel" ? "SelectSurface" : "ActivateSurface",
+        surfaceId: input.surfaceId,
+      });
+      editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, {
         _tag: "ActivateSurface",
         surfaceId: input.surfaceId,
       });
       break;
     case "ApplyEditorTransition": {
-      editorWorkspaceStore.transition(ref, input.transition);
-      const afterEditor = currentEditorWorkspace(ref);
-      if (beforeEditor && afterEditor) {
-        for (const surface of beforePanel.surfaces) {
-          if (
-            findSurfaceTabs(beforeEditor, surface.id).length > 0 &&
-            findSurfaceTabs(afterEditor, surface.id).length === 0
-          ) {
-            rightPanelStore.closeSurface(ref, surface.id);
-          }
-        }
-      }
-      selectFocusedWorkspaceSurface(ref);
-      break;
-    }
-    case "CloseSurface":
-      rightPanelStore.closeSurface(ref, input.surfaceId);
-      break;
-    case "CloseOtherSurfaces":
-      rightPanelStore.closeOtherSurfaces(ref, input.surfaceId);
-      break;
-    case "CloseSurfacesToRight":
-      rightPanelStore.closeSurfacesToRight(ref, input.surfaceId);
-      break;
-    case "CloseAllSurfaces":
-      rightPanelStore.closeAllSurfaces(ref);
-      break;
-    case "ToggleSurface":
-      rightPanelStore.toggle(ref, input.kind);
-      if (currentRightPanel(ref).isOpen) {
-        const activeSurfaceId = currentRightPanel(ref).activeSurfaceId;
-        if (activeSurfaceId) {
-          editorWorkspaceStore.transition(ref, {
-            _tag: "ActivateSurface",
-            surfaceId: activeSurfaceId,
+      const beforeEditor = editorWorkspace;
+      editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, input.transition);
+      for (const surface of rightPanel.surfaces) {
+        if (
+          findSurfaceTabs(beforeEditor, surface.id).length > 0 &&
+          findSurfaceTabs(editorWorkspace, surface.id).length === 0
+        ) {
+          rightPanel = transitionThreadRightPanel(rightPanel, {
+            _tag: "CloseSurface",
+            surfaceId: surface.id,
           });
         }
       }
+      rightPanel = selectFocusedWorkspaceSurface(editorWorkspace, rightPanel);
       break;
+    }
+    case "CloseSurface":
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
+      break;
+    case "CloseOtherSurfaces":
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
+      break;
+    case "CloseSurfacesToRight":
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
+      break;
+    case "CloseAllSurfaces":
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
+      break;
+    case "ToggleSurface": {
+      rightPanel = transitionThreadRightPanel(rightPanel, {
+        _tag: "ToggleKind",
+        kind: input.kind,
+      });
+      if (rightPanel.isOpen && rightPanel.activeSurfaceId) {
+        editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, {
+          _tag: "ActivateSurface",
+          surfaceId: rightPanel.activeSurfaceId,
+        });
+      }
+      break;
+    }
     case "ReconcileBrowserSurfaces": {
-      rightPanelStore.reconcileBrowserSurfaces(ref, input.tabIds);
-      const placeholder = beforePanel.surfaces.find(
+      const placeholder = rightPanel.surfaces.find(
         (surface) => surface.kind === "preview" && surface.resourceId === null,
       );
-      const firstNewBrowser = currentRightPanel(ref).surfaces.find(
+      const previousSurfaceIds = new Set(rightPanel.surfaces.map((surface) => surface.id));
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
+      const firstNewBrowser = rightPanel.surfaces.find(
         (surface) =>
           surface.kind === "preview" &&
           surface.resourceId !== null &&
-          !beforePanel.surfaces.some((previous) => previous.id === surface.id),
+          !previousSurfaceIds.has(surface.id),
       );
       if (placeholder && firstNewBrowser) {
-        editorWorkspaceStore.transition(ref, {
+        editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, {
           _tag: "ReplaceSurface",
           previousSurfaceId: placeholder.id,
           nextSurfaceId: firstNewBrowser.id,
@@ -163,29 +178,44 @@ export function transitionThreadWorkspace(
       break;
     }
     case "ReconcileFileSurfaces":
-      rightPanelStore.reconcileFileSurfaces(ref, input.workspaceAvailable);
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
       break;
     case "SplitTerminal":
-      rightPanelStore.splitTerminal(ref, input.surfaceId, input.terminalId, input.direction);
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
       break;
     case "ActivateTerminal":
-      rightPanelStore.activateTerminal(ref, input.surfaceId, input.terminalId);
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
       break;
     case "CloseTerminal":
-      rightPanelStore.closeTerminal(ref, input.surfaceId, input.terminalId);
+      rightPanel = transitionThreadRightPanel(rightPanel, input);
+      break;
+    case "ShowRightPanel":
+      rightPanel = transitionThreadRightPanel(rightPanel, { _tag: "ShowPanel" });
+      break;
+    case "CloseRightPanel":
+      rightPanel = transitionThreadRightPanel(rightPanel, { _tag: "ClosePanel" });
+      break;
+    case "ToggleRightPanel":
+      rightPanel = transitionThreadRightPanel(rightPanel, { _tag: "TogglePanelVisibility" });
       break;
     case "ReconcileSurfaces":
       break;
   }
 
-  reconcileEditorSurfaces(ref);
-  const rightPanel = currentRightPanel(ref);
-  const editorWorkspace = currentEditorWorkspace(ref);
+  editorWorkspace = transitionThreadEditorWorkspace(editorWorkspace, {
+    _tag: "ReconcileSurfaces",
+    surfaceIds: rightPanel.surfaces.map((surface) => surface.id),
+  });
   const remainingSurfaceIds = new Set(rightPanel.surfaces.map((surface) => surface.id));
-  const removedSurfaces = beforePanel.surfaces.filter(
+  const removedSurfaces = current.rightPanel.surfaces.filter(
     (surface) => !remainingSurfaceIds.has(surface.id),
   );
+  const state =
+    editorWorkspace === current.editorWorkspace && rightPanel === current.rightPanel
+      ? current
+      : { editorWorkspace, rightPanel };
   return {
+    state,
     editorWorkspace,
     rightPanel,
     removedSurfaces,
@@ -194,66 +224,101 @@ export function transitionThreadWorkspace(
   };
 }
 
-function openRightPanelSurface(
-  ref: ScopedThreadRef,
+function openThreadWorkspaceSurface(
   current: ThreadRightPanelState,
   request: ThreadWorkspaceSurfaceRequest,
   presentation: RightPanelSurfacePresentation | undefined,
-): { readonly surfaceId: string; readonly previousSurfaceIds: readonly string[] } {
-  const store = useRightPanelStore.getState();
+): {
+  readonly rightPanel: ThreadRightPanelState;
+  readonly surfaceId: string;
+  readonly previousSurfaceIds: readonly string[];
+} {
   switch (request._tag) {
     case "Diff":
-      store.open(ref, "diff", presentation);
-      return { surfaceId: "diff", previousSurfaceIds: [] };
+      return {
+        rightPanel: transitionThreadRightPanel(current, {
+          _tag: "OpenKind",
+          kind: "diff",
+          ...(presentation ? { presentation } : {}),
+        }),
+        surfaceId: "diff",
+        previousSurfaceIds: [],
+      };
     case "Files":
-      store.open(ref, "files", presentation);
-      return { surfaceId: "files", previousSurfaceIds: [] };
+      return {
+        rightPanel: transitionThreadRightPanel(current, {
+          _tag: "OpenKind",
+          kind: "files",
+          ...(presentation ? { presentation } : {}),
+        }),
+        surfaceId: "files",
+        previousSurfaceIds: [],
+      };
     case "Agents":
-      store.open(ref, "agents", presentation);
-      return { surfaceId: "agents", previousSurfaceIds: [] };
+      return {
+        rightPanel: transitionThreadRightPanel(current, {
+          _tag: "OpenKind",
+          kind: "agents",
+          ...(presentation ? { presentation } : {}),
+        }),
+        surfaceId: "agents",
+        previousSurfaceIds: [],
+      };
     case "Browser": {
-      store.openBrowser(ref, request.tabId, presentation);
       const placeholder = current.surfaces.find(
         (surface) => surface.kind === "preview" && surface.resourceId === null,
       );
       return {
+        rightPanel: transitionThreadRightPanel(current, {
+          _tag: "OpenBrowser",
+          tabId: request.tabId,
+          ...(presentation ? { presentation } : {}),
+        }),
         surfaceId: request.tabId ? `browser:${request.tabId}` : "browser:new",
         previousSurfaceIds: request.tabId && placeholder ? [placeholder.id] : [],
       };
     }
     case "File":
-      store.openFile(ref, request.relativePath, request.line, presentation);
       return {
+        rightPanel: transitionThreadRightPanel(current, {
+          _tag: "OpenFile",
+          relativePath: request.relativePath,
+          ...(request.line !== undefined ? { line: request.line } : {}),
+          ...(presentation ? { presentation } : {}),
+        }),
         surfaceId: `file:${request.relativePath}`,
         previousSurfaceIds: current.surfaces.some((surface) => surface.kind === "files")
           ? ["files"]
           : [],
       };
     case "Terminal":
-      store.openTerminal(ref, request.terminalId, presentation);
-      return { surfaceId: `terminal:${request.terminalId}`, previousSurfaceIds: [] };
+      return {
+        rightPanel: transitionThreadRightPanel(current, {
+          _tag: "OpenTerminal",
+          terminalId: request.terminalId,
+          ...(presentation ? { presentation } : {}),
+        }),
+        surfaceId: `terminal:${request.terminalId}`,
+        previousSurfaceIds: [],
+      };
   }
 }
 
-function reconcileEditorSurfaces(ref: ScopedThreadRef): void {
-  const surfaceIds = currentRightPanel(ref).surfaces.map((surface) => surface.id);
-  useEditorWorkspaceStore.getState().transition(ref, { _tag: "ReconcileSurfaces", surfaceIds });
-}
-
-function selectFocusedWorkspaceSurface(ref: ScopedThreadRef): void {
-  const current = currentEditorWorkspace(ref);
-  if (!current) return;
-  const focusedGroup = findEditorGroup(current.workspace.root, current.workspace.focusedGroupId);
-  const activeTab = focusedGroup?.activeTabId ? current.tabsById[focusedGroup.activeTabId] : null;
-  if (activeTab?._tag === "Surface") {
-    useRightPanelStore.getState().selectSurface(ref, activeTab.surfaceId);
-  }
-}
-
-function currentEditorWorkspace(ref: ScopedThreadRef): ThreadEditorWorkspace | null {
-  return selectThreadEditorWorkspace(useEditorWorkspaceStore.getState().byThreadKey, ref);
-}
-
-function currentRightPanel(ref: ScopedThreadRef): ThreadRightPanelState {
-  return selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref);
+function selectFocusedWorkspaceSurface(
+  editorWorkspace: ThreadEditorWorkspace,
+  rightPanel: ThreadRightPanelState,
+): ThreadRightPanelState {
+  const focusedGroup = findEditorGroup(
+    editorWorkspace.workspace.root,
+    editorWorkspace.workspace.focusedGroupId,
+  );
+  const activeTab = focusedGroup?.activeTabId
+    ? editorWorkspace.tabsById[focusedGroup.activeTabId]
+    : null;
+  return activeTab?._tag === "Surface"
+    ? transitionThreadRightPanel(rightPanel, {
+        _tag: "SelectSurface",
+        surfaceId: activeTab.surfaceId,
+      })
+    : rightPanel;
 }

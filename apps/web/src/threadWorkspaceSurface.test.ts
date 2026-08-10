@@ -3,21 +3,146 @@ import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
+  EMPTY_THREAD_RIGHT_PANEL_STATE,
   migratePersistedRightPanelState,
-  selectActiveRightPanel,
-  selectActiveRightPanelSurface,
-  selectThreadRightPanelState,
-  useRightPanelStore,
-} from "./rightPanelStore";
+  transitionThreadRightPanel,
+  type RightPanelKind,
+  type RightPanelSurfacePresentation,
+  type ThreadRightPanelState,
+  type ThreadRightPanelTransition,
+} from "./threadWorkspaceSurface";
 
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
+
+let byThreadKey: Record<string, ThreadRightPanelState> = {};
+
+function apply(ref: typeof refA, transition: ThreadRightPanelTransition): void {
+  const threadKey = `${ref.environmentId}:${ref.threadId}`;
+  const current = byThreadKey[threadKey] ?? EMPTY_THREAD_RIGHT_PANEL_STATE;
+  const next = transitionThreadRightPanel(current, transition);
+  if (!next.isOpen && next.activeSurfaceId === null && next.surfaces.length === 0) {
+    const { [threadKey]: _removed, ...rest } = byThreadKey;
+    byThreadKey = rest;
+    return;
+  }
+  byThreadKey = {
+    ...byThreadKey,
+    [threadKey]: next,
+  };
+}
+
+const useRightPanelStore = {
+  setState: (state: { readonly byThreadKey: Record<string, ThreadRightPanelState> }) => {
+    byThreadKey = state.byThreadKey;
+  },
+  getState: () => ({
+    byThreadKey,
+    open: (
+      ref: typeof refA,
+      kind: Exclude<RightPanelKind, "file" | "terminal">,
+      presentation?: RightPanelSurfacePresentation,
+    ) => apply(ref, { _tag: "OpenKind", kind, ...(presentation ? { presentation } : {}) }),
+    openBrowser: (
+      ref: typeof refA,
+      tabId: string | null,
+      presentation?: RightPanelSurfacePresentation,
+    ) => apply(ref, { _tag: "OpenBrowser", tabId, ...(presentation ? { presentation } : {}) }),
+    openFile: (
+      ref: typeof refA,
+      relativePath: string,
+      line?: number,
+      presentation?: RightPanelSurfacePresentation,
+    ) =>
+      apply(ref, {
+        _tag: "OpenFile",
+        relativePath,
+        ...(line !== undefined ? { line } : {}),
+        ...(presentation ? { presentation } : {}),
+      }),
+    openTerminal: (
+      ref: typeof refA,
+      terminalId: string,
+      presentation?: RightPanelSurfacePresentation,
+    ) =>
+      apply(ref, {
+        _tag: "OpenTerminal",
+        terminalId,
+        ...(presentation ? { presentation } : {}),
+      }),
+    splitTerminal: (
+      ref: typeof refA,
+      surfaceId: string,
+      terminalId: string,
+      direction?: "horizontal" | "vertical",
+    ) =>
+      apply(ref, {
+        _tag: "SplitTerminal",
+        surfaceId,
+        terminalId,
+        ...(direction ? { direction } : {}),
+      }),
+    activateTerminal: (ref: typeof refA, surfaceId: string, terminalId: string) =>
+      apply(ref, { _tag: "ActivateTerminal", surfaceId, terminalId }),
+    closeTerminal: (ref: typeof refA, surfaceId: string, terminalId: string) =>
+      apply(ref, { _tag: "CloseTerminal", surfaceId, terminalId }),
+    selectSurface: (ref: typeof refA, surfaceId: string) =>
+      apply(ref, { _tag: "SelectSurface", surfaceId }),
+    closeSurface: (ref: typeof refA, surfaceId: string) =>
+      apply(ref, { _tag: "CloseSurface", surfaceId }),
+    closeOtherSurfaces: (ref: typeof refA, surfaceId: string) =>
+      apply(ref, { _tag: "CloseOtherSurfaces", surfaceId }),
+    closeSurfacesToRight: (ref: typeof refA, surfaceId: string) =>
+      apply(ref, { _tag: "CloseSurfacesToRight", surfaceId }),
+    closeAllSurfaces: (ref: typeof refA) => apply(ref, { _tag: "CloseAllSurfaces" }),
+    reconcileBrowserSurfaces: (ref: typeof refA, tabIds: readonly string[]) =>
+      apply(ref, { _tag: "ReconcileBrowserSurfaces", tabIds }),
+    reconcileFileSurfaces: (ref: typeof refA, workspaceAvailable: boolean) =>
+      apply(ref, { _tag: "ReconcileFileSurfaces", workspaceAvailable }),
+    close: (ref: typeof refA) => apply(ref, { _tag: "ClosePanel" }),
+    toggleVisibility: (ref: typeof refA) => apply(ref, { _tag: "TogglePanelVisibility" }),
+    toggle: (ref: typeof refA, kind: Exclude<RightPanelKind, "file" | "terminal">) =>
+      apply(ref, { _tag: "ToggleKind", kind }),
+    removeThread: (ref: typeof refA) => {
+      const threadKey = `${ref.environmentId}:${ref.threadId}`;
+      const { [threadKey]: _removed, ...rest } = byThreadKey;
+      byThreadKey = rest;
+    },
+  }),
+};
+
+function selectThreadRightPanelState(
+  currentByThreadKey: Record<string, ThreadRightPanelState>,
+  ref: typeof refA,
+): ThreadRightPanelState {
+  return (
+    currentByThreadKey[`${ref.environmentId}:${ref.threadId}`] ?? EMPTY_THREAD_RIGHT_PANEL_STATE
+  );
+}
+
+function selectActiveRightPanel(
+  currentByThreadKey: Record<string, ThreadRightPanelState>,
+  ref: typeof refA,
+): RightPanelKind | null {
+  const state = selectThreadRightPanelState(currentByThreadKey, ref);
+  if (!state.isOpen) return null;
+  return state.surfaces.find((surface) => surface.id === state.activeSurfaceId)?.kind ?? null;
+}
+
+function selectActiveRightPanelSurface(
+  currentByThreadKey: Record<string, ThreadRightPanelState>,
+  ref: typeof refA,
+) {
+  const state = selectThreadRightPanelState(currentByThreadKey, ref);
+  if (!state.isOpen) return null;
+  return state.surfaces.find((surface) => surface.id === state.activeSurfaceId) ?? null;
+}
 
 beforeEach(() => {
   useRightPanelStore.setState({ byThreadKey: {} });
 });
 
-describe("rightPanelStore", () => {
+describe("thread workspace surface state", () => {
   it("drops the legacy singleton terminal surface during migration", () => {
     expect(
       migratePersistedRightPanelState({

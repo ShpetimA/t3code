@@ -76,7 +76,7 @@ import {
 } from "../markdown-links";
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
-import { transitionThreadWorkspace } from "../threadWorkspace";
+import { transitionThreadWorkspace } from "../threadWorkspaceStore";
 import { useActiveEnvironmentId } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { assetEnvironment } from "../state/assets";

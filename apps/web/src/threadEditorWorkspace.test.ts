@@ -7,7 +7,7 @@ import {
   findSurfaceTabs,
   parsePersistedEditorWorkspaceState,
   transitionThreadEditorWorkspace,
-} from "./editorWorkspaceStore";
+} from "./threadEditorWorkspace";
 
 function activeTabId(state: ReturnType<typeof createThreadEditorWorkspace>): EditorTabId | null {
   const group =
