@@ -5,7 +5,7 @@ import {
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
-import type { RightPanelSurfacePresentation } from "~/threadWorkspaceSurface";
+import type { RightPanelSurfacePresentation } from "~/threadWorkspace";
 import { transitionThreadWorkspace } from "~/threadWorkspaceStore";
 
 import { openPreviewSession } from "./openPreviewSession";

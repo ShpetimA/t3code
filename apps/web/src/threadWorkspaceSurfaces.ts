@@ -1,3 +1,5 @@
+import type { ThreadWorkspaceState } from "./threadWorkspace";
+
 /**
  * Thread-scoped surface catalog and legacy right-panel presentation state.
  *
@@ -42,14 +44,14 @@ export type RightPanelSurface =
     }
   | { id: "agents"; kind: "agents" };
 
-export interface ThreadRightPanelState {
-  isOpen: boolean;
-  activeSurfaceId: string | null;
-  surfaces: RightPanelSurface[];
-}
+/** Internal surface fields owned by the thread workspace aggregate. */
+export type ThreadWorkspaceSurfaceFields = Pick<
+  ThreadWorkspaceState,
+  "isRightPanelOpen" | "activeSurfaceId" | "surfaces"
+>;
 
 /** Describes one pure change to a thread's surface catalog and panel presentation. */
-export type ThreadRightPanelTransition =
+export type ThreadWorkspaceSurfaceTransition =
   | {
       readonly _tag: "OpenKind";
       readonly kind: Exclude<RightPanelKind, "file" | "terminal">;
@@ -95,8 +97,8 @@ export type ThreadRightPanelTransition =
       readonly kind: Exclude<RightPanelKind, "file" | "terminal">;
     };
 
-export const EMPTY_THREAD_RIGHT_PANEL_STATE: ThreadRightPanelState = {
-  isOpen: false,
+export const EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS: ThreadWorkspaceSurfaceFields = {
+  isRightPanelOpen: false,
   activeSurfaceId: null,
   surfaces: [],
 };
@@ -140,12 +142,12 @@ const terminalSurface = (terminalId: string): RightPanelSurface => ({
 });
 
 const upsertSurface = (
-  current: ThreadRightPanelState,
+  current: ThreadWorkspaceSurfaceFields,
   surface: RightPanelSurface,
   activate = true,
   presentation: RightPanelSurfacePresentation = "show-panel",
-): ThreadRightPanelState => ({
-  isOpen: presentation === "show-panel" ? true : current.isOpen,
+): ThreadWorkspaceSurfaceFields => ({
+  isRightPanelOpen: presentation === "show-panel" ? true : current.isRightPanelOpen,
   surfaces: current.surfaces.some((entry) => entry.id === surface.id)
     ? current.surfaces
     : [...current.surfaces, surface],
@@ -157,8 +159,8 @@ function normalizeRevealLine(line: number | undefined): number | null {
   return Math.max(1, Math.trunc(line));
 }
 
-export function migratePersistedRightPanelState(persistedState: unknown): {
-  byThreadKey: Record<string, ThreadRightPanelState>;
+export function parsePersistedThreadWorkspaceSurfaces(persistedState: unknown): {
+  byThreadKey: Record<string, ThreadWorkspaceSurfaceFields>;
 } {
   if (!persistedState || typeof persistedState !== "object") {
     return { byThreadKey: {} };
@@ -168,7 +170,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
     persistedState.byThreadKey &&
     typeof persistedState.byThreadKey === "object"
       ? Object.fromEntries(
-          Object.entries(persistedState.byThreadKey as Record<string, ThreadRightPanelState>).map(
+          Object.entries(persistedState.byThreadKey as Record<string, ThreadWorkspaceSurfaceFields>).map(
             ([threadKey, threadState]) => {
               const validThreadState =
                 threadState && typeof threadState === "object" ? threadState : null;
@@ -204,7 +206,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         ? [
                             ...new Set(
                               surface.terminalIds.filter(
-                                (terminalId): terminalId is string =>
+                                (terminalId: unknown): terminalId is string =>
                                   typeof terminalId === "string",
                               ),
                             ),
@@ -232,17 +234,17 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                 : null;
               // A migration that dropped every surface (e.g. plan-only panels
               // in v9) must not reopen an empty panel.
-              const isOpen =
+              const isRightPanelOpen =
                 surfaces.length > 0 &&
-                (typeof validThreadState?.isOpen === "boolean"
-                  ? validThreadState.isOpen
+                (typeof validThreadState?.isRightPanelOpen === "boolean"
+                  ? validThreadState.isRightPanelOpen
                   : persistedActiveSurfaceId !== null);
               // An open panel needs an active surface: if migration dropped
               // the persisted one (e.g. plan was active), fall back to the
               // first survivor instead of rendering an open empty panel.
               const activeSurfaceId =
-                persistedActiveSurfaceId ?? (isOpen ? (surfaces[0]?.id ?? null) : null);
-              return [threadKey, { isOpen, surfaces, activeSurfaceId }];
+                persistedActiveSurfaceId ?? (isRightPanelOpen ? (surfaces[0]?.id ?? null) : null);
+              return [threadKey, { isRightPanelOpen, surfaces, activeSurfaceId }];
             },
           ),
         )
@@ -251,10 +253,10 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
 }
 
 /** Applies one surface-catalog or right-panel presentation transition without side effects. */
-export function transitionThreadRightPanel(
-  current: ThreadRightPanelState,
-  input: ThreadRightPanelTransition,
-): ThreadRightPanelState {
+export function transitionThreadWorkspaceSurfaces(
+  current: ThreadWorkspaceSurfaceFields,
+  input: ThreadWorkspaceSurfaceTransition,
+): ThreadWorkspaceSurfaceFields {
   switch (input._tag) {
     case "OpenKind": {
       if (input.kind === "preview") {
@@ -283,7 +285,7 @@ export function transitionThreadRightPanel(
         (existing?.revealRequestId ?? 0) + 1,
       );
       return {
-        isOpen: input.presentation === "preserve-panel" ? current.isOpen : true,
+        isRightPanelOpen: input.presentation === "preserve-panel" ? current.isRightPanelOpen : true,
         activeSurfaceId: surface.id,
         surfaces: existing
           ? surfaces.map((entry) => (entry.id === surface.id ? surface : entry))
@@ -295,7 +297,7 @@ export function transitionThreadRightPanel(
     case "SplitTerminal":
       return {
         ...current,
-        isOpen: true,
+        isRightPanelOpen: true,
         activeSurfaceId: input.surfaceId,
         surfaces: current.surfaces.map((surface) => {
           if (surface.id !== input.surfaceId || surface.kind !== "terminal") return surface;
@@ -346,7 +348,7 @@ export function transitionThreadRightPanel(
     }
     case "ActivateSurface":
       return current.surfaces.some((surface) => surface.id === input.surfaceId)
-        ? { ...current, isOpen: true, activeSurfaceId: input.surfaceId }
+        ? { ...current, isRightPanelOpen: true, activeSurfaceId: input.surfaceId }
         : current;
     case "SelectSurface":
       return current.surfaces.some((surface) => surface.id === input.surfaceId)
@@ -357,7 +359,7 @@ export function transitionThreadRightPanel(
     case "CloseOtherSurfaces": {
       const surface = current.surfaces.find((entry) => entry.id === input.surfaceId);
       if (!surface || current.surfaces.length === 1) return current;
-      return { ...current, isOpen: true, surfaces: [surface], activeSurfaceId: surface.id };
+      return { ...current, isRightPanelOpen: true, surfaces: [surface], activeSurfaceId: surface.id };
     }
     case "CloseSurfacesToRight": {
       const index = current.surfaces.findIndex((surface) => surface.id === input.surfaceId);
@@ -373,7 +375,7 @@ export function transitionThreadRightPanel(
     case "CloseAllSurfaces":
       return current.surfaces.length === 0
         ? current
-        : { ...current, isOpen: false, surfaces: [], activeSurfaceId: null };
+        : { ...current, isRightPanelOpen: false, surfaces: [], activeSurfaceId: null };
     case "ReconcileBrowserSurfaces": {
       const validIds = new Set(input.tabIds.map((tabId) => `browser:${tabId}`));
       const nonBrowser = current.surfaces.filter((surface) => surface.kind !== "preview");
@@ -405,7 +407,7 @@ export function transitionThreadRightPanel(
       const activeStillExists = surfaces.some((surface) => surface.id === current.activeSurfaceId);
       return {
         ...current,
-        isOpen: surfaces.length > 0 ? current.isOpen : false,
+        isRightPanelOpen: surfaces.length > 0 ? current.isRightPanelOpen : false,
         surfaces,
         activeSurfaceId: activeStillExists
           ? current.activeSurfaceId
@@ -413,15 +415,15 @@ export function transitionThreadRightPanel(
       };
     }
     case "ShowPanel":
-      return current.isOpen ? current : { ...current, isOpen: true };
+      return current.isRightPanelOpen ? current : { ...current, isRightPanelOpen: true };
     case "ClosePanel":
-      return current.isOpen ? { ...current, isOpen: false } : current;
+      return current.isRightPanelOpen ? { ...current, isRightPanelOpen: false } : current;
     case "TogglePanelVisibility":
-      return { ...current, isOpen: !current.isOpen };
+      return { ...current, isRightPanelOpen: !current.isRightPanelOpen };
     case "ToggleKind": {
       const active = current.surfaces.find((surface) => surface.id === current.activeSurfaceId);
-      if (current.isOpen && active?.kind === input.kind) {
-        return { ...current, isOpen: false };
+      if (current.isRightPanelOpen && active?.kind === input.kind) {
+        return { ...current, isRightPanelOpen: false };
       }
       if (input.kind === "preview") {
         const existing = current.surfaces.find((surface) => surface.kind === "preview");
@@ -433,19 +435,19 @@ export function transitionThreadRightPanel(
 }
 
 function closeRightPanelSurface(
-  current: ThreadRightPanelState,
+  current: ThreadWorkspaceSurfaceFields,
   surfaceId: string,
-): ThreadRightPanelState {
+): ThreadWorkspaceSurfaceFields {
   const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
   if (index < 0) return current;
   const surfaces = current.surfaces.filter((surface) => surface.id !== surfaceId);
   if (current.activeSurfaceId !== surfaceId) {
-    return { ...current, isOpen: surfaces.length > 0 && current.isOpen, surfaces };
+    return { ...current, isRightPanelOpen: surfaces.length > 0 && current.isRightPanelOpen, surfaces };
   }
   const fallback = surfaces[Math.min(index, surfaces.length - 1)] ?? null;
   return {
     ...current,
-    isOpen: surfaces.length > 0 && current.isOpen,
+    isRightPanelOpen: surfaces.length > 0 && current.isRightPanelOpen,
     surfaces,
     activeSurfaceId: fallback?.id ?? null,
   };

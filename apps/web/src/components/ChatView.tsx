@@ -122,29 +122,28 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
-import { type RightPanelSurface } from "../threadWorkspaceSurface";
+import { type RightPanelSurface } from "../threadWorkspace";
 import type {
-  EditorGroupId,
-  EditorGroupDropZone,
-  EditorGroupNode,
-  EditorSplitDirection,
-  EditorTabId,
-  EditorTabDragData,
-} from "../editorWorkspace";
+  PaneId,
+  PaneDropZone,
+  PaneNode,
+  PaneSplitDirection,
+  PaneTabId,
+  PaneTabDragData,
+} from "../splitPaneTree";
 import {
-  findAdjacentEditorGroups,
-  findEditorGroup,
-  findTopRightEditorGroup,
-  getTopEditorGroups,
-  getVisibleEditorWorkspaceRoot,
-} from "../editorWorkspace";
-import { type ThreadEditorWorkspaceTransition } from "../threadEditorWorkspace";
+  findAdjacentPanes,
+  findPane,
+  findTopRightPane,
+  getTopPanes,
+  getVisiblePaneTreeRoot,
+} from "../splitPaneTree";
+import { type ThreadWorkspaceLayoutTransition } from "../threadWorkspace";
 import {
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
-  selectThreadEditorWorkspace,
-  selectThreadRightPanelState,
-  transitionThreadEditorWorkspace,
+  selectThreadWorkspace,
+  selectThreadWorkspaceOrDefault,
   transitionThreadWorkspace,
   useThreadWorkspaceStore,
 } from "../threadWorkspaceStore";
@@ -163,8 +162,8 @@ import {
   usePreviewMiniPlayerStore,
 } from "../previewMiniPlayerStore";
 import { RightPanelEmptyState, RightPanelTabBar, RightPanelTabs } from "./RightPanelTabs";
-import type { EditorTabContextTarget } from "./RightPanelTabs.logic";
-import { EditorWorkspaceGrid } from "./EditorWorkspaceGrid";
+import type { WorkspaceTabContextTarget } from "./RightPanelTabs.logic";
+import { SplitPaneGrid } from "./SplitPaneGrid";
 import { AgentsPanel } from "./AgentsPanel";
 import {
   deriveAgentPanelModel,
@@ -689,7 +688,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     threadId,
   });
   const panelSurfaces = useThreadWorkspaceStore(
-    (state) => selectThreadRightPanelState(state.byThreadKey, threadRef).surfaces,
+    (state) => selectThreadWorkspaceOrDefault(state.byThreadKey, threadRef).surfaces,
   );
   const panelTerminalIds = useMemo(
     () =>
@@ -1362,7 +1361,7 @@ function ChatViewContent(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
-  const [draggedEditorTab, setDraggedEditorTab] = useState<EditorTabDragData | null>(null);
+  const [draggedWorkspaceTab, setDraggedWorkspaceTab] = useState<PaneTabDragData | null>(null);
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
   const [terminalUiLaunchContext, setTerminalUiLaunchContext] =
@@ -1576,14 +1575,11 @@ function ChatViewContent(props: ChatViewProps) {
     selectActiveRightPanel(state.byThreadKey, activeThreadRef),
   );
   const diffOpen = activeRightPanelKind === "diff";
-  const rightPanelState = useThreadWorkspaceStore((state) =>
-    selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
+  const threadWorkspaceState = useThreadWorkspaceStore((state) =>
+    selectThreadWorkspaceOrDefault(state.byThreadKey, activeThreadRef),
   );
   const activeRightPanelSurface = useThreadWorkspaceStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
-  );
-  const editorWorkspaceState = useThreadWorkspaceStore((state) =>
-    selectThreadEditorWorkspace(state.byThreadKey, activeThreadRef),
   );
   const activePreviewState = useThreadPreviewState(activeThreadRef);
   const activePreviewMiniPlayer = usePreviewMiniPlayerStore((state) =>
@@ -1592,23 +1588,23 @@ function ChatViewContent(props: ChatViewProps) {
   const panelTerminalIds = useMemo(
     () =>
       new Set(
-        rightPanelState.surfaces.flatMap((surface) =>
+        threadWorkspaceState.surfaces.flatMap((surface) =>
           surface.kind === "terminal" ? surface.terminalIds : [],
         ),
       ),
-    [rightPanelState.surfaces],
+    [threadWorkspaceState.surfaces],
   );
   const allocatableActiveTerminalIds = useMemo(
     () => [...new Set([...activeKnownTerminalIds, ...panelTerminalIds])],
     [activeKnownTerminalIds, panelTerminalIds],
   );
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
-  const rightPanelOpen = rightPanelState.isOpen;
+  const rightPanelOpen = threadWorkspaceState.isRightPanelOpen;
   const workspaceMode = !shouldUseRightPanelSheet;
   useLayoutEffect(() => {
     if (!activeThreadRef || shouldUseRightPanelSheet) return;
     transitionThreadWorkspace(activeThreadRef, { _tag: "ReconcileSurfaces" });
-  }, [activeThreadRef, rightPanelState.surfaces, shouldUseRightPanelSheet]);
+  }, [activeThreadRef, threadWorkspaceState.surfaces, shouldUseRightPanelSheet]);
 
   useEffect(() => {
     if (!activeThreadRef) return;
@@ -3449,33 +3445,33 @@ function ChatViewContent(props: ChatViewProps) {
   }, [activeThreadRef]);
   const activateThreadWorkspaceTab = useCallback(() => {
     if (!workspaceMode || !activeThreadRef) return;
-    transitionThreadEditorWorkspace(activeThreadRef, { _tag: "ActivateThread" });
+    transitionThreadWorkspace(activeThreadRef, { _tag: "ActivateThread" });
   }, [activeThreadRef, workspaceMode]);
   const splitFocusedEditorRight = useCallback(() => {
     if (!workspaceMode || !activeThreadRef) return;
-    const current = selectThreadEditorWorkspace(
+    const current = selectThreadWorkspace(
       useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
     if (!current) return;
-    const focusedGroup = findEditorGroup(current.workspace.root, current.workspace.focusedGroupId);
+    const focusedGroup = findPane(current.paneTree.root, current.paneTree.focusedPaneId);
     if (!focusedGroup) return;
-    transitionThreadEditorWorkspace(activeThreadRef, {
-      _tag: "SplitGroup",
-      groupId: focusedGroup.id,
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "SplitPane",
+      paneId: focusedGroup.id,
       direction: "right",
     });
   }, [activeThreadRef, workspaceMode]);
-  const toggleFocusedEditorGroup = useCallback(() => {
+  const toggleFocusedPane = useCallback(() => {
     if (!workspaceMode || !activeThreadRef) return;
-    const current = selectThreadEditorWorkspace(
+    const current = selectThreadWorkspace(
       useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
     if (!current) return;
-    transitionThreadEditorWorkspace(activeThreadRef, {
-      _tag: "ToggleGroupMaximized",
-      groupId: current.workspace.focusedGroupId,
+    transitionThreadWorkspace(activeThreadRef, {
+      _tag: "TogglePaneMaximized",
+      paneId: current.paneTree.focusedPaneId,
     });
   }, [activeThreadRef, workspaceMode]);
   const cleanupRightPanelSurfaces = useCallback(
@@ -4740,7 +4736,7 @@ function ChatViewContent(props: ChatViewProps) {
         if (!workspaceMode) return;
         event.preventDefault();
         event.stopPropagation();
-        toggleFocusedEditorGroup();
+        toggleFocusedPane();
         return;
       }
 
@@ -4840,7 +4836,7 @@ function ChatViewContent(props: ChatViewProps) {
     keybindings,
     onToggleDiff,
     toggleRightPanel,
-    toggleFocusedEditorGroup,
+    toggleFocusedPane,
     toggleTerminalVisibility,
     workspaceMode,
     composerRef,
@@ -6033,10 +6029,10 @@ function ChatViewContent(props: ChatViewProps) {
     return <NoActiveThreadState />;
   }
 
-  const focusedWorkspaceGroup = editorWorkspaceState
-    ? findEditorGroup(
-        editorWorkspaceState.workspace.root,
-        editorWorkspaceState.workspace.focusedGroupId,
+  const focusedWorkspaceGroup = threadWorkspaceState
+    ? findPane(
+        threadWorkspaceState.paneTree.root,
+        threadWorkspaceState.paneTree.focusedPaneId,
       )
     : null;
   const canSplitFocusedEditorRight = focusedWorkspaceGroup !== null;
@@ -6157,19 +6153,15 @@ function ChatViewContent(props: ChatViewProps) {
     : null;
 
   const rightPanelSurfaceById = new Map<string, RightPanelSurface>(
-    rightPanelState.surfaces.map((surface) => [surface.id, surface] as const),
+    threadWorkspaceState.surfaces.map((surface) => [surface.id, surface] as const),
   );
-  const mutateEditorTabsAndCleanup = (transition: ThreadEditorWorkspaceTransition) => {
+  const mutateWorkspaceTabsAndCleanup = (transition: ThreadWorkspaceLayoutTransition) => {
     if (!activeThreadRef) return;
-    const result = transitionThreadWorkspace(activeThreadRef, {
-      _tag: "ApplyEditorTransition",
-      transition,
-    });
+    const result = transitionThreadWorkspace(activeThreadRef, transition);
     cleanupRightPanelSurfaces(result.removedSurfaces);
     syncActivePreviewSurface();
-    const after = result.editorWorkspace;
-    if (!after) return;
-    const focusedGroup = findEditorGroup(after.workspace.root, after.workspace.focusedGroupId);
+    const after = result.state;
+    const focusedGroup = findPane(after.paneTree.root, after.paneTree.focusedPaneId);
     const focusedTab = focusedGroup?.activeTabId ? after.tabsById[focusedGroup.activeTabId] : null;
     if (focusedTab?._tag === "Thread") {
       activateThreadWorkspaceTab();
@@ -6178,13 +6170,13 @@ function ChatViewContent(props: ChatViewProps) {
     }
   };
 
-  const activateEditorGroupTab = (
-    groupId: EditorGroupId,
-    tabId: EditorTabId,
-    target: EditorTabContextTarget,
+  const activateWorkspacePaneTab = (
+    paneId: PaneId,
+    tabId: PaneTabId,
+    target: WorkspaceTabContextTarget,
   ) => {
     if (!activeThreadRef) return;
-    transitionThreadEditorWorkspace(activeThreadRef, { _tag: "ActivateTab", groupId, tabId });
+    transitionThreadWorkspace(activeThreadRef, { _tag: "ActivateTab", paneId, tabId });
     if (target._tag === "Thread") {
       activateThreadWorkspaceTab();
       return;
@@ -6192,14 +6184,14 @@ function ChatViewContent(props: ChatViewProps) {
     activateRightPanelSurface(target.surface);
   };
 
-  const focusEditorGroup = (groupId: EditorGroupId) => {
+  const focusPane = (paneId: PaneId) => {
     if (!activeThreadRef) return;
-    transitionThreadEditorWorkspace(activeThreadRef, { _tag: "FocusGroup", groupId });
-    const next = selectThreadEditorWorkspace(
+    transitionThreadWorkspace(activeThreadRef, { _tag: "FocusPane", paneId });
+    const next = selectThreadWorkspace(
       useThreadWorkspaceStore.getState().byThreadKey,
       activeThreadRef,
     );
-    const group = next ? findEditorGroup(next.workspace.root, groupId) : null;
+    const group = next ? findPane(next.paneTree.root, paneId) : null;
     const activeTab = group?.activeTabId ? next?.tabsById[group.activeTabId] : null;
     if (activeTab?._tag === "Thread") {
       activateThreadWorkspaceTab();
@@ -6592,23 +6584,21 @@ function ChatViewContent(props: ChatViewProps) {
     </div>
   );
 
-  const visibleEditorWorkspaceRoot = editorWorkspaceState
-    ? getVisibleEditorWorkspaceRoot(editorWorkspaceState.workspace)
+  const visiblePaneTreeRoot = getVisiblePaneTreeRoot(threadWorkspaceState.paneTree);
+  const topRightPaneId = visiblePaneTreeRoot
+    ? findTopRightPane(visiblePaneTreeRoot).id
     : null;
-  const topRightEditorGroupId = visibleEditorWorkspaceRoot
-    ? findTopRightEditorGroup(visibleEditorWorkspaceRoot).id
-    : null;
-  const topEditorGroups = visibleEditorWorkspaceRoot
-    ? getTopEditorGroups(visibleEditorWorkspaceRoot)
+  const topPanes = visiblePaneTreeRoot
+    ? getTopPanes(visiblePaneTreeRoot)
     : [];
-  const topEditorGroupIds = new Set(topEditorGroups.map((group) => group.id));
-  const topLeftEditorGroupId = topEditorGroups[0]?.id ?? null;
+  const topPaneIds = new Set(topPanes.map((pane) => pane.id));
+  const topLeftPaneId = topPanes[0]?.id ?? null;
 
-  const renderEditorGroup = (group: EditorGroupNode) => {
-    if (!editorWorkspaceState || !activeThreadRef) return null;
-    const adjacentGroups = findAdjacentEditorGroups(editorWorkspaceState.workspace, group.id);
-    const tabs = group.tabIds.flatMap((tabId) => {
-      const tab = editorWorkspaceState.tabsById[tabId];
+  const renderWorkspacePane = (pane: PaneNode) => {
+    if (!activeThreadRef) return null;
+    const adjacentPanes = findAdjacentPanes(threadWorkspaceState.paneTree, pane.id);
+    const tabs = pane.tabIds.flatMap((tabId) => {
+      const tab = threadWorkspaceState.tabsById[tabId];
       return tab ? [tab] : [];
     });
     const threadTab = tabs.find((tab) => tab._tag === "Thread") ?? null;
@@ -6617,27 +6607,27 @@ function ChatViewContent(props: ChatViewProps) {
       const surface = rightPanelSurfaceById.get(tab.surfaceId);
       return surface ? [{ tabId: tab.id, surface }] : [];
     });
-    const activeTab = group.activeTabId ? editorWorkspaceState.tabsById[group.activeTabId] : null;
+    const activeTab = pane.activeTabId ? threadWorkspaceState.tabsById[pane.activeTabId] : null;
     const activeSurface =
       activeTab?._tag === "Surface"
         ? (rightPanelSurfaceById.get(activeTab.surfaceId) ?? null)
         : null;
-    const canCloseEmptyGroup =
-      group.tabIds.length === 0 && editorWorkspaceState.workspace.root._tag === "Split";
-    const tabIdForTarget = (target: EditorTabContextTarget): EditorTabId | null => {
+    const canCloseEmptyPane =
+      pane.tabIds.length === 0 && threadWorkspaceState.paneTree.root._tag === "Split";
+    const tabIdForTarget = (target: WorkspaceTabContextTarget): PaneTabId | null => {
       if (target._tag === "Thread") return threadTab?.id ?? null;
       return surfaceTabs.find((entry) => entry.surface.id === target.surface.id)?.tabId ?? null;
     };
     const splitTab = (
-      target: EditorTabContextTarget,
-      direction: EditorSplitDirection,
+      target: WorkspaceTabContextTarget,
+      direction: PaneSplitDirection,
       mode: "copy" | "move",
     ) => {
       const tabId = tabIdForTarget(target);
       if (!tabId) return;
-      transitionThreadEditorWorkspace(activeThreadRef, {
+      transitionThreadWorkspace(activeThreadRef, {
         _tag: "SplitTab",
-        groupId: group.id,
+        paneId: pane.id,
         tabId,
         direction,
         mode,
@@ -6648,68 +6638,68 @@ function ChatViewContent(props: ChatViewProps) {
         activateRightPanelSurface(target.surface);
       }
     };
-    const moveTabToGroup = (target: EditorTabContextTarget, direction: EditorSplitDirection) => {
+    const moveTabToPane = (target: WorkspaceTabContextTarget, direction: PaneSplitDirection) => {
       const tabId = tabIdForTarget(target);
-      const targetGroupId = adjacentGroups[direction];
-      if (!tabId || !targetGroupId) return;
-      mutateEditorTabsAndCleanup({
-        _tag: "MoveTabToGroup",
-        sourceGroupId: group.id,
-        targetGroupId,
+      const targetPaneId = adjacentPanes[direction];
+      if (!tabId || !targetPaneId) return;
+      mutateWorkspaceTabsAndCleanup({
+        _tag: "MoveTabToPane",
+        sourcePaneId: pane.id,
+        targetPaneId,
         tabId,
       });
     };
     const mutateSurfaceTabs = (
       surface: RightPanelSurface,
-      transitionForTab: (tabId: EditorTabId) => ThreadEditorWorkspaceTransition,
+      transitionForTab: (tabId: PaneTabId) => ThreadWorkspaceLayoutTransition,
     ) => {
       const tabId = tabIdForTarget({ _tag: "Surface", surface });
       if (!tabId) return;
-      mutateEditorTabsAndCleanup(transitionForTab(tabId));
+      mutateWorkspaceTabsAndCleanup(transitionForTab(tabId));
     };
     const focusThen = (action: () => void) => {
-      transitionThreadEditorWorkspace(activeThreadRef, {
-        _tag: "FocusGroup",
-        groupId: group.id,
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "FocusPane",
+        paneId: pane.id,
       });
       action();
     };
-    const startTabDrag = (target: EditorTabContextTarget) => {
+    const startTabDrag = (target: WorkspaceTabContextTarget) => {
       const tabId = tabIdForTarget(target);
       if (!tabId) return;
-      setDraggedEditorTab({ sourceGroupId: group.id, sourceTabId: tabId });
+      setDraggedWorkspaceTab({ sourcePaneId: pane.id, sourceTabId: tabId });
     };
     const dropTabAtIndex = (targetIndex: number) => {
-      if (!draggedEditorTab) return;
-      const sourceGroup = findEditorGroup(
-        editorWorkspaceState.workspace.root,
-        draggedEditorTab.sourceGroupId,
+      if (!draggedWorkspaceTab) return;
+      const sourceGroup = findPane(
+        threadWorkspaceState.paneTree.root,
+        draggedWorkspaceTab.sourcePaneId,
       );
-      if (!sourceGroup?.tabIds.includes(draggedEditorTab.sourceTabId)) return;
-      if (draggedEditorTab.sourceGroupId === group.id) {
-        const sourceIndex = sourceGroup.tabIds.indexOf(draggedEditorTab.sourceTabId);
+      if (!sourceGroup?.tabIds.includes(draggedWorkspaceTab.sourceTabId)) return;
+      if (draggedWorkspaceTab.sourcePaneId === pane.id) {
+        const sourceIndex = sourceGroup.tabIds.indexOf(draggedWorkspaceTab.sourceTabId);
         const adjustedTargetIndex =
           sourceIndex < targetIndex ? Math.max(0, targetIndex - 1) : targetIndex;
-        transitionThreadEditorWorkspace(activeThreadRef, {
+        transitionThreadWorkspace(activeThreadRef, {
           _tag: "ReorderTab",
-          groupId: group.id,
-          tabId: draggedEditorTab.sourceTabId,
-          targetIndex: Math.min(adjustedTargetIndex, group.tabIds.length - 1),
+          paneId: pane.id,
+          tabId: draggedWorkspaceTab.sourceTabId,
+          targetIndex: Math.min(adjustedTargetIndex, pane.tabIds.length - 1),
         });
       } else {
-        mutateEditorTabsAndCleanup({
-          _tag: "MoveTabToGroup",
-          sourceGroupId: draggedEditorTab.sourceGroupId,
-          targetGroupId: group.id,
-          tabId: draggedEditorTab.sourceTabId,
+        mutateWorkspaceTabsAndCleanup({
+          _tag: "MoveTabToPane",
+          sourcePaneId: draggedWorkspaceTab.sourcePaneId,
+          targetPaneId: pane.id,
+          tabId: draggedWorkspaceTab.sourceTabId,
           targetIndex,
         });
       }
-      setDraggedEditorTab(null);
+      setDraggedWorkspaceTab(null);
     };
-    const dropTab = (target: EditorTabContextTarget, position: "before" | "after") => {
+    const dropTab = (target: WorkspaceTabContextTarget, position: "before" | "after") => {
       const targetTabId = tabIdForTarget(target);
-      const targetTabIndex = targetTabId ? group.tabIds.indexOf(targetTabId) : -1;
+      const targetTabIndex = targetTabId ? pane.tabIds.indexOf(targetTabId) : -1;
       if (targetTabIndex < 0) return;
       dropTabAtIndex(targetTabIndex + (position === "after" ? 1 : 0));
     };
@@ -6718,32 +6708,32 @@ function ChatViewContent(props: ChatViewProps) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <RightPanelTabBar
           mode="embedded"
-          titleBar={topEditorGroupIds.has(group.id)}
-          sidebarTitleBarInset={topLeftEditorGroupId === group.id}
-          {...(canCloseEmptyGroup
+          titleBar={topPaneIds.has(pane.id)}
+          sidebarTitleBarInset={topLeftPaneId === pane.id}
+          {...(canCloseEmptyPane
             ? {
                 onCloseGroup: () =>
-                  mutateEditorTabsAndCleanup({ _tag: "CloseEmptyGroup", groupId: group.id }),
+                  mutateWorkspaceTabsAndCleanup({ _tag: "CloseEmptyPane", paneId: pane.id }),
               }
             : {})}
           focusView={{
-            active: editorWorkspaceState.workspace.maximizedGroupId === group.id,
+            active: threadWorkspaceState.paneTree.maximizedPaneId === pane.id,
             shortcutLabel: shortcutLabelForCommand(keybindings, "editor.toggleFocus"),
             onToggle: () =>
-              transitionThreadEditorWorkspace(activeThreadRef, {
-                _tag: "ToggleGroupMaximized",
-                groupId: group.id,
+              transitionThreadWorkspace(activeThreadRef, {
+                _tag: "TogglePaneMaximized",
+                paneId: pane.id,
               }),
           }}
-          {...(topRightEditorGroupId === group.id ? { layoutControls: panelToggleControls } : {})}
+          {...(topRightPaneId === pane.id ? { layoutControls: panelToggleControls } : {})}
           {...(threadTab
             ? {
                 threadTab: {
                   title: activeThread.title,
-                  active: group.activeTabId === threadTab.id,
+                  active: pane.activeTabId === threadTab.id,
                   status: activeThreadTabStatus,
                   onActivate: () =>
-                    activateEditorGroupTab(group.id, threadTab.id, { _tag: "Thread" }),
+                    activateWorkspacePaneTab(pane.id, threadTab.id, { _tag: "Thread" }),
                 },
               }
             : {})}
@@ -6755,46 +6745,46 @@ function ChatViewContent(props: ChatViewProps) {
           onActivate={(surface) => {
             const tabId = tabIdForTarget({ _tag: "Surface", surface });
             if (tabId) {
-              activateEditorGroupTab(group.id, tabId, { _tag: "Surface", surface });
+              activateWorkspacePaneTab(pane.id, tabId, { _tag: "Surface", surface });
             }
           }}
           onCloseSurface={(surface) =>
             mutateSurfaceTabs(surface, (tabId) => ({
               _tag: "CloseSurfaceTab",
-              groupId: group.id,
+              paneId: pane.id,
               tabId,
             }))
           }
           onCloseOtherSurfaces={(surface) =>
             mutateSurfaceTabs(surface, (tabId) => ({
               _tag: "CloseOtherSurfaceTabs",
-              groupId: group.id,
+              paneId: pane.id,
               tabId,
             }))
           }
           onCloseSurfacesToRight={(surface) =>
             mutateSurfaceTabs(surface, (tabId) => ({
               _tag: "CloseSurfaceTabsToRight",
-              groupId: group.id,
+              paneId: pane.id,
               tabId,
             }))
           }
           onCloseAllSurfaces={() =>
-            mutateEditorTabsAndCleanup({
+            mutateWorkspaceTabsAndCleanup({
               _tag: "CloseAllSurfaceTabs",
-              groupId: group.id,
+              paneId: pane.id,
             })
           }
           onSplitTab={(target, direction) => splitTab(target, direction, "copy")}
           onMoveTabToSplit={(target, direction) => splitTab(target, direction, "move")}
-          onMoveTabToGroup={moveTabToGroup}
+          onMoveTabToPane={moveTabToPane}
           onTabDragStart={startTabDrag}
-          onTabDragEnd={() => setDraggedEditorTab(null)}
+          onTabDragEnd={() => setDraggedWorkspaceTab(null)}
           onTabDrop={dropTab}
-          onTabDropAtEnd={() => dropTabAtIndex(group.tabIds.length)}
-          adjacentGroups={adjacentGroups}
+          onTabDropAtEnd={() => dropTabAtIndex(pane.tabIds.length)}
+          adjacentGroups={adjacentPanes}
           canCopyTabToSplit={(target) => target._tag === "Surface"}
-          canMoveTabToSplit={() => group.tabIds.length > 1}
+          canMoveTabToSplit={() => pane.tabIds.length > 1}
           onCopyFilePath={copyRightPanelFilePath}
           onAddBrowser={() => focusThen(createBrowserSurface)}
           onAddTerminal={() => focusThen(addTerminalSurface)}
@@ -6831,37 +6821,36 @@ function ChatViewContent(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-      {workspaceMode && !editorWorkspaceState ? floatingPanelLayoutControls : null}
-      {workspaceMode && editorWorkspaceState && activeThreadRef ? (
-        <EditorWorkspaceGrid
-          workspace={editorWorkspaceState.workspace}
-          draggedTab={draggedEditorTab}
-          renderGroup={renderEditorGroup}
-          onFocusGroup={focusEditorGroup}
+      {workspaceMode && activeThreadRef ? (
+        <SplitPaneGrid
+          tree={threadWorkspaceState.paneTree}
+          draggedTab={draggedWorkspaceTab}
+          renderPane={renderWorkspacePane}
+          onFocusPane={focusPane}
           onDropTab={(input: {
-            readonly draggedTab: EditorTabDragData;
-            readonly targetGroupId: EditorGroupId;
-            readonly zone: EditorGroupDropZone;
+            readonly draggedTab: PaneTabDragData;
+            readonly targetPaneId: PaneId;
+            readonly zone: PaneDropZone;
           }) => {
-            mutateEditorTabsAndCleanup(
+            mutateWorkspaceTabsAndCleanup(
               input.zone === "center"
                 ? {
-                    _tag: "SwapGroups",
-                    sourceGroupId: input.draggedTab.sourceGroupId,
-                    targetGroupId: input.targetGroupId,
+                    _tag: "SwapPanes",
+                    sourcePaneId: input.draggedTab.sourcePaneId,
+                    targetPaneId: input.targetPaneId,
                   }
                 : {
                     _tag: "MoveTabToSplit",
-                    sourceGroupId: input.draggedTab.sourceGroupId,
-                    targetGroupId: input.targetGroupId,
+                    sourcePaneId: input.draggedTab.sourcePaneId,
+                    targetPaneId: input.targetPaneId,
                     tabId: input.draggedTab.sourceTabId,
                     direction: input.zone,
                   },
             );
-            setDraggedEditorTab(null);
+            setDraggedWorkspaceTab(null);
           }}
           onResizeSplit={(splitId, ratio) =>
-            transitionThreadEditorWorkspace(activeThreadRef, {
+            transitionThreadWorkspace(activeThreadRef, {
               _tag: "ResizeSplit",
               splitId,
               ratio,
@@ -6877,7 +6866,7 @@ function ChatViewContent(props: ChatViewProps) {
           <RightPanelTabs
             mode="sheet"
             layoutControls={panelToggleControls}
-            surfaces={rightPanelState.surfaces}
+            surfaces={threadWorkspaceState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}

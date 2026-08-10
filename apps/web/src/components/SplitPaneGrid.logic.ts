@@ -1,13 +1,13 @@
 import {
-  clampEditorSplitRatio,
-  type EditorGroupDropZone,
-  type EditorSplitOrientation,
-} from "~/editorWorkspace";
+  clampPaneSplitRatio,
+  type PaneDropZone,
+  type PaneSplitOrientation,
+} from "~/splitPaneTree";
 
-const EDITOR_GROUP_EDGE_DROP_RATIO = 0.25;
+const PANE_EDGE_DROP_RATIO = 0.25;
 
 /** Resolves the pane action preview from a pointer position inside a group. */
-export function resolveEditorGroupDropZone(input: {
+export function resolvePaneDropZone(input: {
   readonly clientX: number;
   readonly clientY: number;
   readonly bounds: {
@@ -16,7 +16,7 @@ export function resolveEditorGroupDropZone(input: {
     readonly width: number;
     readonly height: number;
   };
-}): EditorGroupDropZone | null {
+}): PaneDropZone | null {
   if (
     !Number.isFinite(input.bounds.width) ||
     !Number.isFinite(input.bounds.height) ||
@@ -29,7 +29,7 @@ export function resolveEditorGroupDropZone(input: {
   const vertical = (input.clientY - input.bounds.top) / input.bounds.height;
   if (horizontal < 0 || horizontal > 1 || vertical < 0 || vertical > 1) return null;
 
-  let nearestZone: Exclude<EditorGroupDropZone, "center"> = "left";
+  let nearestZone: Exclude<PaneDropZone, "center"> = "left";
   let nearestDistance = horizontal;
   const rightDistance = 1 - horizontal;
   if (rightDistance < nearestDistance) {
@@ -45,21 +45,21 @@ export function resolveEditorGroupDropZone(input: {
     nearestZone = "down";
     nearestDistance = downDistance;
   }
-  return nearestDistance <= EDITOR_GROUP_EDGE_DROP_RATIO ? nearestZone : "center";
+  return nearestDistance <= PANE_EDGE_DROP_RATIO ? nearestZone : "center";
 }
 
-export function calculateEditorSplitRatio(
+export function calculatePaneSplitRatio(
   pointerPosition: number,
   containerStart: number,
   containerSize: number,
 ): number | null {
   if (!Number.isFinite(containerSize) || containerSize <= 0) return null;
-  return clampEditorSplitRatio((pointerPosition - containerStart) / containerSize);
+  return clampPaneSplitRatio((pointerPosition - containerStart) / containerSize);
 }
 
 export function resolveKeyboardResizeDelta(
   key: string,
-  orientation: EditorSplitOrientation,
+  orientation: PaneSplitOrientation,
 ): number | null {
   if (orientation === "horizontal") {
     if (key === "ArrowLeft") return -0.05;

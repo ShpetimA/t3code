@@ -140,8 +140,8 @@ import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalPro
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import {
   selectActiveRightPanel,
-  selectThreadEditorWorkspace,
-  transitionThreadEditorWorkspace,
+  selectThreadWorkspace,
+  transitionThreadWorkspace,
   useThreadWorkspaceStore,
 } from "../threadWorkspaceStore";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -587,12 +587,12 @@ function OpenCommandPaletteDialog(props: {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const activeEditorThreadRef = useMemo(
+  const activeWorkspaceThreadRef = useMemo(
     () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
     [activeThread],
   );
-  const activeEditorWorkspace = useThreadWorkspaceStore((state) =>
-    selectThreadEditorWorkspace(state.byThreadKey, activeEditorThreadRef),
+  const activeThreadWorkspace = useThreadWorkspaceStore((state) =>
+    selectThreadWorkspace(state.byThreadKey, activeWorkspaceThreadRef),
   );
   const workspaceMode = !useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const projects = useProjects();
@@ -1451,25 +1451,25 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
-  if (activeEditorThreadRef) {
-    const focusViewActive = Boolean(activeEditorWorkspace?.workspace.maximizedGroupId);
+  if (activeWorkspaceThreadRef) {
+    const focusViewActive = Boolean(activeThreadWorkspace?.paneTree.maximizedPaneId);
     actionItems.push({
       kind: "action",
       value: "action:toggle-editor-focus",
       searchTerms: ["focus view", "maximize editor", "restore layout", "zoom pane"],
-      title: focusViewActive ? "Restore editor layout" : "Focus current editor group",
+      title: focusViewActive ? "Restore workspace layout" : "Focus current pane",
       icon: focusViewActive ? (
         <Minimize2Icon className={ITEM_ICON_CLASS} />
       ) : (
         <Maximize2Icon className={ITEM_ICON_CLASS} />
       ),
-      disabled: !workspaceMode || !activeEditorWorkspace,
+      disabled: !workspaceMode || !activeThreadWorkspace,
       shortcutCommand: "editor.toggleFocus",
       run: async () => {
-        if (!activeEditorWorkspace) return;
-        transitionThreadEditorWorkspace(activeEditorThreadRef, {
-          _tag: "ToggleGroupMaximized",
-          groupId: activeEditorWorkspace.workspace.focusedGroupId,
+        if (!activeThreadWorkspace) return;
+        transitionThreadWorkspace(activeWorkspaceThreadRef, {
+          _tag: "TogglePaneMaximized",
+          paneId: activeThreadWorkspace.paneTree.focusedPaneId,
         });
       },
     });

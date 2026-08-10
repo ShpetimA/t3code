@@ -24,8 +24,8 @@ import {
 } from "react";
 
 import { isElectron } from "~/env";
-import type { AdjacentEditorGroups, EditorSplitDirection } from "~/editorWorkspace";
-import type { RightPanelSurface } from "~/threadWorkspaceSurface";
+import type { AdjacentPanes, PaneSplitDirection } from "~/splitPaneTree";
+import type { RightPanelSurface } from "~/threadWorkspace";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -40,10 +40,10 @@ import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanel
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import type { ThreadStatusPill } from "./Sidebar.logic";
 import {
-  buildEditorTabContextMenuItems,
-  type EditorTabContextTarget,
-  resolveEditorTabLayoutAction,
-  resolveEditorTabSplitAction,
+  buildWorkspaceTabContextMenuItems,
+  type WorkspaceTabContextTarget,
+  resolveWorkspaceTabLayoutAction,
+  resolveWorkspaceTabSplitAction,
 } from "./RightPanelTabs.logic";
 
 interface RightPanelTabsProps {
@@ -73,16 +73,16 @@ interface RightPanelTabsProps {
   onCloseOtherSurfaces: (surface: RightPanelSurface) => void;
   onCloseSurfacesToRight: (surface: RightPanelSurface) => void;
   onCloseAllSurfaces: () => void;
-  onSplitTab?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
-  onMoveTabToSplit?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
-  onMoveTabToGroup?: (target: EditorTabContextTarget, direction: EditorSplitDirection) => void;
-  onTabDragStart?: (target: EditorTabContextTarget) => void;
+  onSplitTab?: (target: WorkspaceTabContextTarget, direction: PaneSplitDirection) => void;
+  onMoveTabToSplit?: (target: WorkspaceTabContextTarget, direction: PaneSplitDirection) => void;
+  onMoveTabToPane?: (target: WorkspaceTabContextTarget, direction: PaneSplitDirection) => void;
+  onTabDragStart?: (target: WorkspaceTabContextTarget) => void;
   onTabDragEnd?: () => void;
-  onTabDrop?: (target: EditorTabContextTarget, position: "before" | "after") => void;
+  onTabDrop?: (target: WorkspaceTabContextTarget, position: "before" | "after") => void;
   onTabDropAtEnd?: () => void;
-  adjacentGroups?: AdjacentEditorGroups;
-  canCopyTabToSplit?: (target: EditorTabContextTarget) => boolean;
-  canMoveTabToSplit?: (target: EditorTabContextTarget) => boolean;
+  adjacentGroups?: AdjacentPanes;
+  canCopyTabToSplit?: (target: WorkspaceTabContextTarget) => boolean;
+  canMoveTabToSplit?: (target: WorkspaceTabContextTarget) => boolean;
   onCopyFilePath: (relativePath: string) => void;
   onAddBrowser: () => void;
   onAddTerminal: () => void;
@@ -105,7 +105,7 @@ const SURFACE_DISABLED_REASONS = {
   diff: "Diff is only available for server threads in Git repositories.",
 } as const;
 
-const NO_ADJACENT_EDITOR_GROUPS: AdjacentEditorGroups = {
+const NO_ADJACENT_EDITOR_GROUPS: AdjacentPanes = {
   up: null,
   down: null,
   left: null,
@@ -374,11 +374,11 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
     readonly position: "before" | "after" | "end";
   } | null>(null);
 
-  const tabTargetKey = (target: EditorTabContextTarget) =>
+  const tabTargetKey = (target: WorkspaceTabContextTarget) =>
     target._tag === "Thread" ? "thread" : target.surface.id;
   const handleTabDragStart = (
     event: ReactDragEvent<HTMLElement>,
-    target: EditorTabContextTarget,
+    target: WorkspaceTabContextTarget,
     label: string,
   ) => {
     if (!props.onTabDragStart) return;
@@ -392,7 +392,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
   };
   const handleTabDragOver = (
     event: ReactDragEvent<HTMLElement>,
-    target: EditorTabContextTarget,
+    target: WorkspaceTabContextTarget,
   ) => {
     if (!props.onTabDrop) return;
     event.preventDefault();
@@ -405,7 +405,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
       current?.key === key && current.position === position ? current : { key, position },
     );
   };
-  const handleTabDrop = (event: ReactDragEvent<HTMLElement>, target: EditorTabContextTarget) => {
+  const handleTabDrop = (event: ReactDragEvent<HTMLElement>, target: WorkspaceTabContextTarget) => {
     if (!props.onTabDrop) return;
     event.preventDefault();
     event.stopPropagation();
@@ -438,7 +438,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
   };
 
   const handleTabContextMenu = useCallback(
-    async (event: ReactMouseEvent, target: EditorTabContextTarget) => {
+    async (event: ReactMouseEvent, target: WorkspaceTabContextTarget) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -451,12 +451,12 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         : -1;
       if (surface && surfaceIndex < 0) return;
 
-      const items = buildEditorTabContextMenuItems({
+      const items = buildWorkspaceTabContextMenuItems({
         target,
         surfaceCount: props.surfaces.length,
         surfaceIndex,
         adjacentGroups: props.adjacentGroups ?? NO_ADJACENT_EDITOR_GROUPS,
-        moveToGroupAvailable: props.onMoveTabToGroup !== undefined,
+        moveToGroupAvailable: props.onMoveTabToPane !== undefined,
         copyToSplitAvailable:
           props.onSplitTab !== undefined && (props.canCopyTabToSplit?.(target) ?? true),
         moveToSplitAvailable:
@@ -465,7 +465,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
       if (items.length === 0) return;
 
       const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
-      const splitAction = resolveEditorTabSplitAction(action);
+      const splitAction = resolveWorkspaceTabSplitAction(action);
       if (splitAction?.mode === "copy") {
         props.onSplitTab?.(target, splitAction.direction);
         return;
@@ -474,9 +474,9 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
         props.onMoveTabToSplit?.(target, splitAction.direction);
         return;
       }
-      const layoutAction = resolveEditorTabLayoutAction(action);
+      const layoutAction = resolveWorkspaceTabLayoutAction(action);
       if (layoutAction?._tag === "MoveToGroup") {
-        props.onMoveTabToGroup?.(target, layoutAction.direction);
+        props.onMoveTabToPane?.(target, layoutAction.direction);
         return;
       }
       switch (action) {
@@ -736,7 +736,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
                 render={
                   <Button
                     aria-label={
-                      props.focusView.active ? "Restore editor layout" : "Focus editor group"
+                      props.focusView.active ? "Restore workspace layout" : "Focus pane"
                     }
                     aria-pressed={props.focusView.active}
                     onClick={props.focusView.onToggle}
@@ -753,7 +753,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
                 }
               />
               <TooltipPopup>
-                {props.focusView.active ? "Restore editor layout" : "Focus editor group"}
+                {props.focusView.active ? "Restore workspace layout" : "Focus pane"}
                 {props.focusView.shortcutLabel ? ` (${props.focusView.shortcutLabel})` : ""}
               </TooltipPopup>
             </Tooltip>
@@ -764,7 +764,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
               <TooltipTrigger
                 render={
                   <Button
-                    aria-label="Close editor group"
+                    aria-label="Close pane"
                     onClick={props.onCloseGroup}
                     className="text-foreground [--control-icon-color:currentColor] transition-[color,background-color,scale] duration-150 active:scale-[0.96]"
                     variant="ghost"
@@ -774,7 +774,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
                   </Button>
                 }
               />
-              <TooltipPopup>Close editor group</TooltipPopup>
+              <TooltipPopup>Close pane</TooltipPopup>
             </Tooltip>
           ) : null}
         </div>

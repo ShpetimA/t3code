@@ -12,51 +12,51 @@ import {
 } from "react";
 
 import {
-  calculateEditorWorkspaceLayout,
-  clampEditorSplitRatio,
-  findEditorGroup,
-  getVisibleEditorWorkspaceRoot,
-  type EditorGroupDropZone,
-  type EditorGroupId,
-  type EditorGroupNode,
-  type EditorSplitId,
-  type EditorSplitNode,
-  type EditorTabDragData,
-  type EditorWorkspace,
-  type EditorWorkspaceBounds,
-} from "~/editorWorkspace";
+  calculatePaneTreeLayout,
+  clampPaneSplitRatio,
+  findPane,
+  getVisiblePaneTreeRoot,
+  type PaneDropZone,
+  type PaneId,
+  type PaneNode,
+  type PaneSplitId,
+  type PaneSplitNode,
+  type PaneTabDragData,
+  type PaneTree,
+  type PaneBounds,
+} from "~/splitPaneTree";
 import { cn } from "~/lib/utils";
 
 import {
-  calculateEditorSplitRatio,
-  resolveEditorGroupDropZone,
+  calculatePaneSplitRatio,
+  resolvePaneDropZone,
   resolveKeyboardResizeDelta,
-} from "./EditorWorkspaceGrid.logic";
+} from "./SplitPaneGrid.logic";
 
-interface EditorWorkspaceGridProps {
-  workspace: EditorWorkspace;
-  renderGroup: (group: EditorGroupNode) => ReactNode;
-  onFocusGroup: (groupId: EditorGroupId) => void;
-  onResizeSplit: (splitId: EditorSplitId, ratio: number) => void;
-  draggedTab?: EditorTabDragData | null;
+interface SplitPaneGridProps {
+  tree: PaneTree;
+  renderPane: (group: PaneNode) => ReactNode;
+  onFocusPane: (paneId: PaneId) => void;
+  onResizeSplit: (splitId: PaneSplitId, ratio: number) => void;
+  draggedTab?: PaneTabDragData | null;
   onDropTab?: (input: {
-    readonly draggedTab: EditorTabDragData;
-    readonly targetGroupId: EditorGroupId;
-    readonly zone: EditorGroupDropZone;
+    readonly draggedTab: PaneTabDragData;
+    readonly targetPaneId: PaneId;
+    readonly zone: PaneDropZone;
   }) => void;
   className?: string;
 }
 
-interface EditorGroupDropPreview {
-  readonly groupId: EditorGroupId;
-  readonly zone: EditorGroupDropZone;
+interface PaneDropPreview {
+  readonly paneId: PaneId;
+  readonly zone: PaneDropZone;
 }
 
-export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
-  const visibleRoot = getVisibleEditorWorkspaceRoot(props.workspace);
-  const layout = calculateEditorWorkspaceLayout(visibleRoot);
+export function SplitPaneGrid(props: SplitPaneGridProps) {
+  const visibleRoot = getVisiblePaneTreeRoot(props.tree);
+  const layout = calculatePaneTreeLayout(visibleRoot);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dropPreview, setDropPreview] = useState<EditorGroupDropPreview | null>(null);
+  const [dropPreview, setDropPreview] = useState<PaneDropPreview | null>(null);
   useEffect(() => {
     if (!props.draggedTab) setDropPreview(null);
   }, [props.draggedTab]);
@@ -64,17 +64,17 @@ export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
     <div
       ref={containerRef}
       className={cn("relative min-h-0 min-w-0 flex-1 overflow-hidden", props.className)}
-      data-editor-focus-view={props.workspace.maximizedGroupId ? "true" : "false"}
+      data-editor-focus-view={props.tree.maximizedPaneId ? "true" : "false"}
     >
       {layout.groups.map(({ group, bounds }) => (
-        <EditorWorkspaceGroup
+        <SplitPane
           key={group.id}
           bounds={bounds}
           group={group}
-          focusedGroupId={props.workspace.focusedGroupId}
-          renderGroup={props.renderGroup}
-          onFocusGroup={props.onFocusGroup}
-          workspace={props.workspace}
+          focusedPaneId={props.tree.focusedPaneId}
+          renderPane={props.renderPane}
+          onFocusPane={props.onFocusPane}
+          tree={props.tree}
           draggedTab={props.draggedTab ?? null}
           onDropTab={props.onDropTab}
           dropPreview={dropPreview}
@@ -82,7 +82,7 @@ export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
         />
       ))}
       {layout.splits.map(({ split, bounds }) => (
-        <EditorSplitHandle
+        <PaneSplitHandle
           key={split.id}
           bounds={bounds}
           containerRef={containerRef}
@@ -94,37 +94,37 @@ export function EditorWorkspaceGrid(props: EditorWorkspaceGridProps) {
   );
 }
 
-interface EditorWorkspaceGroupProps {
-  bounds: EditorWorkspaceBounds;
-  group: EditorGroupNode;
-  focusedGroupId: EditorGroupId;
-  renderGroup: (group: EditorGroupNode) => ReactNode;
-  onFocusGroup: (groupId: EditorGroupId) => void;
-  workspace: EditorWorkspace;
-  draggedTab: EditorTabDragData | null;
-  onDropTab: EditorWorkspaceGridProps["onDropTab"];
-  dropPreview: EditorGroupDropPreview | null;
-  setDropPreview: (preview: EditorGroupDropPreview | null) => void;
+interface SplitPaneProps {
+  bounds: PaneBounds;
+  group: PaneNode;
+  focusedPaneId: PaneId;
+  renderPane: (group: PaneNode) => ReactNode;
+  onFocusPane: (paneId: PaneId) => void;
+  tree: PaneTree;
+  draggedTab: PaneTabDragData | null;
+  onDropTab: SplitPaneGridProps["onDropTab"];
+  dropPreview: PaneDropPreview | null;
+  setDropPreview: (preview: PaneDropPreview | null) => void;
 }
 
-function EditorWorkspaceGroup(props: EditorWorkspaceGroupProps) {
+function SplitPane(props: SplitPaneProps) {
   const { group } = props;
   return (
-    // Keep surface-local overlays below the workspace's sibling split handles.
+    // Keep surface-local overlays below the tree's sibling split handles.
     <section
       className="absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden bg-background"
-      style={editorWorkspaceBoundsStyle(props.bounds)}
+      style={paneBoundsStyle(props.bounds)}
       data-editor-group={group.id}
-      data-editor-group-focused={group.id === props.focusedGroupId ? "true" : "false"}
-      onPointerDown={() => props.onFocusGroup(group.id)}
+      data-editor-group-focused={group.id === props.focusedPaneId ? "true" : "false"}
+      onPointerDown={() => props.onFocusPane(group.id)}
     >
-      {props.renderGroup(group)}
+      {props.renderPane(group)}
       {props.draggedTab && props.onDropTab ? (
-        <EditorGroupDropTarget
-          workspace={props.workspace}
+        <PaneDropTarget
+          tree={props.tree}
           group={group}
           draggedTab={props.draggedTab}
-          preview={props.dropPreview?.groupId === group.id ? props.dropPreview : null}
+          preview={props.dropPreview?.paneId === group.id ? props.dropPreview : null}
           onPreviewChange={props.setDropPreview}
           onDrop={props.onDropTab}
         />
@@ -133,7 +133,7 @@ function EditorWorkspaceGroup(props: EditorWorkspaceGroupProps) {
   );
 }
 
-function editorWorkspaceBoundsStyle(bounds: EditorWorkspaceBounds): CSSProperties {
+function paneBoundsStyle(bounds: PaneBounds): CSSProperties {
   return {
     top: `${bounds.top * 100}%`,
     left: `${bounds.left * 100}%`,
@@ -142,30 +142,30 @@ function editorWorkspaceBoundsStyle(bounds: EditorWorkspaceBounds): CSSPropertie
   };
 }
 
-function canDropEditorTab(
-  workspace: EditorWorkspace,
-  draggedTab: EditorTabDragData,
-  targetGroupId: EditorGroupId,
-  zone: EditorGroupDropZone,
+function canDropPaneTab(
+  tree: PaneTree,
+  draggedTab: PaneTabDragData,
+  targetPaneId: PaneId,
+  zone: PaneDropZone,
 ): boolean {
-  const sourceGroup = findEditorGroup(workspace.root, draggedTab.sourceGroupId);
-  const targetGroup = findEditorGroup(workspace.root, targetGroupId);
+  const sourceGroup = findPane(tree.root, draggedTab.sourcePaneId);
+  const targetGroup = findPane(tree.root, targetPaneId);
   if (!sourceGroup?.tabIds.includes(draggedTab.sourceTabId) || !targetGroup) return false;
   if (zone === "center") return sourceGroup.id !== targetGroup.id;
   return sourceGroup.id !== targetGroup.id || sourceGroup.tabIds.length > 1;
 }
 
-function EditorGroupDropTarget(props: {
-  readonly workspace: EditorWorkspace;
-  readonly group: EditorGroupNode;
-  readonly draggedTab: EditorTabDragData;
-  readonly preview: EditorGroupDropPreview | null;
-  readonly onPreviewChange: (preview: EditorGroupDropPreview | null) => void;
-  readonly onDrop: NonNullable<EditorWorkspaceGridProps["onDropTab"]>;
+function PaneDropTarget(props: {
+  readonly tree: PaneTree;
+  readonly group: PaneNode;
+  readonly draggedTab: PaneTabDragData;
+  readonly preview: PaneDropPreview | null;
+  readonly onPreviewChange: (preview: PaneDropPreview | null) => void;
+  readonly onDrop: NonNullable<SplitPaneGridProps["onDropTab"]>;
 }) {
   const resolveDropZone = (event: DragEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
-    return resolveEditorGroupDropZone({
+    return resolvePaneDropZone({
       clientX: event.clientX,
       clientY: event.clientY,
       bounds: {
@@ -178,7 +178,7 @@ function EditorGroupDropTarget(props: {
   };
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     const zone = resolveDropZone(event);
-    if (!zone || !canDropEditorTab(props.workspace, props.draggedTab, props.group.id, zone)) {
+    if (!zone || !canDropPaneTab(props.tree, props.draggedTab, props.group.id, zone)) {
       event.dataTransfer.dropEffect = "none";
       props.onPreviewChange(null);
       return;
@@ -187,7 +187,7 @@ function EditorGroupDropTarget(props: {
     event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
     if (props.preview?.zone !== zone) {
-      props.onPreviewChange({ groupId: props.group.id, zone });
+      props.onPreviewChange({ paneId: props.group.id, zone });
     }
   };
   const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
@@ -197,11 +197,11 @@ function EditorGroupDropTarget(props: {
   };
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     const zone = resolveDropZone(event);
-    if (!zone || !canDropEditorTab(props.workspace, props.draggedTab, props.group.id, zone)) return;
+    if (!zone || !canDropPaneTab(props.tree, props.draggedTab, props.group.id, zone)) return;
     event.preventDefault();
     event.stopPropagation();
     props.onPreviewChange(null);
-    props.onDrop({ draggedTab: props.draggedTab, targetGroupId: props.group.id, zone });
+    props.onDrop({ draggedTab: props.draggedTab, targetPaneId: props.group.id, zone });
   };
 
   return (
@@ -212,15 +212,15 @@ function EditorGroupDropTarget(props: {
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {props.preview ? <EditorGroupDropOverlay zone={props.preview.zone} /> : null}
+      {props.preview ? <PaneDropOverlay zone={props.preview.zone} /> : null}
     </div>
   );
 }
 
-function EditorGroupDropOverlay({ zone }: { readonly zone: EditorGroupDropZone }) {
+function PaneDropOverlay({ zone }: { readonly zone: PaneDropZone }) {
   const label =
     zone === "center"
-      ? "Swap editor groups"
+      ? "Swap panes"
       : zone === "up"
         ? "Split above"
         : zone === "down"
@@ -257,11 +257,11 @@ interface DragState {
   readonly target: HTMLDivElement;
 }
 
-function EditorSplitHandle(props: {
-  bounds: EditorWorkspaceBounds;
+function PaneSplitHandle(props: {
+  bounds: PaneBounds;
   containerRef: RefObject<HTMLDivElement | null>;
-  split: EditorSplitNode;
-  onResize: (splitId: EditorSplitId, ratio: number) => void;
+  split: PaneSplitNode;
+  onResize: (splitId: PaneSplitId, ratio: number) => void;
 }) {
   const { split, onResize } = props;
   const dragStateRef = useRef<DragState | null>(null);
@@ -322,7 +322,7 @@ function EditorSplitHandle(props: {
       const dragState = dragStateRef.current;
       if (!dragState || dragState.pointerId !== event.pointerId) return;
       const position = horizontal ? event.clientX : event.clientY;
-      const ratio = calculateEditorSplitRatio(position, dragState.start, dragState.size);
+      const ratio = calculatePaneSplitRatio(position, dragState.start, dragState.size);
       if (ratio === null) return;
       dragState.pendingRatio = ratio;
       if (dragState.frameId !== null) return;
@@ -362,7 +362,7 @@ function EditorSplitHandle(props: {
     (event: KeyboardEvent<HTMLDivElement>) => {
       const delta = resolveKeyboardResizeDelta(event.key, split.orientation);
       if (delta === null) return;
-      const ratio = clampEditorSplitRatio(split.ratio + delta);
+      const ratio = clampPaneSplitRatio(split.ratio + delta);
       if (ratio !== null) onResize(split.id, ratio);
       event.preventDefault();
     },

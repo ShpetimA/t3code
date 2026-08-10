@@ -2,9 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  buildEditorTabContextMenuItems,
-  resolveEditorTabLayoutAction,
-  resolveEditorTabSplitAction,
+  buildWorkspaceTabContextMenuItems,
+  resolveWorkspaceTabLayoutAction,
+  resolveWorkspaceTabSplitAction,
 } from "./RightPanelTabs.logic";
 import { RightPanelEmptyState, RightPanelTabBar } from "./RightPanelTabs";
 
@@ -95,19 +95,19 @@ describe("RightPanelTabBar", () => {
       />,
     );
 
-    expect(markup).toContain('aria-label="Restore editor layout"');
+    expect(markup).toContain('aria-label="Restore workspace layout"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain("[--control-icon-color:currentColor]");
-    expect(markup.indexOf('aria-label="Restore editor layout"')).toBeLessThan(
+    expect(markup.indexOf('aria-label="Restore workspace layout"')).toBeLessThan(
       markup.indexOf('aria-label="Split editor right"'),
     );
     expect(markup.indexOf('aria-label="Split editor right"')).toBeLessThan(
-      markup.indexOf('aria-label="Close editor group"'),
+      markup.indexOf('aria-label="Close pane"'),
     );
     expect(markup).not.toContain("pr-28");
   });
 
-  it("renders the surface chooser for an empty editor group", () => {
+  it("renders the surface chooser for an empty pane", () => {
     const markup = renderToStaticMarkup(
       <RightPanelEmptyState
         onAddBrowser={NOOP}
@@ -129,7 +129,7 @@ describe("RightPanelTabBar", () => {
 
   it("adds copy and move split actions to a surface tab menu", () => {
     expect(
-      buildEditorTabContextMenuItems({
+      buildWorkspaceTabContextMenuItems({
         target: {
           _tag: "Surface",
           surface: {
@@ -170,11 +170,11 @@ describe("RightPanelTabBar", () => {
   });
 
   it("puts existing-group moves inside the Split & Move submenu", () => {
-    const items = buildEditorTabContextMenuItems({
+    const items = buildWorkspaceTabContextMenuItems({
       target: { _tag: "Thread" },
       surfaceCount: 0,
       surfaceIndex: -1,
-      adjacentGroups: { up: null, down: null, left: null, right: "editor-group:right" },
+      adjacentGroups: { up: null, down: null, left: null, right: "pane:right" },
       moveToGroupAvailable: true,
       copyToSplitAvailable: false,
       moveToSplitAvailable: true,
@@ -199,22 +199,22 @@ describe("RightPanelTabBar", () => {
   });
 
   it("resolves split menu actions into copy and move commands", () => {
-    expect(resolveEditorTabSplitAction("split-right")).toEqual({
+    expect(resolveWorkspaceTabSplitAction("split-right")).toEqual({
       mode: "copy",
       direction: "right",
     });
-    expect(resolveEditorTabSplitAction("move-up")).toEqual({
+    expect(resolveWorkspaceTabSplitAction("move-up")).toEqual({
       mode: "move",
       direction: "up",
     });
-    expect(resolveEditorTabSplitAction("close")).toBeNull();
+    expect(resolveWorkspaceTabSplitAction("close")).toBeNull();
   });
 
   it("resolves existing-group move commands", () => {
-    expect(resolveEditorTabLayoutAction("move-group-down")).toEqual({
+    expect(resolveWorkspaceTabLayoutAction("move-group-down")).toEqual({
       _tag: "MoveToGroup",
       direction: "down",
     });
-    expect(resolveEditorTabLayoutAction("split-right")).toBeNull();
+    expect(resolveWorkspaceTabLayoutAction("split-right")).toBeNull();
   });
 });

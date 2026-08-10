@@ -3,25 +3,25 @@ import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
-  EMPTY_THREAD_RIGHT_PANEL_STATE,
-  migratePersistedRightPanelState,
-  transitionThreadRightPanel,
+  EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS,
+  parsePersistedThreadWorkspaceSurfaces,
+  transitionThreadWorkspaceSurfaces,
   type RightPanelKind,
   type RightPanelSurfacePresentation,
-  type ThreadRightPanelState,
-  type ThreadRightPanelTransition,
-} from "./threadWorkspaceSurface";
+  type ThreadWorkspaceSurfaceFields,
+  type ThreadWorkspaceSurfaceTransition,
+} from "./threadWorkspaceSurfaces";
 
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
 
-let byThreadKey: Record<string, ThreadRightPanelState> = {};
+let byThreadKey: Record<string, ThreadWorkspaceSurfaceFields> = {};
 
-function apply(ref: typeof refA, transition: ThreadRightPanelTransition): void {
+function apply(ref: typeof refA, transition: ThreadWorkspaceSurfaceTransition): void {
   const threadKey = `${ref.environmentId}:${ref.threadId}`;
-  const current = byThreadKey[threadKey] ?? EMPTY_THREAD_RIGHT_PANEL_STATE;
-  const next = transitionThreadRightPanel(current, transition);
-  if (!next.isOpen && next.activeSurfaceId === null && next.surfaces.length === 0) {
+  const current = byThreadKey[threadKey] ?? EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS;
+  const next = transitionThreadWorkspaceSurfaces(current, transition);
+  if (!next.isRightPanelOpen && next.activeSurfaceId === null && next.surfaces.length === 0) {
     const { [threadKey]: _removed, ...rest } = byThreadKey;
     byThreadKey = rest;
     return;
@@ -32,8 +32,8 @@ function apply(ref: typeof refA, transition: ThreadRightPanelTransition): void {
   };
 }
 
-const useRightPanelStore = {
-  setState: (state: { readonly byThreadKey: Record<string, ThreadRightPanelState> }) => {
+const surfaceHarness = {
+  setState: (state: { readonly byThreadKey: Record<string, ThreadWorkspaceSurfaceFields> }) => {
     byThreadKey = state.byThreadKey;
   },
   getState: () => ({
@@ -111,41 +111,41 @@ const useRightPanelStore = {
   }),
 };
 
-function selectThreadRightPanelState(
-  currentByThreadKey: Record<string, ThreadRightPanelState>,
+function selectSurfaceFields(
+  currentByThreadKey: Record<string, ThreadWorkspaceSurfaceFields>,
   ref: typeof refA,
-): ThreadRightPanelState {
+): ThreadWorkspaceSurfaceFields {
   return (
-    currentByThreadKey[`${ref.environmentId}:${ref.threadId}`] ?? EMPTY_THREAD_RIGHT_PANEL_STATE
+    currentByThreadKey[`${ref.environmentId}:${ref.threadId}`] ?? EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS
   );
 }
 
 function selectActiveRightPanel(
-  currentByThreadKey: Record<string, ThreadRightPanelState>,
+  currentByThreadKey: Record<string, ThreadWorkspaceSurfaceFields>,
   ref: typeof refA,
 ): RightPanelKind | null {
-  const state = selectThreadRightPanelState(currentByThreadKey, ref);
-  if (!state.isOpen) return null;
+  const state = selectSurfaceFields(currentByThreadKey, ref);
+  if (!state.isRightPanelOpen) return null;
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId)?.kind ?? null;
 }
 
 function selectActiveRightPanelSurface(
-  currentByThreadKey: Record<string, ThreadRightPanelState>,
+  currentByThreadKey: Record<string, ThreadWorkspaceSurfaceFields>,
   ref: typeof refA,
 ) {
-  const state = selectThreadRightPanelState(currentByThreadKey, ref);
-  if (!state.isOpen) return null;
+  const state = selectSurfaceFields(currentByThreadKey, ref);
+  if (!state.isRightPanelOpen) return null;
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId) ?? null;
 }
 
 beforeEach(() => {
-  useRightPanelStore.setState({ byThreadKey: {} });
+  surfaceHarness.setState({ byThreadKey: {} });
 });
 
 describe("thread workspace surface state", () => {
   it("drops the legacy singleton terminal surface during migration", () => {
     expect(
-      migratePersistedRightPanelState({
+      parsePersistedThreadWorkspaceSurfaces({
         byThreadKey: {
           "env-1:thread-A": {
             activeSurfaceId: "terminal",
@@ -159,7 +159,7 @@ describe("thread workspace surface state", () => {
     ).toEqual({
       byThreadKey: {
         "env-1:thread-A": {
-          isOpen: false,
+          isRightPanelOpen: false,
           activeSurfaceId: null,
           surfaces: [{ id: "browser:tab-a", kind: "preview", resourceId: "tab-a" }],
         },
@@ -169,10 +169,10 @@ describe("thread workspace surface state", () => {
 
   it("upgrades saved single-session terminal surfaces to split-capable surfaces", () => {
     expect(
-      migratePersistedRightPanelState({
+      parsePersistedThreadWorkspaceSurfaces({
         byThreadKey: {
           "env-1:thread-A": {
-            isOpen: true,
+            isRightPanelOpen: true,
             activeSurfaceId: "terminal:term-1",
             surfaces: [{ id: "terminal:term-1", kind: "terminal", resourceId: "term-1" }],
           },
@@ -181,7 +181,7 @@ describe("thread workspace surface state", () => {
     ).toEqual({
       byThreadKey: {
         "env-1:thread-A": {
-          isOpen: true,
+          isRightPanelOpen: true,
           activeSurfaceId: "terminal:term-1",
           surfaces: [
             {
@@ -199,10 +199,10 @@ describe("thread workspace surface state", () => {
 
   it("upgrades saved file surfaces with neutral reveal state", () => {
     expect(
-      migratePersistedRightPanelState({
+      parsePersistedThreadWorkspaceSurfaces({
         byThreadKey: {
           "env-1:thread-A": {
-            isOpen: true,
+            isRightPanelOpen: true,
             activeSurfaceId: "file:src/index.ts",
             surfaces: [{ id: "file:src/index.ts", kind: "file", relativePath: "src/index.ts" }],
           },
@@ -211,7 +211,7 @@ describe("thread workspace surface state", () => {
     ).toEqual({
       byThreadKey: {
         "env-1:thread-A": {
-          isOpen: true,
+          isRightPanelOpen: true,
           activeSurfaceId: "file:src/index.ts",
           surfaces: [
             {
@@ -229,15 +229,15 @@ describe("thread workspace surface state", () => {
 
   it("drops persisted plan surfaces and does not reopen an empty panel", () => {
     expect(
-      migratePersistedRightPanelState({
+      parsePersistedThreadWorkspaceSurfaces({
         byThreadKey: {
           "env-1:thread-A": {
-            isOpen: true,
+            isRightPanelOpen: true,
             activeSurfaceId: "plan",
             surfaces: [{ id: "plan", kind: "plan" }],
           },
           "env-1:thread-B": {
-            isOpen: true,
+            isRightPanelOpen: true,
             activeSurfaceId: "plan",
             surfaces: [
               { id: "plan", kind: "plan" },
@@ -249,12 +249,12 @@ describe("thread workspace surface state", () => {
     ).toEqual({
       byThreadKey: {
         "env-1:thread-A": {
-          isOpen: false,
+          isRightPanelOpen: false,
           activeSurfaceId: null,
           surfaces: [],
         },
         "env-1:thread-B": {
-          isOpen: true,
+          isRightPanelOpen: true,
           activeSurfaceId: "diff",
           surfaces: [{ id: "diff", kind: "diff" }],
         },
@@ -263,27 +263,27 @@ describe("thread workspace surface state", () => {
   });
 
   it("open sets the active panel for a thread", () => {
-    useRightPanelStore.getState().open(refA, "preview");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("preview");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refB)).toBeNull();
+    surfaceHarness.getState().open(refA, "preview");
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBe("preview");
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refB)).toBeNull();
   });
 
   it("opening a different kind keeps both surfaces and activates the new one", () => {
-    useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().open(refA, "preview");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("preview");
+    surfaceHarness.getState().open(refA, "agents");
+    surfaceHarness.getState().open(refA, "preview");
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBe("preview");
     expect(
-      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+      selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA).surfaces,
     ).toHaveLength(2);
   });
 
   it("reopening an inactive singleton activates its existing surface", () => {
-    useRightPanelStore.getState().open(refA, "diff");
-    useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().open(refA, "diff");
+    surfaceHarness.getState().open(refA, "diff");
+    surfaceHarness.getState().open(refA, "agents");
+    surfaceHarness.getState().open(refA, "diff");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "diff",
       surfaces: [
         { id: "diff", kind: "diff" },
@@ -293,14 +293,14 @@ describe("thread workspace surface state", () => {
   });
 
   it("selects a workspace surface without reopening the narrow panel", () => {
-    useRightPanelStore.getState().open(refA, "diff");
-    useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().close(refA);
+    surfaceHarness.getState().open(refA, "diff");
+    surfaceHarness.getState().open(refA, "agents");
+    surfaceHarness.getState().close(refA);
 
-    useRightPanelStore.getState().selectSurface(refA, "diff");
+    surfaceHarness.getState().selectSurface(refA, "diff");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: "diff",
       surfaces: [
         { id: "diff", kind: "diff" },
@@ -310,11 +310,11 @@ describe("thread workspace surface state", () => {
   });
 
   it("opens workspace surfaces without changing narrow panel visibility", () => {
-    useRightPanelStore.getState().open(refA, "diff", "preserve-panel");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts", undefined, "preserve-panel");
+    surfaceHarness.getState().open(refA, "diff", "preserve-panel");
+    surfaceHarness.getState().openFile(refA, "src/index.ts", undefined, "preserve-panel");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: "file:src/index.ts",
       surfaces: [
         { id: "diff", kind: "diff" },
@@ -330,23 +330,23 @@ describe("thread workspace surface state", () => {
   });
 
   it("keeps files as a singleton surface", () => {
-    useRightPanelStore.getState().open(refA, "files");
-    useRightPanelStore.getState().open(refA, "files");
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    surfaceHarness.getState().open(refA, "files");
+    surfaceHarness.getState().open(refA, "files");
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "files",
       surfaces: [{ id: "files", kind: "files" }],
     });
   });
 
   it("replaces the standalone explorer with peer file surfaces", () => {
-    useRightPanelStore.getState().open(refA, "files");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
-    useRightPanelStore.getState().openFile(refA, "README.md");
+    surfaceHarness.getState().open(refA, "files");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().openFile(refA, "README.md");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "file:README.md",
       surfaces: [
         {
@@ -368,11 +368,11 @@ describe("thread workspace surface state", () => {
   });
 
   it("updates line reveal requests when reopening a file surface", () => {
-    useRightPanelStore.getState().openFile(refA, "src/index.ts", 42);
-    useRightPanelStore.getState().openFile(refA, "src/index.ts", 87);
+    surfaceHarness.getState().openFile(refA, "src/index.ts", 42);
+    surfaceHarness.getState().openFile(refA, "src/index.ts", 87);
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "file:src/index.ts",
       surfaces: [
         {
@@ -385,10 +385,10 @@ describe("thread workspace surface state", () => {
       ],
     });
 
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "file:src/index.ts",
       surfaces: [
         {
@@ -403,86 +403,86 @@ describe("thread workspace surface state", () => {
   });
 
   it("removes persisted file surfaces when their workspace no longer exists", () => {
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
-    useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().openFile(refA, "README.md");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().open(refA, "agents");
+    surfaceHarness.getState().openFile(refA, "README.md");
 
-    useRightPanelStore.getState().reconcileFileSurfaces(refA, false);
+    surfaceHarness.getState().reconcileFileSurfaces(refA, false);
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "agents",
       surfaces: [{ id: "agents", kind: "agents" }],
     });
 
-    useRightPanelStore.getState().openFile(refB, "conductor.json");
-    useRightPanelStore.getState().reconcileFileSurfaces(refB, false);
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refB)).toEqual({
-      isOpen: false,
+    surfaceHarness.getState().openFile(refB, "conductor.json");
+    surfaceHarness.getState().reconcileFileSurfaces(refB, false);
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refB)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: null,
       surfaces: [],
     });
   });
 
   it("close hides the panel without clearing its selected surface", () => {
-    useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().close(refA);
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    surfaceHarness.getState().open(refA, "agents");
+    surfaceHarness.getState().close(refA);
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBeNull();
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: "agents",
       surfaces: [{ id: "agents", kind: "agents" }],
     });
   });
 
   it("toggles empty panel visibility without creating a surface", () => {
-    useRightPanelStore.getState().toggleVisibility(refA);
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    surfaceHarness.getState().toggleVisibility(refA);
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: null,
       surfaces: [],
     });
 
-    useRightPanelStore.getState().toggleVisibility(refA);
-    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
+    surfaceHarness.getState().toggleVisibility(refA);
+    expect(surfaceHarness.getState().byThreadKey).toEqual({});
   });
 
   it("toggle hides the panel without discarding the active surface", () => {
-    useRightPanelStore.getState().toggle(refA, "diff");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
-    useRightPanelStore.getState().toggle(refA, "diff");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    surfaceHarness.getState().toggle(refA, "diff");
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBe("diff");
+    surfaceHarness.getState().toggle(refA, "diff");
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBeNull();
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: "diff",
       surfaces: [{ id: "diff", kind: "diff" }],
     });
   });
 
   it("toggle to a different kind switches active", () => {
-    useRightPanelStore.getState().toggle(refA, "preview");
-    useRightPanelStore.getState().toggle(refA, "agents");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("agents");
+    surfaceHarness.getState().toggle(refA, "preview");
+    surfaceHarness.getState().toggle(refA, "agents");
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBe("agents");
   });
 
   it("removeThread clears persisted state", () => {
-    useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().removeThread(refA);
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
+    surfaceHarness.getState().open(refA, "agents");
+    surfaceHarness.getState().removeThread(refA);
+    expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBeNull();
   });
 
   it("close on never-opened thread is a no-op", () => {
-    useRightPanelStore.getState().close(refA);
-    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
+    surfaceHarness.getState().close(refA);
+    expect(surfaceHarness.getState().byThreadKey).toEqual({});
   });
 
   it("tracks one surface per browser session", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openBrowser(refA, "tab-b");
+    surfaceHarness.getState().openBrowser(refA, "tab-a");
+    surfaceHarness.getState().openBrowser(refA, "tab-b");
 
-    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    const state = selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA);
     expect(state.surfaces.map((surface) => surface.id)).toEqual(["browser:tab-a", "browser:tab-b"]);
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+    expect(selectActiveRightPanelSurface(surfaceHarness.getState().byThreadKey, refA)).toEqual({
       id: "browser:tab-b",
       kind: "preview",
       resourceId: "tab-b",
@@ -490,10 +490,10 @@ describe("thread workspace surface state", () => {
   });
 
   it("tracks one surface per terminal session", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().openTerminal(refA, "term-2");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().openTerminal(refA, "term-2");
 
-    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    const state = selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA);
     expect(state.surfaces).toEqual([
       {
         id: "terminal:term-1",
@@ -514,10 +514,10 @@ describe("thread workspace surface state", () => {
   });
 
   it("tracks split panes and the active pane within a terminal surface", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().splitTerminal(refA, "terminal:term-1", "term-2");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().splitTerminal(refA, "terminal:term-1", "term-2");
 
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+    expect(selectActiveRightPanelSurface(surfaceHarness.getState().byThreadKey, refA)).toEqual({
       id: "terminal:term-1",
       kind: "terminal",
       resourceId: "term-1",
@@ -525,9 +525,9 @@ describe("thread workspace surface state", () => {
       activeTerminalId: "term-2",
     });
 
-    useRightPanelStore.getState().activateTerminal(refA, "terminal:term-1", "term-1");
-    useRightPanelStore.getState().closeTerminal(refA, "terminal:term-1", "term-1");
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+    surfaceHarness.getState().activateTerminal(refA, "terminal:term-1", "term-1");
+    surfaceHarness.getState().closeTerminal(refA, "terminal:term-1", "term-1");
+    expect(selectActiveRightPanelSurface(surfaceHarness.getState().byThreadKey, refA)).toEqual({
       id: "terminal:term-1",
       kind: "terminal",
       resourceId: "term-1",
@@ -537,10 +537,10 @@ describe("thread workspace surface state", () => {
   });
 
   it("tracks vertical layout for a terminal surface", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().splitTerminal(refA, "terminal:term-1", "term-2", "vertical");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().splitTerminal(refA, "terminal:term-1", "term-2", "vertical");
 
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+    expect(selectActiveRightPanelSurface(surfaceHarness.getState().byThreadKey, refA)).toEqual({
       id: "terminal:term-1",
       kind: "terminal",
       resourceId: "term-1",
@@ -551,46 +551,46 @@ describe("thread workspace surface state", () => {
   });
 
   it("closing the final terminal pane removes its surface and closes the panel", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().closeTerminal(refA, "terminal:term-1", "term-1");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().closeTerminal(refA, "terminal:term-1", "term-1");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: null,
       surfaces: [],
     });
   });
 
   it("closing the active surface activates a neighboring surface", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().closeSurface(refA, "terminal:term-1");
+    surfaceHarness.getState().openBrowser(refA, "tab-a");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().closeSurface(refA, "terminal:term-1");
 
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+    expect(selectActiveRightPanelSurface(surfaceHarness.getState().byThreadKey, refA)?.id).toBe(
       "browser:tab-a",
     );
   });
 
   it("closing the final surface closes the panel", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().closeSurface(refA, "terminal:term-1");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().closeSurface(refA, "terminal:term-1");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: null,
       surfaces: [],
     });
   });
 
   it("closing other surfaces keeps the selected surface active", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().openBrowser(refA, "tab-a");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
 
-    useRightPanelStore.getState().closeOtherSurfaces(refA, "file:src/index.ts");
+    surfaceHarness.getState().closeOtherSurfaces(refA, "file:src/index.ts");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "file:src/index.ts",
       surfaces: [
         {
@@ -605,40 +605,40 @@ describe("thread workspace surface state", () => {
   });
 
   it("closing surfaces to the right activates the selected surface when active was removed", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().openBrowser(refA, "tab-a");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().openTerminal(refA, "term-1");
 
-    useRightPanelStore.getState().closeSurfacesToRight(refA, "browser:tab-a");
+    surfaceHarness.getState().closeSurfacesToRight(refA, "browser:tab-a");
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: true,
       activeSurfaceId: "browser:tab-a",
       surfaces: [{ id: "browser:tab-a", kind: "preview", resourceId: "tab-a" }],
     });
   });
 
   it("closing all surfaces closes the panel", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openFile(refA, "src/index.ts");
+    surfaceHarness.getState().openBrowser(refA, "tab-a");
+    surfaceHarness.getState().openFile(refA, "src/index.ts");
 
-    useRightPanelStore.getState().closeAllSurfaces(refA);
+    surfaceHarness.getState().closeAllSurfaces(refA);
 
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: false,
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toEqual({
+      isRightPanelOpen: false,
       activeSurfaceId: null,
       surfaces: [],
     });
   });
 
   it("reconciles browser surfaces without deleting other surface kinds", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openBrowser(refA, "tab-b");
-    useRightPanelStore.getState().reconcileBrowserSurfaces(refA, ["tab-b", "tab-c"]);
+    surfaceHarness.getState().openTerminal(refA, "term-1");
+    surfaceHarness.getState().openBrowser(refA, "tab-a");
+    surfaceHarness.getState().openBrowser(refA, "tab-b");
+    surfaceHarness.getState().reconcileBrowserSurfaces(refA, ["tab-b", "tab-c"]);
 
     expect(
-      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces.map(
+      selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA).surfaces.map(
         (surface) => surface.id,
       ),
     ).toEqual(["terminal:term-1", "browser:tab-b", "browser:tab-c"]);

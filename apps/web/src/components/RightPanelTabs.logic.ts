@@ -1,9 +1,9 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 
-import type { AdjacentEditorGroups, EditorSplitDirection } from "~/editorWorkspace";
-import type { RightPanelSurface } from "~/threadWorkspaceSurface";
+import type { AdjacentPanes, PaneSplitDirection } from "~/splitPaneTree";
+import type { RightPanelSurface } from "~/threadWorkspace";
 
-export type EditorTabContextTarget =
+export type WorkspaceTabContextTarget =
   | { readonly _tag: "Thread" }
   | { readonly _tag: "Surface"; readonly surface: RightPanelSurface };
 
@@ -25,17 +25,17 @@ export type TabContextMenuAction =
   | "move-left"
   | "move-right";
 
-/** A move into an existing editor group selected from a tab context menu. */
-export type EditorTabLayoutAction = {
+/** A move into an existing pane selected from a tab context menu. */
+export type WorkspaceTabLayoutAction = {
   readonly _tag: "MoveToGroup";
-  readonly direction: EditorSplitDirection;
+  readonly direction: PaneSplitDirection;
 };
 
-export function buildEditorTabContextMenuItems(input: {
-  readonly target: EditorTabContextTarget;
+export function buildWorkspaceTabContextMenuItems(input: {
+  readonly target: WorkspaceTabContextTarget;
   readonly surfaceCount: number;
   readonly surfaceIndex: number;
-  readonly adjacentGroups: AdjacentEditorGroups;
+  readonly adjacentGroups: AdjacentPanes;
   readonly moveToGroupAvailable: boolean;
   readonly copyToSplitAvailable: boolean;
   readonly moveToSplitAvailable: boolean;
@@ -89,7 +89,7 @@ export function buildEditorTabContextMenuItems(input: {
 }
 
 function directionalGroupItems(
-  groups: AdjacentEditorGroups,
+  groups: AdjacentPanes,
 ): readonly ContextMenuItem<TabContextMenuAction>[] {
   return (["up", "down", "left", "right"] as const).flatMap((direction) => {
     if (!groups[direction]) return [];
@@ -105,7 +105,7 @@ function directionalGroupItems(
   });
 }
 
-function directionalGroupActionId(direction: EditorSplitDirection): TabContextMenuAction {
+function directionalGroupActionId(direction: PaneSplitDirection): TabContextMenuAction {
   switch (direction) {
     case "up":
       return "move-group-up";
@@ -118,9 +118,9 @@ function directionalGroupActionId(direction: EditorSplitDirection): TabContextMe
   }
 }
 
-export function resolveEditorTabSplitAction(
+export function resolveWorkspaceTabSplitAction(
   action: TabContextMenuAction | null,
-): { readonly mode: "copy" | "move"; readonly direction: EditorSplitDirection } | null {
+): { readonly mode: "copy" | "move"; readonly direction: PaneSplitDirection } | null {
   switch (action) {
     case "split-right":
       return { mode: "copy", direction: "right" };
@@ -139,10 +139,10 @@ export function resolveEditorTabSplitAction(
   }
 }
 
-/** Resolves non-splitting context-menu ids into editor layout operations. */
-export function resolveEditorTabLayoutAction(
+/** Resolves non-splitting context-menu ids into workspace layout operations. */
+export function resolveWorkspaceTabLayoutAction(
   action: TabContextMenuAction | null,
-): EditorTabLayoutAction | null {
+): WorkspaceTabLayoutAction | null {
   switch (action) {
     case "move-group-up":
       return { _tag: "MoveToGroup", direction: "up" };

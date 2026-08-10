@@ -8,7 +8,7 @@ import {
   resetPreviewStateForTests,
 } from "~/previewStateStore";
 import {
-  selectThreadRightPanelState,
+  selectThreadWorkspace,
   transitionThreadWorkspace,
   useThreadWorkspaceStore,
 } from "~/threadWorkspaceStore";
@@ -49,11 +49,15 @@ describe("addBrowserSurface", () => {
 
     expect(openPreview).toHaveBeenCalledWith({ threadId: "thread-1" });
     expect(Object.keys(readThreadPreviewState(threadRef).sessions)).toEqual(["tab-1", "tab-2"]);
-    expect(
-      selectThreadRightPanelState(
-        useThreadWorkspaceStore.getState().byThreadKey,
-        threadRef,
-      ).surfaces.map((surface) => surface.id),
-    ).toEqual(["browser:tab-1", "browser:tab-2"]);
+    const workspace = selectThreadWorkspace(
+      useThreadWorkspaceStore.getState().byThreadKey,
+      threadRef,
+    );
+    expect(workspace).not.toBeNull();
+    if (!workspace) return;
+    expect(workspace.surfaces.map((surface) => surface.id)).toEqual([
+      "browser:tab-1",
+      "browser:tab-2",
+    ]);
   });
 });

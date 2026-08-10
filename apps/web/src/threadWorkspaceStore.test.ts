@@ -15,7 +15,7 @@ const THREAD_REF = scopeThreadRef(
 const THREAD_KEY = scopedThreadKey(THREAD_REF);
 
 describe("thread workspace persistence", () => {
-  test("parses one aggregate containing surfaces and editor placement", () => {
+  test("parses one aggregate containing surfaces and pane placement", () => {
     const opened = transitionThreadWorkspaceState(createThreadWorkspaceState(), {
       _tag: "OpenSurface",
       surface: { _tag: "File", relativePath: "src/app.ts", line: 42 },
@@ -32,7 +32,7 @@ describe("thread workspace persistence", () => {
     expect(
       parsePersistedThreadWorkspaceState({
         byThreadKey: {
-          [THREAD_KEY]: { editorWorkspace: null, rightPanel: "invalid" },
+          [THREAD_KEY]: { paneTree: null, surfaces: "invalid" },
         },
       }),
     ).toEqual({ byThreadKey: {} });
