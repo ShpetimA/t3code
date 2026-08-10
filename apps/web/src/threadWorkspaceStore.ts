@@ -52,8 +52,30 @@ export function parsePersistedThreadWorkspaceState(input: unknown): {
       byThreadKey: { [threadKey]: rawWorkspace },
     }).byThreadKey[threadKey];
     if (!tabFields || !surfaceFields) continue;
+    const bottomPanelOpen =
+      rawWorkspace !== null &&
+      typeof rawWorkspace === "object" &&
+      "bottomPanelOpen" in rawWorkspace &&
+      rawWorkspace.bottomPanelOpen === true;
+    const persistedBottomPanelHeight =
+      rawWorkspace !== null &&
+      typeof rawWorkspace === "object" &&
+      "bottomPanelHeight" in rawWorkspace
+        ? rawWorkspace.bottomPanelHeight
+        : null;
+    const bottomPanelHeight =
+      typeof persistedBottomPanelHeight === "number" &&
+      Number.isFinite(persistedBottomPanelHeight) &&
+      persistedBottomPanelHeight > 0
+        ? persistedBottomPanelHeight
+        : EMPTY_THREAD_WORKSPACE_STATE.bottomPanelHeight;
     byThreadKey[threadKey] = transitionThreadWorkspaceState(
-      { ...tabFields, ...surfaceFields },
+      {
+        ...tabFields,
+        ...surfaceFields,
+        bottomPanelOpen,
+        bottomPanelHeight,
+      },
       { _tag: "ReconcileSurfaces" },
     ).state;
   }
@@ -96,7 +118,7 @@ export function selectActiveRightPanelSurface(
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId) ?? null;
 }
 
-/** The single persisted store for thread surfaces and pane placement. */
+/** The single persisted store for thread surfaces, pane placement, and shell layout. */
 export const useThreadWorkspaceStore = create<ThreadWorkspaceStoreState>()(
   persist(
     (set, get) => ({

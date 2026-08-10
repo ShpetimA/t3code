@@ -37,4 +37,22 @@ describe("thread workspace persistence", () => {
       }),
     ).toEqual({ byThreadKey: {} });
   });
+
+  test("defaults missing or invalid bottom-panel layout fields", () => {
+    const workspace = createThreadWorkspaceState();
+    const parsed = parsePersistedThreadWorkspaceState({
+      byThreadKey: {
+        [THREAD_KEY]: {
+          ...workspace,
+          bottomPanelOpen: "yes",
+          bottomPanelHeight: -1,
+        },
+      },
+    });
+
+    expect(selectThreadWorkspace(parsed.byThreadKey, THREAD_REF)).toMatchObject({
+      bottomPanelOpen: false,
+      bottomPanelHeight: 280,
+    });
+  });
 });

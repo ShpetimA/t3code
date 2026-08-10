@@ -89,7 +89,6 @@ import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import {
   applyWslEnvironmentConfiguration,
@@ -141,6 +140,7 @@ import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore"
 import {
   selectActiveRightPanel,
   selectThreadWorkspace,
+  selectThreadWorkspaceOrDefault,
   transitionThreadWorkspace,
   useThreadWorkspaceStore,
 } from "../threadWorkspaceStore";
@@ -406,9 +406,9 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     select: (params) => resolveThreadRouteTarget(params),
   });
   const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
-  const terminalOpen = useTerminalUiStateStore((state) =>
+  const terminalOpen = useThreadWorkspaceStore((state) =>
     routeThreadRef
-      ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
+      ? selectThreadWorkspaceOrDefault(state.byThreadKey, routeThreadRef).bottomPanelOpen
       : false,
   );
   const previewOpen = useThreadWorkspaceStore((state) =>

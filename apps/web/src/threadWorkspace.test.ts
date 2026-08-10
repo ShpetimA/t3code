@@ -2,11 +2,19 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { findThreadWorkspaceTabGroup, findSurfaceTabs } from "./threadWorkspace";
-import { transitionThreadWorkspace, useThreadWorkspaceStore } from "./threadWorkspaceStore";
+import {
+  selectThreadWorkspaceOrDefault,
+  transitionThreadWorkspace,
+  useThreadWorkspaceStore,
+} from "./threadWorkspaceStore";
 
 const THREAD_REF = {
   environmentId: "env-test",
   threadId: "thread-test",
+} as ScopedThreadRef;
+const OTHER_THREAD_REF = {
+  environmentId: "env-test",
+  threadId: "thread-other",
 } as ScopedThreadRef;
 
 beforeEach(() => {
@@ -14,6 +22,21 @@ beforeEach(() => {
 });
 
 describe("thread workspace lifecycle", () => {
+  test("keeps bottom-panel visibility and height scoped to one thread workspace", () => {
+    transitionThreadWorkspace(THREAD_REF, { _tag: "ShowBottomPanel" });
+    transitionThreadWorkspace(THREAD_REF, { _tag: "ResizeBottomPanel", height: 360 });
+
+    const byThreadKey = useThreadWorkspaceStore.getState().byThreadKey;
+    expect(selectThreadWorkspaceOrDefault(byThreadKey, THREAD_REF)).toMatchObject({
+      bottomPanelOpen: true,
+      bottomPanelHeight: 360,
+    });
+    expect(selectThreadWorkspaceOrDefault(byThreadKey, OTHER_THREAD_REF)).toMatchObject({
+      bottomPanelOpen: false,
+      bottomPanelHeight: 280,
+    });
+  });
+
   test("opens a surface catalog entry and placement together", () => {
     const result = transitionThreadWorkspace(THREAD_REF, {
       _tag: "OpenSurface",

@@ -28,8 +28,6 @@ describe("terminalUiStateStore actions", () => {
       THREAD_REF,
     );
     expect(terminalUiState).toEqual({
-      terminalOpen: false,
-      terminalHeight: 280,
       terminalIds: [],
       activeTerminalId: "",
       terminalGroups: [],
@@ -37,16 +35,15 @@ describe("terminalUiStateStore actions", () => {
     });
   });
 
-  it("opens and splits terminals into the active group", () => {
+  it("splits terminals into the active group", () => {
     const store = useTerminalUiStateStore.getState();
-    store.setTerminalOpen(THREAD_REF, true);
+    store.ensureTerminal(THREAD_REF, DEFAULT_THREAD_TERMINAL_ID);
     store.splitTerminal(THREAD_REF, "terminal-2");
 
     const terminalUiState = selectThreadTerminalUiState(
       useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
       THREAD_REF,
     );
-    expect(terminalUiState.terminalOpen).toBe(true);
     expect(terminalUiState.terminalIds).toEqual([DEFAULT_THREAD_TERMINAL_ID, "terminal-2"]);
     expect(terminalUiState.activeTerminalId).toBe("terminal-2");
     expect(terminalUiState.terminalGroups).toEqual([
@@ -59,7 +56,7 @@ describe("terminalUiStateStore actions", () => {
 
   it("stacks vertically split terminals in the active group", () => {
     const store = useTerminalUiStateStore.getState();
-    store.setTerminalOpen(THREAD_REF, true);
+    store.ensureTerminal(THREAD_REF, DEFAULT_THREAD_TERMINAL_ID);
     store.splitTerminalVertical(THREAD_REF, "terminal-2");
 
     const terminalUiState = selectThreadTerminalUiState(
@@ -75,16 +72,14 @@ describe("terminalUiStateStore actions", () => {
     ]);
   });
 
-  it("materializes the default terminal when opening an empty drawer", () => {
-    useTerminalUiStateStore.getState().setTerminalOpen(THREAD_REF, true);
+  it("materializes an ensured default terminal", () => {
+    useTerminalUiStateStore.getState().ensureTerminal(THREAD_REF, DEFAULT_THREAD_TERMINAL_ID);
 
     const terminalUiState = selectThreadTerminalUiState(
       useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
       THREAD_REF,
     );
     expect(terminalUiState).toEqual({
-      terminalOpen: true,
-      terminalHeight: 280,
       terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
       activeTerminalId: DEFAULT_THREAD_TERMINAL_ID,
       terminalGroups: [
@@ -138,15 +133,14 @@ describe("terminalUiStateStore actions", () => {
     ]);
   });
 
-  it("ensures unknown server terminals are registered, opened, and activated", () => {
+  it("ensures unknown server terminals are registered and activated", () => {
     const store = useTerminalUiStateStore.getState();
-    store.ensureTerminal(THREAD_REF, "setup-setup", { open: true, active: true });
+    store.ensureTerminal(THREAD_REF, "setup-setup", { active: true });
 
     const terminalUiState = selectThreadTerminalUiState(
       useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
       THREAD_REF,
     );
-    expect(terminalUiState.terminalOpen).toBe(true);
     expect(terminalUiState.terminalIds).toEqual(["setup-setup"]);
     expect(terminalUiState.activeTerminalId).toBe("setup-setup");
     expect(terminalUiState.terminalGroups).toEqual([
@@ -156,15 +150,15 @@ describe("terminalUiStateStore actions", () => {
 
   it("keeps state isolated per environment when raw thread ids collide", () => {
     const store = useTerminalUiStateStore.getState();
-    store.setTerminalOpen(THREAD_REF, true);
+    store.newTerminal(THREAD_REF, "env-a-terminal");
     store.newTerminal(OTHER_THREAD_REF, "env-b-terminal");
 
     expect(
       selectThreadTerminalUiState(
         useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
         THREAD_REF,
-      ).terminalOpen,
-    ).toBe(true);
+      ).terminalIds,
+    ).toEqual(["env-a-terminal"]);
     expect(
       selectThreadTerminalUiState(
         useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
@@ -201,8 +195,6 @@ describe("terminalUiStateStore actions", () => {
     expect(migrated).toEqual({
       terminalUiStateByThreadKey: {
         [scopedThreadKey(THREAD_REF)]: {
-          terminalOpen: true,
-          terminalHeight: 320,
           terminalIds: ["term-1"],
           activeTerminalId: "term-1",
           terminalGroups: [{ id: "group-term-1", terminalIds: ["term-1"] }],
@@ -247,7 +239,6 @@ describe("terminalUiStateStore actions", () => {
 
   it("reconciles terminal ids from an external ordered list", () => {
     const store = useTerminalUiStateStore.getState();
-    store.setTerminalOpen(THREAD_REF, true);
     store.reconcileTerminalIds(THREAD_REF, ["term-a", "term-b"]);
 
     const terminalUiState = selectThreadTerminalUiState(

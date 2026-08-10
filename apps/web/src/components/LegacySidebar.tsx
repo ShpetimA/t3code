@@ -83,7 +83,10 @@ import {
   useThreadShells,
   useThreadShellsForProjectRefs,
 } from "../state/entities";
-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
+import {
+  selectThreadWorkspaceOrDefault,
+  useThreadWorkspaceStore,
+} from "../threadWorkspaceStore";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
@@ -3019,9 +3022,9 @@ export default function LegacySidebar() {
     [routeDraftThread, routeTarget],
   );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
-  const routeTerminalOpen = useTerminalUiStateStore((state) =>
+  const routeTerminalOpen = useThreadWorkspaceStore((state) =>
     routeThreadRef
-      ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
+      ? selectThreadWorkspaceOrDefault(state.byThreadKey, routeThreadRef).bottomPanelOpen
       : false,
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);

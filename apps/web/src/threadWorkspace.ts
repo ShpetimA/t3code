@@ -1,4 +1,5 @@
 import { findPane, type PaneTree } from "./splitPaneTree";
+import { DEFAULT_THREAD_TERMINAL_HEIGHT } from "./types";
 import {
   createThreadWorkspaceTabFields,
   findSurfaceTabs,
@@ -62,10 +63,14 @@ export type ThreadWorkspaceTransition =
   | { readonly _tag: "ShowRightPanel" }
   | { readonly _tag: "CloseRightPanel" }
   | { readonly _tag: "ToggleRightPanel" }
+  | { readonly _tag: "ShowBottomPanel" }
+  | { readonly _tag: "CloseBottomPanel" }
+  | { readonly _tag: "ToggleBottomPanel" }
+  | { readonly _tag: "ResizeBottomPanel"; readonly height: number }
   | { readonly _tag: "ReconcileSurfaces" }
   | ThreadWorkspaceLayoutTransition;
 
-/** The complete thread-owned surface catalog, pane placement, and presentation state. */
+/** The complete thread-owned surface catalog, pane placement, and shell-layout state. */
 export interface ThreadWorkspaceState {
   readonly paneTree: PaneTree;
   readonly tabsById: Readonly<Record<string, ThreadWorkspaceTab>>;
@@ -73,6 +78,8 @@ export interface ThreadWorkspaceState {
   readonly isRightPanelOpen: boolean;
   readonly activeSurfaceId: string | null;
   readonly surfaces: readonly RightPanelSurface[];
+  readonly bottomPanelOpen: boolean;
+  readonly bottomPanelHeight: number;
 }
 
 /** Observable outcome of one thread-workspace transition. */
@@ -86,6 +93,8 @@ export interface ThreadWorkspaceTransitionResult {
 export const EMPTY_THREAD_WORKSPACE_STATE: ThreadWorkspaceState = {
   ...createThreadWorkspaceTabFields(),
   ...EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS,
+  bottomPanelOpen: false,
+  bottomPanelHeight: DEFAULT_THREAD_TERMINAL_HEIGHT,
 };
 
 /** Creates a thread workspace with its always-on thread tab. */
@@ -100,6 +109,8 @@ export function transitionThreadWorkspaceState(
 ): ThreadWorkspaceTransitionResult {
   let tabFields: ThreadWorkspaceTabFields = current;
   let surfaceFields: ThreadWorkspaceSurfaceFields = current;
+  let bottomPanelOpen = current.bottomPanelOpen;
+  let bottomPanelHeight = current.bottomPanelHeight;
 
   switch (input._tag) {
     case "OpenSurface": {
@@ -229,6 +240,20 @@ export function transitionThreadWorkspaceState(
         _tag: "TogglePanelVisibility",
       });
       break;
+    case "ShowBottomPanel":
+      bottomPanelOpen = true;
+      break;
+    case "CloseBottomPanel":
+      bottomPanelOpen = false;
+      break;
+    case "ToggleBottomPanel":
+      bottomPanelOpen = !bottomPanelOpen;
+      break;
+    case "ResizeBottomPanel":
+      if (Number.isFinite(input.height) && input.height > 0) {
+        bottomPanelHeight = input.height;
+      }
+      break;
     case "ReconcileSurfaces":
       break;
   }
@@ -242,7 +267,10 @@ export function transitionThreadWorkspaceState(
     (surface) => !remainingSurfaceIds.has(surface.id),
   );
   const state =
-    tabFields === current && surfaceFields === current
+    tabFields === current &&
+    surfaceFields === current &&
+    bottomPanelOpen === current.bottomPanelOpen &&
+    bottomPanelHeight === current.bottomPanelHeight
       ? current
       : {
           paneTree: tabFields.paneTree,
@@ -251,6 +279,8 @@ export function transitionThreadWorkspaceState(
           isRightPanelOpen: surfaceFields.isRightPanelOpen,
           activeSurfaceId: surfaceFields.activeSurfaceId,
           surfaces: surfaceFields.surfaces,
+          bottomPanelOpen,
+          bottomPanelHeight,
         };
   return {
     state,

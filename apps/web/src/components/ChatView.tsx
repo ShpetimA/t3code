@@ -687,9 +687,10 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     environmentId: threadRef.environmentId,
     threadId,
   });
-  const panelSurfaces = useThreadWorkspaceStore(
-    (state) => selectThreadWorkspaceOrDefault(state.byThreadKey, threadRef).surfaces,
+  const threadWorkspaceState = useThreadWorkspaceStore((state) =>
+    selectThreadWorkspaceOrDefault(state.byThreadKey, threadRef),
   );
+  const panelSurfaces = threadWorkspaceState.surfaces;
   const panelTerminalIds = useMemo(
     () =>
       new Set(
@@ -763,7 +764,6 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     ],
     [panelTerminalIds, serverOrderedTerminalIds, terminalUiState.terminalIds],
   );
-  const storeSetTerminalHeight = useTerminalUiStateStore((state) => state.setTerminalHeight);
   const storeSplitTerminal = useTerminalUiStateStore((state) => state.splitTerminal);
   const storeSplitTerminalVertical = useTerminalUiStateStore(
     (state) => state.splitTerminalVertical,
@@ -823,9 +823,9 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
 
   const setTerminalHeight = useCallback(
     (height: number) => {
-      storeSetTerminalHeight(threadRef, height);
+      transitionThreadWorkspace(threadRef, { _tag: "ResizeBottomPanel", height });
     },
-    [storeSetTerminalHeight, threadRef],
+    [threadRef],
   );
 
   const splitTerminal = useCallback(() => {
@@ -967,7 +967,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     [onAddTerminalContext, visible],
   );
 
-  if (!project || !terminalUiState.terminalOpen || !cwd) {
+  if (!project || !threadWorkspaceState.bottomPanelOpen || !cwd) {
     return null;
   }
 
@@ -980,7 +980,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
         worktreePath={effectiveWorktreePath}
         runtimeEnv={runtimeEnv}
         visible={visible}
-        height={terminalUiState.terminalHeight}
+        height={threadWorkspaceState.bottomPanelHeight}
         // Known-session order is MRU and changes on focus; persisted store order keeps sidebar labels stable.
         terminalIds={terminalUiState.terminalIds}
         activeTerminalId={terminalUiState.activeTerminalId}
@@ -1388,7 +1388,7 @@ function ChatViewContent(props: ChatViewProps) {
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
   const sendInFlightRef = useRef(false);
-  const terminalUiOpenByThreadRef = useRef<Record<string, boolean>>({});
+  const bottomPanelOpenByThreadRef = useRef<Record<string, boolean>>({});
 
   useLayoutEffect(() => {
     if (!composerOverlayElement) return;
@@ -1412,15 +1412,13 @@ function ChatViewContent(props: ChatViewProps) {
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
   );
-  const openTerminalThreadKeys = useTerminalUiStateStore(
+  const openBottomPanelThreadKeys = useThreadWorkspaceStore(
     useShallow((state) =>
-      Object.entries(state.terminalUiStateByThreadKey).flatMap(
-        ([nextThreadKey, nextTerminalUiState]) =>
-          nextTerminalUiState.terminalOpen ? [nextThreadKey] : [],
+      Object.entries(state.byThreadKey).flatMap(([nextThreadKey, nextWorkspaceState]) =>
+        nextWorkspaceState.bottomPanelOpen ? [nextThreadKey] : [],
       ),
     ),
   );
-  const storeSetTerminalOpen = useTerminalUiStateStore((s) => s.setTerminalOpen);
   const storeEnsureTerminal = useTerminalUiStateStore((state) => state.ensureTerminal);
   const storeSplitTerminal = useTerminalUiStateStore((s) => s.splitTerminal);
   const storeSplitTerminalVertical = useTerminalUiStateStore((s) => s.splitTerminalVertical);
@@ -1578,6 +1576,7 @@ function ChatViewContent(props: ChatViewProps) {
   const threadWorkspaceState = useThreadWorkspaceStore((state) =>
     selectThreadWorkspaceOrDefault(state.byThreadKey, activeThreadRef),
   );
+  const bottomPanelOpen = threadWorkspaceState.bottomPanelOpen;
   const activeRightPanelSurface = useThreadWorkspaceStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
@@ -1632,10 +1631,12 @@ function ChatViewContent(props: ChatViewProps) {
     previewPanelOpen,
   ]);
 
-  const existingOpenTerminalThreadKeys = useMemo(() => {
+  const existingOpenBottomPanelThreadKeys = useMemo(() => {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
-    return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
-  }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
+    return openBottomPanelThreadKeys.filter((nextThreadKey) =>
+      existingThreadKeys.has(nextThreadKey),
+    );
+  }, [draftThreadKeys, openBottomPanelThreadKeys, serverThreadKeys]);
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   // Reading a finished thread clears the sidebar's Done badge. The visit is
   // stamped at the turn's completion time — not now/updatedAt — so it clears
@@ -1659,9 +1660,9 @@ function ChatViewContent(props: ChatViewProps) {
     setMountedTerminalThreadKeys((currentThreadIds) => {
       const nextThreadIds = reconcileMountedTerminalThreadIds({
         currentThreadIds,
-        openThreadIds: existingOpenTerminalThreadKeys,
+        openBottomPanelThreadIds: existingOpenBottomPanelThreadKeys,
         activeThreadId: activeThreadKey,
-        activeThreadTerminalOpen: Boolean(activeThreadKey && terminalUiState.terminalOpen),
+        activeThreadBottomPanelOpen: Boolean(activeThreadKey && bottomPanelOpen),
         maxHiddenThreadCount: MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
       });
       return currentThreadIds.length === nextThreadIds.length &&
@@ -1669,7 +1670,7 @@ function ChatViewContent(props: ChatViewProps) {
         ? currentThreadIds
         : nextThreadIds;
     });
-  }, [activeThreadKey, existingOpenTerminalThreadKeys, terminalUiState.terminalOpen]);
+  }, [activeThreadKey, existingOpenBottomPanelThreadKeys, bottomPanelOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProjectRef = activeThread
     ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
@@ -2643,10 +2644,10 @@ function ChatViewContent(props: ChatViewProps) {
     () => ({
       context: {
         terminalFocus: true,
-        terminalOpen: Boolean(terminalUiState.terminalOpen),
+        terminalOpen: Boolean(bottomPanelOpen),
       },
     }),
-    [terminalUiState.terminalOpen],
+    [bottomPanelOpen],
   );
   const splitTerminalShortcutLabel = useMemo(
     () => shortcutLabelForCommand(keybindings, "terminal.split", terminalShortcutLabelOptions),
@@ -2764,13 +2765,15 @@ function ChatViewContent(props: ChatViewProps) {
   const setTerminalOpen = useCallback(
     (open: boolean) => {
       if (!activeThreadRef) return;
-      storeSetTerminalOpen(activeThreadRef, open);
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: open ? "ShowBottomPanel" : "CloseBottomPanel",
+      });
     },
-    [activeThreadRef, storeSetTerminalOpen],
+    [activeThreadRef],
   );
   const toggleTerminalVisibility = useCallback(() => {
     if (!activeThreadRef) return;
-    const nextOpen = !terminalUiState.terminalOpen;
+    const nextOpen = !bottomPanelOpen;
     if (nextOpen && terminalUiState.terminalIds.length === 0) {
       if (!activeThreadId || !activeProject) {
         return;
@@ -2780,7 +2783,8 @@ function ChatViewContent(props: ChatViewProps) {
         return;
       }
       const terminalId = nextTerminalId(allocatableActiveTerminalIds);
-      storeEnsureTerminal(activeThreadRef, terminalId, { open: true });
+      storeEnsureTerminal(activeThreadRef, terminalId);
+      setTerminalOpen(true);
       void openTerminal({
         environmentId,
         input: {
@@ -2809,7 +2813,7 @@ function ChatViewContent(props: ChatViewProps) {
     setTerminalOpen,
     storeEnsureTerminal,
     terminalUiState.terminalIds.length,
-    terminalUiState.terminalOpen,
+    bottomPanelOpen,
   ]);
   const splitTerminal = useCallback(
     (direction: "horizontal" | "vertical" = "horizontal") => {
@@ -4023,14 +4027,14 @@ function ChatViewContent(props: ChatViewProps) {
   }, [activeThread?.id]);
 
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!activeThread?.id || bottomPanelOpen) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposer();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, focusComposer, bottomPanelOpen]);
 
   useEffect(() => {
     if (!activeThread?.id) return;
@@ -4648,25 +4652,25 @@ function ChatViewContent(props: ChatViewProps) {
   }, [activeProjectCwd, activeThreadId, activeThreadWorktreePath]);
 
   useEffect(() => {
-    if (terminalUiState.terminalOpen) {
+    if (bottomPanelOpen) {
       return;
     }
     setTerminalUiLaunchContext((current) =>
       current?.threadId === activeThreadId ? null : current,
     );
-  }, [activeThreadId, terminalUiState.terminalOpen]);
+  }, [activeThreadId, bottomPanelOpen]);
 
   useEffect(() => {
     if (!activeThreadKey) return;
-    const previous = terminalUiOpenByThreadRef.current[activeThreadKey] ?? false;
-    const current = Boolean(terminalUiState.terminalOpen);
+    const previous = bottomPanelOpenByThreadRef.current[activeThreadKey] ?? false;
+    const current = Boolean(bottomPanelOpen);
 
     if (!previous && current) {
-      terminalUiOpenByThreadRef.current[activeThreadKey] = current;
+      bottomPanelOpenByThreadRef.current[activeThreadKey] = current;
       setTerminalFocusRequestId((value) => value + 1);
       return;
     } else if (previous && !current) {
-      terminalUiOpenByThreadRef.current[activeThreadKey] = current;
+      bottomPanelOpenByThreadRef.current[activeThreadKey] = current;
       const frame = window.requestAnimationFrame(() => {
         focusComposer();
       });
@@ -4675,8 +4679,8 @@ function ChatViewContent(props: ChatViewProps) {
       };
     }
 
-    terminalUiOpenByThreadRef.current[activeThreadKey] = current;
-  }, [activeThreadKey, focusComposer, terminalUiState.terminalOpen]);
+    bottomPanelOpenByThreadRef.current[activeThreadKey] = current;
+  }, [activeThreadKey, focusComposer, bottomPanelOpen]);
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
@@ -4693,7 +4697,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
       const shortcutContext = {
         terminalFocus: terminalFocusOwner !== null,
-        terminalOpen: Boolean(terminalUiState.terminalOpen),
+        terminalOpen: Boolean(bottomPanelOpen),
         modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
       };
 
@@ -4747,7 +4751,7 @@ function ChatViewContent(props: ChatViewProps) {
           splitPanelTerminal();
           return;
         }
-        if (!terminalUiState.terminalOpen) {
+        if (!bottomPanelOpen) {
           setTerminalOpen(true);
         }
         splitTerminal();
@@ -4761,7 +4765,7 @@ function ChatViewContent(props: ChatViewProps) {
           splitPanelTerminal("vertical");
           return;
         }
-        if (!terminalUiState.terminalOpen) {
+        if (!bottomPanelOpen) {
           setTerminalOpen(true);
         }
         splitTerminal("vertical");
@@ -4775,7 +4779,7 @@ function ChatViewContent(props: ChatViewProps) {
           closePanelTerminal(activeRightPanelSurface.activeTerminalId);
           return;
         }
-        if (!terminalUiState.terminalOpen) return;
+        if (!bottomPanelOpen) return;
         closeTerminal(terminalUiState.activeTerminalId);
         return;
       }
@@ -4787,7 +4791,7 @@ function ChatViewContent(props: ChatViewProps) {
           addTerminalSurface();
           return;
         }
-        if (!terminalUiState.terminalOpen) {
+        if (!bottomPanelOpen) {
           setTerminalOpen(true);
         }
         createNewTerminal();
@@ -4822,7 +4826,7 @@ function ChatViewContent(props: ChatViewProps) {
     activeProject,
     activeRightPanelSurface,
     addTerminalSurface,
-    terminalUiState.terminalOpen,
+    bottomPanelOpen,
     terminalUiState.activeTerminalId,
     activeThreadId,
     closeTerminal,
@@ -6039,7 +6043,7 @@ function ChatViewContent(props: ChatViewProps) {
   const panelToggleControls = (
     <PanelLayoutControls
       terminalAvailable={activeProject !== null}
-      terminalOpen={terminalUiState.terminalOpen}
+      terminalOpen={bottomPanelOpen}
       terminalShortcutLabel={shortcutLabelForCommand(keybindings, "terminal.toggle")}
       rightControl={
         workspaceMode
@@ -6424,7 +6428,7 @@ function ChatViewContent(props: ChatViewProps) {
                           resolvedTheme={resolvedTheme}
                           settings={settings}
                           keybindings={keybindings}
-                          terminalOpen={Boolean(terminalUiState.terminalOpen)}
+                          terminalOpen={Boolean(bottomPanelOpen)}
                           gitCwd={gitCwd}
                           promptRef={promptRef}
                           composerImagesRef={composerImagesRef}
@@ -6458,7 +6462,7 @@ function ChatViewContent(props: ChatViewProps) {
                     </div>
                     <div className="min-h-0">
                       <div
-                        data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
+                        data-terminal-open={bottomPanelOpen ? "true" : undefined}
                         className="relative z-0"
                       >
                         {showComposerContextStrip && (
@@ -6563,25 +6567,28 @@ function ChatViewContent(props: ChatViewProps) {
       </div>
       {/* end horizontal flex container */}
 
-      {mountedTerminalThreadRefs.map(({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
-        <PersistentThreadTerminalDrawer
-          key={mountedThreadKey}
-          threadRef={mountedThreadRef}
-          threadId={mountedThreadRef.threadId}
-          visible={mountedThreadKey === activeThreadKey && terminalUiState.terminalOpen}
-          launchContext={
-            mountedThreadKey === activeThreadKey ? (activeTerminalLaunchContext ?? null) : null
-          }
-          focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
-          splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-          splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-          newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-          closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-          keybindings={keybindings}
-          onAddTerminalContext={addTerminalContextToDraft}
-        />
-      ))}
     </div>
+  );
+
+  const persistentTerminalDrawers = mountedTerminalThreadRefs.map(
+    ({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
+      <PersistentThreadTerminalDrawer
+        key={mountedThreadKey}
+        threadRef={mountedThreadRef}
+        threadId={mountedThreadRef.threadId}
+        visible={mountedThreadKey === activeThreadKey && bottomPanelOpen}
+        launchContext={
+          mountedThreadKey === activeThreadKey ? (activeTerminalLaunchContext ?? null) : null
+        }
+        focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
+        splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+        splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
+        newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+        closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+        keybindings={keybindings}
+        onAddTerminalContext={addTerminalContextToDraft}
+      />
+    ),
   );
 
   const visiblePaneTreeRoot = getVisiblePaneTreeRoot(threadWorkspaceState.paneTree);
@@ -6820,46 +6827,55 @@ function ChatViewContent(props: ChatViewProps) {
   };
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-      {workspaceMode && activeThreadRef ? (
-        <SplitPaneGrid
-          tree={threadWorkspaceState.paneTree}
-          draggedTab={draggedWorkspaceTab}
-          renderPane={renderWorkspacePane}
-          onFocusPane={focusPane}
-          onDropTab={(input: {
-            readonly draggedTab: PaneTabDragData;
-            readonly targetPaneId: PaneId;
-            readonly zone: PaneDropZone;
-          }) => {
-            mutateWorkspaceTabsAndCleanup(
-              input.zone === "center"
-                ? {
-                    _tag: "SwapPanes",
-                    sourcePaneId: input.draggedTab.sourcePaneId,
-                    targetPaneId: input.targetPaneId,
-                  }
-                : {
-                    _tag: "MoveTabToSplit",
-                    sourcePaneId: input.draggedTab.sourcePaneId,
-                    targetPaneId: input.targetPaneId,
-                    tabId: input.draggedTab.sourceTabId,
-                    direction: input.zone,
-                  },
-            );
-            setDraggedWorkspaceTab(null);
-          }}
-          onResizeSplit={(splitId, ratio) =>
-            transitionThreadWorkspace(activeThreadRef, {
-              _tag: "ResizeSplit",
-              splitId,
-              ratio,
-            })
-          }
-        />
-      ) : (
-        chatColumnContent
-      )}
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+        data-workspace-pane-stage=""
+      >
+        {workspaceMode && activeThreadRef ? (
+          <SplitPaneGrid
+            tree={threadWorkspaceState.paneTree}
+            draggedTab={draggedWorkspaceTab}
+            renderPane={renderWorkspacePane}
+            onFocusPane={focusPane}
+            onDropTab={(input: {
+              readonly draggedTab: PaneTabDragData;
+              readonly targetPaneId: PaneId;
+              readonly zone: PaneDropZone;
+            }) => {
+              mutateWorkspaceTabsAndCleanup(
+                input.zone === "center"
+                  ? {
+                      _tag: "SwapPanes",
+                      sourcePaneId: input.draggedTab.sourcePaneId,
+                      targetPaneId: input.targetPaneId,
+                    }
+                  : {
+                      _tag: "MoveTabToSplit",
+                      sourcePaneId: input.draggedTab.sourcePaneId,
+                      targetPaneId: input.targetPaneId,
+                      tabId: input.draggedTab.sourceTabId,
+                      direction: input.zone,
+                    },
+              );
+              setDraggedWorkspaceTab(null);
+            }}
+            onResizeSplit={(splitId, ratio) =>
+              transitionThreadWorkspace(activeThreadRef, {
+                _tag: "ResizeSplit",
+                splitId,
+                ratio,
+              })
+            }
+          />
+        ) : (
+          chatColumnContent
+        )}
+      </div>
+
+      <div className="shrink-0" data-workspace-bottom-panel="">
+        {persistentTerminalDrawers}
+      </div>
 
       {shouldUseRightPanelSheet && rightPanelOpen && activeThreadRef ? (
         <RightPanelSheet open onClose={closePreviewPanel}>

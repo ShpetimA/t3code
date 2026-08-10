@@ -442,9 +442,9 @@ describe("reconcileMountedTerminalThreadIds", () => {
     expect(
       reconcileMountedTerminalThreadIds({
         currentThreadIds: ["thread-a", "thread-b", "thread-c"],
-        openThreadIds: ["thread-a", "thread-b", "thread-c"],
+        openBottomPanelThreadIds: ["thread-a", "thread-b", "thread-c"],
         activeThreadId: "thread-a",
-        activeThreadTerminalOpen: true,
+        activeThreadBottomPanelOpen: true,
         maxHiddenThreadCount: 2,
       }),
     ).toEqual(["thread-b", "thread-c", "thread-a"]);
@@ -458,9 +458,9 @@ describe("reconcileMountedTerminalThreadIds", () => {
     expect(
       reconcileMountedTerminalThreadIds({
         currentThreadIds: ids,
-        openThreadIds: ids.slice(1),
+        openBottomPanelThreadIds: ids.slice(1),
         activeThreadId: null,
-        activeThreadTerminalOpen: false,
+        activeThreadBottomPanelOpen: false,
       }),
     ).toEqual(ids.slice(-MAX_HIDDEN_MOUNTED_TERMINAL_THREADS));
   });

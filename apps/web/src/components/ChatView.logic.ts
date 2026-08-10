@@ -151,16 +151,16 @@ export function buildThreadTurnInterruptInput(thread: Pick<Thread, "id" | "sessi
 
 export function reconcileMountedTerminalThreadIds(input: {
   currentThreadIds: ReadonlyArray<string>;
-  openThreadIds: ReadonlyArray<string>;
+  openBottomPanelThreadIds: ReadonlyArray<string>;
   activeThreadId: string | null;
-  activeThreadTerminalOpen: boolean;
+  activeThreadBottomPanelOpen: boolean;
   maxHiddenThreadCount?: number;
 }): string[] {
   return reconcileRetainedMountedThreadIds({
     currentThreadIds: input.currentThreadIds,
-    openThreadIds: input.openThreadIds,
+    openThreadIds: input.openBottomPanelThreadIds,
     activeThreadId: input.activeThreadId,
-    activeThreadOpen: input.activeThreadTerminalOpen,
+    activeThreadOpen: input.activeThreadBottomPanelOpen,
     maxHiddenThreadCount: input.maxHiddenThreadCount ?? MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   });
 }
