@@ -239,8 +239,9 @@ export const ChatHeader = memo(function ChatHeader({
                   <ProjectFavicon
                     environmentId={activeThreadEnvironmentId}
                     cwd={activeProjectCwd ?? ""}
+                    projectName={activeProjectName}
                     faviconPath={activeProjectFaviconPath}
-                    className="size-3.5"
+                    className="size-4"
                   />
                   <span className="max-w-40 truncate">{activeProjectName}</span>
                 </TooltipTrigger>

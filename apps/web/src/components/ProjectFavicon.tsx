@@ -7,6 +7,7 @@ import { FolderIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import { useState } from "react";
 import { useAssetUrlState } from "../assets/assetUrls";
+import { deriveProjectIdentity } from "../projectIdentity";
 import { cn } from "~/lib/utils";
 
 const loadedProjectFaviconSrcs = new Map<string, string>();
@@ -14,6 +15,7 @@ const loadedProjectFaviconSrcs = new Map<string, string>();
 export function ProjectFavicon(input: {
   environmentId: EnvironmentId;
   cwd: string;
+  projectName: string;
   faviconPath?: string | null | undefined;
   className?: string | undefined;
   fallbackIcon?: ComponentType<{ className?: string }>;
@@ -23,7 +25,13 @@ export function ProjectFavicon(input: {
   const FallbackIcon = input.fallbackIcon ?? FolderIcon;
 
   if (!src || isProjectFaviconFallbackUrl(src)) {
-    return <ProjectFaviconFallback className={input.className} icon={FallbackIcon} />;
+    return (
+      <ProjectFaviconFallback
+        className={input.className}
+        icon={FallbackIcon}
+        projectName={input.projectName}
+      />
+    );
   }
 
   const cacheKey = getProjectFaviconCacheKey(input.environmentId, input.cwd, src);
@@ -35,6 +43,7 @@ export function ProjectFavicon(input: {
       src={src}
       className={input.className}
       fallbackIcon={FallbackIcon}
+      projectName={input.projectName}
     />
   );
 }
@@ -54,11 +63,53 @@ export function useProjectFaviconAsset(input: {
 function ProjectFaviconFallback({
   className,
   icon: Icon,
+  projectName,
 }: {
   readonly className?: string | undefined;
   readonly icon: ComponentType<{ className?: string }>;
+  readonly projectName: string;
 }) {
-  return <Icon className={cn("size-3.5 shrink-0 text-icon-muted", className)} />;
+  if (projectName.trim().length === 0) {
+    return <Icon className={cn("size-4 shrink-0 text-icon-muted", className)} />;
+  }
+
+  const identity = deriveProjectIdentity(projectName);
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={cn("size-4 shrink-0 overflow-hidden rounded-[25%] select-none", className)}
+      style={{
+        backgroundColor: identity.background,
+        backgroundImage: `linear-gradient(145deg, ${identity.highlight}, ${identity.background} 72%)`,
+      }}
+    >
+      <text
+        x="8"
+        y="8.1"
+        dominantBaseline="central"
+        textAnchor="middle"
+        fill="white"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        fontSize="9.25"
+        fontWeight="800"
+        letterSpacing="0.3"
+        textRendering="geometricPrecision"
+      >
+        {identity.monogram}
+      </text>
+      <rect
+        x="0.5"
+        y="0.5"
+        width="15"
+        height="15"
+        rx="3.5"
+        fill="none"
+        strokeWidth="1"
+        className="stroke-black/10 dark:stroke-white/10"
+      />
+    </svg>
+  );
 }
 
 function ProjectFaviconImage({
@@ -66,11 +117,13 @@ function ProjectFaviconImage({
   src,
   className,
   fallbackIcon: FallbackIcon,
+  projectName,
 }: {
   readonly cacheKey: string;
   readonly src: string;
   readonly className?: string | undefined;
   readonly fallbackIcon: ComponentType<{ className?: string }>;
+  readonly projectName: string;
 }) {
   const [displayedSrc, setDisplayedSrc] = useState<string | null>(
     () => loadedProjectFaviconSrcs.get(cacheKey) ?? null,
@@ -86,13 +139,20 @@ function ProjectFaviconImage({
   return (
     <>
       {displayedSrc === null ? (
-        <ProjectFaviconFallback className={className} icon={FallbackIcon} />
+        <ProjectFaviconFallback
+          className={className}
+          icon={FallbackIcon}
+          projectName={projectName}
+        />
       ) : null}
       {displayedSrc ? (
         <img
           src={displayedSrc}
           alt=""
-          className={cn("size-3.5 shrink-0 rounded-sm object-contain", className)}
+          className={cn(
+            "size-4 shrink-0 rounded-sm object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10",
+            className,
+          )}
           onError={() => handleLoadError(displayedSrc)}
         />
       ) : null}

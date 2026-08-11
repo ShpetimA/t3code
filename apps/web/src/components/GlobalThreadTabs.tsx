@@ -357,8 +357,9 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
                             <ProjectFavicon
                               environmentId={project.environmentId}
                               cwd={project.workspaceRoot}
+                              projectName={project.title}
                               faviconPath={project.faviconPath}
-                              className="size-3.5"
+                              className="size-4"
                             />
                           ) : null}
                           {status ? <ThreadTabStatusMark status={status} /> : null}
@@ -397,6 +398,7 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
                             <ProjectFavicon
                               environmentId={project.environmentId}
                               cwd={project.workspaceRoot}
+                              projectName={project.title}
                               faviconPath={project.faviconPath}
                               className="size-3 shrink-0 stroke-muted-foreground"
                             />

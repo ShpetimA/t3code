@@ -64,6 +64,7 @@ import { ProjectFavicon } from "./ProjectFavicon";
 type ProjectFaviconImageProps = {
   readonly cacheKey: string;
   readonly src: string;
+  readonly projectName: string;
   readonly className?: string | undefined;
   readonly fallbackIcon: ComponentType<{ className?: string }>;
 };
@@ -86,6 +87,7 @@ function resolveImageComponent(): {
   const element = ProjectFavicon({
     environmentId: "environment-test" as EnvironmentId,
     cwd: "/workspace-test",
+    projectName: "Test Workspace",
   }) as ReactElement<ProjectFaviconImageProps>;
   hooks.reset();
 
@@ -134,6 +136,7 @@ describe("ProjectFavicon", () => {
     ProjectFavicon({
       environmentId: "environment-test" as EnvironmentId,
       cwd: "/workspace-test",
+      projectName: "Test Workspace",
       faviconPath: "brand/icon.svg",
     });
 

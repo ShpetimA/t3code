@@ -10,9 +10,11 @@ to the strip. Closing a top tab only closes that view; it does not settle, archi
 thread. Compact windows continue to use the sidebar so every thread state remains reachable.
 
 Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
-monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Drafts keep
-the same tab position when their first message creates the server thread. Drag tabs to reorder them,
-use the thread search button to reopen other threads, and use the plus button to start a new thread.
+monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Projects
+without an icon get a stable colored monogram so their tabs remain recognizable at a glance. Drafts
+keep the same tab position when their first message creates the server thread. Drag tabs to reorder
+them, use the thread search button to reopen other threads, and use the plus button to start a new
+thread.
 
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as
 a pinned tab beside its tool tabs. Its compact status indicator mirrors the sidebar, including

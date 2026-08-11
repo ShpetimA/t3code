@@ -267,6 +267,7 @@ export function PullRequestFiltersMenu({
                       <ProjectFavicon
                         environmentId={environmentId}
                         cwd={project.workspaceRoot}
+                        projectName={project.title}
                         fallbackIcon={FolderGit2Icon}
                         className="size-3.5 shrink-0"
                       />
