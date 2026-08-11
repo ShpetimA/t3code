@@ -30,6 +30,7 @@ export type GlobalTab =
       readonly threadRef: ScopedThreadRef;
     }
   | { readonly _tag: "Settings"; readonly section: GlobalSettingsSection }
+  | { readonly _tag: "Usage" }
   | { readonly _tag: "PullRequests" }
   | {
       readonly _tag: "PullRequest";
@@ -100,6 +101,7 @@ const PersistedGlobalTab = Schema.Union([
       "diagnostics",
     ]),
   }),
+  Schema.TaggedStruct("Usage", {}),
   Schema.TaggedStruct("PullRequests", {}),
   Schema.TaggedStruct("PullRequest", {
     environmentId: EnvironmentId,
@@ -126,6 +128,8 @@ export function globalTabKey(tab: GlobalTab): string {
       return `thread:${scopedThreadKey(tab.threadRef)}`;
     case "Settings":
       return "settings";
+    case "Usage":
+      return "usage";
     case "PullRequests":
       return "pull-requests";
     case "PullRequest":
@@ -146,6 +150,7 @@ function sameTab(left: GlobalTab, right: GlobalTab): boolean {
   }
   switch (left._tag) {
     case "ServerThread":
+    case "Usage":
     case "PullRequests":
       return true;
     case "DraftThread":
@@ -292,6 +297,9 @@ export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
       case "Settings":
         nextTab = tab;
         break;
+      case "Usage":
+        nextTab = tab;
+        break;
       case "PullRequests":
         nextTab = tab;
         break;
@@ -325,6 +333,8 @@ export function projectGlobalTabsState(state: GlobalTabsState): PersistedGlobalT
             threadId: tab.threadRef.threadId,
           };
         case "Settings":
+          return tab;
+        case "Usage":
           return tab;
         case "PullRequests":
           return tab;

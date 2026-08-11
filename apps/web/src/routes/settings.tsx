@@ -87,10 +87,7 @@ function SettingsContentLayout() {
             )}
           >
             <div className="flex w-full items-center gap-2">
-              <SettingsBreadcrumb
-                pathname={location.pathname}
-                showSectionMenu={globalTabsEnabled}
-              />
+              <SettingsBreadcrumb pathname={location.pathname} />
               {showRestoreDefaults ? (
                 <div className="ms-auto flex items-center gap-2">
                   <RestoreDefaultsButton onRestored={handleRestored} />

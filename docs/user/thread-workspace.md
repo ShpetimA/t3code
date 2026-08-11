@@ -6,8 +6,9 @@ agents. Selecting another thread from the sidebar switches both the conversation
 In **Settings → General → Thread navigation**, choose **Sidebar** or **Top tabs**. Sidebar remains
 the default. Top tabs replace the thread sidebar on desktop-sized windows and keep explicitly opened
 threads and app pages in a global strip above the workspace. Opening a thread from search or a
-direct link adds it to the strip. Settings uses one tab as you move between sections. Pull requests
-uses one list tab and a separate, full-width tab for each review you open. Closing a top tab only
+direct link adds it to the strip. Settings uses one tab as you move between sections, and Usage uses
+one tab. Pull requests use one list tab and a separate, full-width tab for each review you open.
+Closing a top tab only
 closes that view; it does not settle, archive, delete, close, or merge its underlying item. Compact
 windows continue to use the sidebar so every thread state remains reachable.
 
@@ -16,8 +17,8 @@ monitoring, pending approval, pending input, failure, a ready plan, or unread co
 without an icon get a stable colored monogram so their tabs remain recognizable at a glance. Drafts
 keep the same tab position when their first message creates the server thread. Drag tabs to reorder
 them, use the command center to reopen other threads, and use the plus button to open a new thread,
-the pull request list, or Settings. Pull request tabs similarly distinguish open, draft, closed, and
-merged reviews. In Settings, use the current section name in the content header to switch sections.
+the pull request list, Usage, or Settings. Pull request tabs similarly distinguish open, draft,
+closed, and merged reviews. Settings keeps its section sidebar below the global tab strip.
 
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as
 a pinned tab beside its tool tabs. Its compact status indicator mirrors the sidebar, including

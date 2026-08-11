@@ -4,6 +4,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import {
   BotIcon,
+  ChartNoAxesColumnIcon,
   CircleDashedIcon,
   GitBranchIcon,
   GitPullRequestIcon,
@@ -81,6 +82,9 @@ function navigateToGlobalTab(navigate: ReturnType<typeof useNavigate>, tab: Glob
       return;
     case "Settings":
       void navigate({ to: `/settings/${tab.section}` });
+      return;
+    case "Usage":
+      void navigate({ to: "/usage" });
       return;
     case "PullRequests":
       void navigate({
@@ -374,11 +378,13 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               const title =
                 tab._tag === "Settings"
                   ? "Settings"
-                  : tab._tag === "PullRequests"
-                    ? "Pull Requests"
-                    : tab._tag === "PullRequest"
-                      ? `${tab.repository} #${tab.number}`
-                      : (shell?.title ?? (tab._tag === "DraftThread" ? "New session" : "Thread"));
+                  : tab._tag === "Usage"
+                    ? "Usage"
+                    : tab._tag === "PullRequests"
+                      ? "Pull Requests"
+                      : tab._tag === "PullRequest"
+                        ? `${tab.repository} #${tab.number}`
+                        : (shell?.title ?? (tab._tag === "DraftThread" ? "New session" : "Thread"));
               const status = shell
                 ? resolveThreadStatusPill({
                     thread: {
@@ -441,6 +447,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             />
                           ) : tab._tag === "Settings" ? (
                             <Settings2Icon className="size-3.5 shrink-0" />
+                          ) : tab._tag === "Usage" ? (
+                            <ChartNoAxesColumnIcon className="size-3.5 shrink-0" />
                           ) : tab._tag === "PullRequests" || tab._tag === "PullRequest" ? (
                             <GitPullRequestIcon
                               className={cn("size-3.5 shrink-0", pullRequestStatus?.colorClass)}
@@ -561,6 +569,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                     Pull Requests
                   </MenuItem>
                 ) : null}
+                <MenuItem onClick={() => void navigate({ to: "/usage" })}>
+                  <ChartNoAxesColumnIcon />
+                  Usage
+                </MenuItem>
                 <MenuItem onClick={() => void navigate({ to: "/settings" })}>
                   <Settings2Icon />
                   Settings

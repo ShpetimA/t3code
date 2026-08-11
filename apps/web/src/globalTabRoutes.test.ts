@@ -16,6 +16,16 @@ describe("global tab routes", () => {
     ).toEqual({ _tag: "Settings", section: "appearance" });
   });
 
+  it("maps usage onto its singleton identity", () => {
+    expect(
+      resolveGlobalRouteTab({
+        pathname: "/usage",
+        searchStr: "",
+        primaryEnvironmentId: environmentId,
+      }),
+    ).toEqual({ _tag: "Usage" });
+  });
+
   it("maps the pull request list without a selected review", () => {
     expect(
       resolveGlobalRouteTab({

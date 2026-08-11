@@ -134,14 +134,23 @@ describe("global tabs", () => {
   it("reconciles missing threads without pruning application destinations", () => {
     const thread = serverTab("one");
     const settings: GlobalTab = { _tag: "Settings", section: "general" };
+    const usage: GlobalTab = { _tag: "Usage" };
     const pullRequests: GlobalTab = { _tag: "PullRequests" };
     const result = transitionGlobalTabs(
-      { tabs: [thread, settings, pullRequests] },
+      { tabs: [thread, settings, usage, pullRequests] },
       { _tag: "Reconcile", validThreadTabKeys: [], activeTabKey: globalTabKey(settings) },
     );
 
-    expect(result.state.tabs).toEqual([settings, pullRequests]);
+    expect(result.state.tabs).toEqual([settings, usage, pullRequests]);
     expect(result.navigation).toEqual({ _tag: "KeepCurrent" });
+  });
+
+  it("persists usage as one singleton tab", () => {
+    const usage: GlobalTab = { _tag: "Usage" };
+    const state = open(open({ tabs: [] }, usage), usage);
+
+    expect(state.tabs).toEqual([usage]);
+    expect(parsePersistedGlobalTabsState(projectGlobalTabsState(state))).toEqual(state);
   });
 
   it("updates pull request status without changing its position", () => {

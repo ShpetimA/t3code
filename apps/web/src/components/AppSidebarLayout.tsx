@@ -176,9 +176,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     });
   }, [location.searchStr, pathname, primaryEnvironmentId, routeDraftSession, routeTarget]);
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  // Top tabs own the complete titlebar width. Settings supplies compact
-  // section navigation inside its content header in this mode.
-  const showSidebar = !globalThreadTabsEnabled;
+  const settingsSidebarBelowTabs = globalThreadTabsEnabled && isOnSettings;
+  const showSidebar = settingsSidebarBelowTabs || !globalThreadTabsEnabled;
   const showGlobalTabs = globalThreadTabsEnabled && (activeGlobalTab !== null || pathname === "/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
@@ -237,47 +236,62 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     };
   }, [navigate, pathname]);
 
-  return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
-      <ProjectProjectionRetention />
-      {showSidebar ? (
-        <Sidebar
-          side="left"
-          collapsible="offcanvas"
-          data-app-sidebar=""
-          className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-          resizable={{
-            maxWidth: sidebarMaximumWidth,
-            minWidth: THREAD_SIDEBAR_MIN_WIDTH,
-            shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-              nextWidth <= currentWidth ||
-              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-            storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-            onResize: setSidebarWidth,
-          }}
-        >
-          {isOnSettings ? (
-            <>
-              <SidebarChromeHeader isElectron={isElectron} />
-              <SettingsSidebarNav pathname={pathname} />
-            </>
-          ) : legacySidebarEnabled ? (
-            <LegacyThreadSidebar />
-          ) : (
-            <ThreadSidebar />
-          )}
-          <SidebarRail />
-        </Sidebar>
-      ) : null}
-      {showGlobalTabs ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <GlobalTabs activeTab={activeGlobalTab} />
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">{children}</div>
-        </div>
-      ) : (
-        children
+  const sidebar = showSidebar ? (
+    <Sidebar
+      side="left"
+      collapsible="offcanvas"
+      data-app-sidebar=""
+      className={cn(
+        "border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        settingsSidebarBelowTabs && "top-[var(--workspace-topbar-height)]! bottom-0! h-auto!",
       )}
-      {showSidebar ? <SidebarControl /> : null}
+      resizable={{
+        maxWidth: sidebarMaximumWidth,
+        minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+        shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+          nextWidth <= currentWidth ||
+          wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+        storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+        onResize: setSidebarWidth,
+      }}
+    >
+      {isOnSettings ? (
+        <>
+          {settingsSidebarBelowTabs ? null : <SidebarChromeHeader isElectron={isElectron} />}
+          <SettingsSidebarNav pathname={pathname} />
+        </>
+      ) : legacySidebarEnabled ? (
+        <LegacyThreadSidebar />
+      ) : (
+        <ThreadSidebar />
+      )}
+      <SidebarRail />
+    </Sidebar>
+  ) : null;
+
+  return (
+    <SidebarProvider
+      className={cn("h-dvh! min-h-0!", showGlobalTabs && "flex-col")}
+      defaultOpen
+      style={sidebarProviderStyle}
+      {...(settingsSidebarBelowTabs ? { open: true } : {})}
+    >
+      <ProjectProjectionRetention />
+      {showGlobalTabs ? (
+        <>
+          <GlobalTabs activeTab={activeGlobalTab} />
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            {sidebar}
+            {children}
+          </div>
+        </>
+      ) : (
+        <>
+          {sidebar}
+          {children}
+        </>
+      )}
+      {showSidebar && !settingsSidebarBelowTabs ? <SidebarControl /> : null}
     </SidebarProvider>
   );
 }

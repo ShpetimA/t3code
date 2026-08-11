@@ -24,6 +24,10 @@ export function resolveGlobalRouteTab(input: {
     return { _tag: "Settings", section: settingsSection };
   }
 
+  if (input.pathname === "/usage") {
+    return { _tag: "Usage" };
+  }
+
   if (input.pathname !== "/pull-requests") {
     return null;
   }
