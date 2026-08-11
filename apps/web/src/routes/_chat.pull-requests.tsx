@@ -1,8 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { pullRequestHostOf, ThreadId } from "@t3tools/contracts";
+import { ProjectId, pullRequestHostOf, ThreadId } from "@t3tools/contracts";
 import type {
   EnvironmentId,
-  ProjectId,
   PullRequestInvolvement,
   PullRequestListEntry,
   PullRequestListResult,
@@ -59,11 +58,22 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../components/WorkspaceBreadcrumb";
+import { PreviewPanelShell } from "../components/preview/PreviewPanelShell";
 import { PanelLayoutControls } from "../components/chat/PanelLayoutControls";
 import { Button } from "../components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
 import { SidebarInset } from "../components/ui/sidebar";
 import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { useDebouncedValue } from "../state/queries";
+import { useAllEnvironmentShellsBootstrapped, useProjects } from "../state/entities";
+import { usePrimaryEnvironment } from "../state/environments";
+import { pullRequestEnvironment } from "../state/pullRequests";
+import { useEnvironmentQuery } from "../state/query";
+import { useAtomCommand } from "../state/use-atom-command";
+import { cn } from "~/lib/utils";
+import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
+import { globalTabKey } from "../globalTabs";
+import { transitionGlobalTabsStore } from "../globalTabsStore";
 import {
   pullRequestSurfaceId,
   selectActiveRightPanelSurface,
@@ -72,13 +82,6 @@ import {
   useRightPanelStore,
   type PullRequestSurface,
 } from "../rightPanelStore";
-import { useDebouncedValue } from "../state/queries";
-import { useAllEnvironmentShellsBootstrapped, useProjects } from "../state/entities";
-import { usePrimaryEnvironment } from "../state/environments";
-import { pullRequestEnvironment } from "../state/pullRequests";
-import { useEnvironmentQuery } from "../state/query";
-import { useAtomCommand } from "../state/use-atom-command";
-import { cn } from "~/lib/utils";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -126,7 +129,7 @@ const PAGE_SIZE = 99;
 const MAX_PAGE_SIZE = 500;
 /** Stable empty map so the memos below do not see a new object on every render. */
 const EMPTY_VIEWERS: PullRequestListResult["viewers"] = {};
-/** The list owns one environment-scoped right panel rather than borrowing a real thread's. */
+/** The sidebar-navigation layout keeps its PR tabs in one environment-scoped right panel. */
 const PULL_REQUESTS_PANEL_ID = ThreadId.make("pull-requests-panel");
 const EMPTY_PREVIEW_SESSIONS = {};
 const EMPTY_TERMINAL_LABELS = new Map<string, string>();
@@ -145,11 +148,11 @@ export const Route = createFileRoute("/_chat/pull-requests")({
       ? { number: raw.number }
       : {}),
     ...(typeof raw.projectId === "string" && raw.projectId
-      ? { projectId: raw.projectId as ProjectId }
+      ? { projectId: ProjectId.make(raw.projectId) }
       : {}),
     ...(typeof raw.host === "string" && raw.host ? { host: raw.host.slice(0, 200) } : {}),
     ...(typeof raw.selectedProjectId === "string" && raw.selectedProjectId
-      ? { selectedProjectId: raw.selectedProjectId as ProjectId }
+      ? { selectedProjectId: ProjectId.make(raw.selectedProjectId) }
       : {}),
     ...(typeof raw.q === "string" && raw.q ? { q: raw.q.slice(0, 200) } : {}),
   }),
@@ -159,6 +162,7 @@ export const Route = createFileRoute("/_chat/pull-requests")({
 function PullRequestsRouteView() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId = primaryEnvironment?.environmentId ?? null;
   const capabilityKnown = primaryEnvironment !== null && primaryEnvironment.serverConfig !== null;
@@ -218,7 +222,6 @@ function PullRequestsRouteView() {
         : { ...current, [id]: status },
     );
   }, []);
-
   const updateSearch = useCallback(
     (patch: {
       [Key in keyof PullRequestsSearch]?: PullRequestsSearch[Key] | undefined;
@@ -254,8 +257,7 @@ function PullRequestsRouteView() {
   const updateListScope = (patch: {
     [Key in keyof PullRequestsSearch]?: PullRequestsSearch[Key] | undefined;
   }) => {
-    if (rightPanelRef !== null) {
-      // Hide the old selection while retaining peer PR tabs for parallel reviews.
+    if (!globalTabsEnabled && rightPanelRef !== null) {
       useRightPanelStore.getState().close(rightPanelRef);
     }
     updateSearch({ ...patch, ...clearedSelection });
@@ -812,17 +814,37 @@ function PullRequestsRouteView() {
     [search.number, search.repository, selectedProjectId],
   );
   useEffect(() => {
-    if (!pullRequestsSupported || rightPanelRef === null || linkedSelection === null) return;
+    if (
+      globalTabsEnabled ||
+      !pullRequestsSupported ||
+      rightPanelRef === null ||
+      linkedSelection === null
+    ) {
+      return;
+    }
     useRightPanelStore.getState().openPullRequest(rightPanelRef, linkedSelection);
-  }, [linkedSelection, pullRequestsSupported, rightPanelRef]);
-
-  const selected =
-    rightPanelState.isOpen && activePullRequestSurface !== null
+  }, [globalTabsEnabled, linkedSelection, pullRequestsSupported, rightPanelRef]);
+  const selected = globalTabsEnabled
+    ? pullRequestsSupported
+      ? linkedSelection
+      : null
+    : rightPanelState.isOpen && activePullRequestSurface !== null
       ? {
           repository: activePullRequestSurface.repository,
           number: activePullRequestSurface.number,
-          projectId: activePullRequestSurface.projectId as ProjectId,
+          projectId: ProjectId.make(activePullRequestSurface.projectId),
         }
+      : null;
+  const globalPullRequestTabKey =
+    globalTabsEnabled && selected !== null && environmentId !== null
+      ? globalTabKey({
+          _tag: "PullRequest",
+          environmentId,
+          projectId: selected.projectId,
+          repository: selected.repository,
+          number: selected.number,
+          ...(search.host === undefined ? {} : { host: search.host }),
+        })
       : null;
 
   const selectSurfaceInUrl = (surface: PullRequestSurface | null) =>
@@ -832,7 +854,7 @@ function PullRequestsRouteView() {
         : {
             repository: surface.repository,
             number: surface.number,
-            selectedProjectId: surface.projectId as ProjectId,
+            selectedProjectId: ProjectId.make(surface.projectId),
           },
     );
 
@@ -885,15 +907,16 @@ function PullRequestsRouteView() {
   // Stable so the memoized rows can skip re-rendering when the list around them changes.
   const selectEntry = useCallback(
     (entry: PullRequestListEntry) => {
-      if (rightPanelRef === null) return;
-      useRightPanelStore.getState().openPullRequest(rightPanelRef, entry);
+      if (!globalTabsEnabled && rightPanelRef !== null) {
+        useRightPanelStore.getState().openPullRequest(rightPanelRef, entry);
+      }
       updateSearch({
         repository: entry.repository,
         number: entry.number,
         selectedProjectId: entry.projectId,
       });
     },
-    [rightPanelRef, updateSearch],
+    [globalTabsEnabled, rightPanelRef, updateSearch],
   );
 
   const searchInput = (
@@ -1072,8 +1095,10 @@ function PullRequestsRouteView() {
     searchInput,
     filtersMenu,
     rightPanelControl:
-      !pullRequestsSupported || rightPanelState.isOpen ? null : panelToggleControls,
-    rightPanelOpen: rightPanelState.isOpen,
+      globalTabsEnabled || !pullRequestsSupported || rightPanelState.isOpen
+        ? null
+        : panelToggleControls,
+    rightPanelOpen: globalTabsEnabled ? selected !== null : rightPanelState.isOpen,
     listBody,
   };
 
@@ -1112,61 +1137,19 @@ function PullRequestsRouteView() {
   };
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+    <SidebarInset
+      className={cn(
+        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground",
+        globalTabsEnabled ? "h-full" : "h-dvh",
+      )}
+    >
       <div className="relative flex min-h-0 flex-1">
-        {pullRequestsSupported && rightPanelState.isOpen ? openPanelControls : null}
-        <PullRequestsColumn {...columnProps} />
-
-        {rightPanelState.isOpen && activePullRequestSurface && pullRequestEnvironmentId !== null ? (
-          <RightPanelTabs
-            mode="inline"
-            widthStorageKey="t3code:pull-request-panel-width"
-            // Default to roughly half the viewport: the PR list needs more
-            // room than a chat, so the 540px chat-preview default squashes
-            // it. SSR has no window, so fall back to a reasonable width.
-            defaultWidth={typeof window === "undefined" ? 640 : Math.floor(window.innerWidth / 2)}
-            surfaces={rightPanelState.surfaces}
-            activeSurfaceId={activePullRequestSurface.id}
-            pendingSurfaceIds={EMPTY_PENDING_SURFACES}
-            previewSessions={EMPTY_PREVIEW_SESSIONS}
-            terminalLabelsById={EMPTY_TERMINAL_LABELS}
-            onActivate={(surface) => {
-              if (surface.kind === "pull-request") activateSurface(surface);
-            }}
-            onCloseSurface={(surface) => {
-              if (surface.kind === "pull-request") closeSurface(surface);
-            }}
-            onCloseOtherSurfaces={(surface) => {
-              if (surface.kind === "pull-request") closeOtherSurfaces(surface);
-            }}
-            onCloseSurfacesToRight={(surface) => {
-              if (surface.kind === "pull-request") closeSurfacesToRight(surface);
-            }}
-            onCloseAllSurfaces={closeAllSurfaces}
-            onCopyFilePath={() => undefined}
-            onAddBrowser={() => undefined}
-            onAddTerminal={() => undefined}
-            onAddDiff={() => undefined}
-            onAddFiles={() => undefined}
-            onAddPullRequest={() => undefined}
-            onAddAgents={() => undefined}
-            browserAvailable={false}
-            terminalAvailable={false}
-            diffAvailable={false}
-            filesAvailable={false}
-            pullRequestAvailable={false}
-            agentsAvailable={false}
-            liveAgentCount={0}
-            pullRequestStatuses={pullRequestTabStatuses}
-          >
+        {globalTabsEnabled && selected !== null && pullRequestEnvironmentId !== null ? (
+          <PreviewPanelShell mode="embedded">
             <PullRequestDetailPanel
-              key={activePullRequestSurface.id}
+              key={`${selected.projectId}:${selected.repository}#${selected.number}`}
               environmentId={pullRequestEnvironmentId}
-              reference={{
-                projectId: activePullRequestSurface.projectId as ProjectId,
-                repository: activePullRequestSurface.repository,
-                number: activePullRequestSurface.number,
-              }}
+              reference={selected}
               refreshToken={detailRefreshToken}
               // Merging, closing or reopening changes the row this panel was opened from, so
               // the list behind it is out of date the moment the host takes the action.
@@ -1176,11 +1159,90 @@ function PullRequestsRouteView() {
                 authoredQuery.refresh();
                 reviewingQuery.refresh();
               }}
-              onStateChange={handlePullRequestTabStatusChange}
+              onStateChange={(status) => {
+                if (globalPullRequestTabKey === null) return;
+                transitionGlobalTabsStore({
+                  _tag: "UpdatePullRequestStatus",
+                  tabKey: globalPullRequestTabKey,
+                  state: status.state,
+                  isDraft: status.isDraft,
+                });
+              }}
               chromeVariant="collapse"
             />
-          </RightPanelTabs>
-        ) : null}
+          </PreviewPanelShell>
+        ) : (
+          <>
+            {!globalTabsEnabled && pullRequestsSupported && rightPanelState.isOpen
+              ? openPanelControls
+              : null}
+            <PullRequestsColumn {...columnProps} />
+
+            {!globalTabsEnabled &&
+            activePullRequestSurface !== null &&
+            pullRequestEnvironmentId !== null ? (
+              <RightPanelTabs
+                mode="inline"
+                widthStorageKey="t3code:pull-request-panel-width"
+                defaultWidth={
+                  typeof window === "undefined" ? 640 : Math.floor(window.innerWidth / 2)
+                }
+                surfaces={rightPanelState.surfaces}
+                activeSurfaceId={activePullRequestSurface.id}
+                pendingSurfaceIds={EMPTY_PENDING_SURFACES}
+                previewSessions={EMPTY_PREVIEW_SESSIONS}
+                terminalLabelsById={EMPTY_TERMINAL_LABELS}
+                onActivate={(surface) => {
+                  if (surface.kind === "pull-request") activateSurface(surface);
+                }}
+                onCloseSurface={(surface) => {
+                  if (surface.kind === "pull-request") closeSurface(surface);
+                }}
+                onCloseOtherSurfaces={(surface) => {
+                  if (surface.kind === "pull-request") closeOtherSurfaces(surface);
+                }}
+                onCloseSurfacesToRight={(surface) => {
+                  if (surface.kind === "pull-request") closeSurfacesToRight(surface);
+                }}
+                onCloseAllSurfaces={closeAllSurfaces}
+                onCopyFilePath={() => undefined}
+                onAddBrowser={() => undefined}
+                onAddTerminal={() => undefined}
+                onAddDiff={() => undefined}
+                onAddFiles={() => undefined}
+                onAddPullRequest={() => undefined}
+                onAddAgents={() => undefined}
+                browserAvailable={false}
+                terminalAvailable={false}
+                diffAvailable={false}
+                filesAvailable={false}
+                pullRequestAvailable={false}
+                agentsAvailable={false}
+                liveAgentCount={0}
+                pullRequestStatuses={pullRequestTabStatuses}
+              >
+                <PullRequestDetailPanel
+                  key={activePullRequestSurface.id}
+                  environmentId={pullRequestEnvironmentId}
+                  reference={{
+                    projectId: ProjectId.make(activePullRequestSurface.projectId),
+                    repository: activePullRequestSurface.repository,
+                    number: activePullRequestSurface.number,
+                  }}
+                  refreshToken={detailRefreshToken}
+                  onActed={() => {
+                    refreshList();
+                    baselineQuery.refresh();
+                    authoredQuery.refresh();
+                    reviewingQuery.refresh();
+                  }}
+                  onStateChange={handlePullRequestTabStatusChange}
+                  chromeVariant="collapse"
+                />
+              </RightPanelTabs>
+            ) : null}
+          </>
+        )}
       </div>
     </SidebarInset>
   );

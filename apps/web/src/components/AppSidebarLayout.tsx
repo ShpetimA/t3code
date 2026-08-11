@@ -2,12 +2,13 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
 import { getLocalStorageItem } from "../hooks/useLocalStorage";
@@ -41,6 +42,12 @@ import {
 } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { resolveGlobalRouteTab } from "../globalTabRoutes";
+import type { GlobalTab } from "../globalTabs";
+import { usePrimaryEnvironmentId } from "../state/environments";
+import { resolveThreadRouteTarget } from "../threadRoutes";
+import { GlobalTabs } from "./GlobalTabs";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 
@@ -138,11 +145,41 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const globalThreadTabsEnabled = useGlobalThreadTabsEnabled();
-  // Settings routes show the settings nav in place of whichever thread
-  // sidebar is active.
-  const pathname = useLocation({ select: (location) => location.pathname });
+  const location = useLocation();
+  const pathname = location.pathname;
+  const routeTarget = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteTarget(params),
+  });
+  const routeDraftSession = useComposerDraftStore((store) =>
+    routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
+  );
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const activeGlobalTab = useMemo<GlobalTab | null>(() => {
+    if (routeTarget?.kind === "server") {
+      return { _tag: "ServerThread", threadRef: routeTarget.threadRef };
+    }
+    if (routeTarget?.kind === "draft" && routeDraftSession !== null) {
+      return {
+        _tag: "DraftThread",
+        draftId: routeTarget.draftId,
+        threadRef: {
+          environmentId: routeDraftSession.environmentId,
+          threadId: routeDraftSession.threadId,
+        },
+      };
+    }
+    return resolveGlobalRouteTab({
+      pathname,
+      searchStr: location.searchStr,
+      primaryEnvironmentId,
+    });
+  }, [location.searchStr, pathname, primaryEnvironmentId, routeDraftSession, routeTarget]);
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const showSidebar = isOnSettings || !globalThreadTabsEnabled;
+  // Top tabs own the complete titlebar width. Settings supplies compact
+  // section navigation inside its content header in this mode.
+  const showSidebar = !globalThreadTabsEnabled;
+  const showGlobalTabs = globalThreadTabsEnabled && (activeGlobalTab !== null || pathname === "/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -232,7 +269,14 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail />
         </Sidebar>
       ) : null}
-      {children}
+      {showGlobalTabs ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <GlobalTabs activeTab={activeGlobalTab} />
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">{children}</div>
+        </div>
+      ) : (
+        children
+      )}
       {showSidebar ? <SidebarControl /> : null}
     </SidebarProvider>
   );

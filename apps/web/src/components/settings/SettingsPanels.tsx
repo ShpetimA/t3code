@@ -1800,7 +1800,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection title="General">
         <SettingsRow
           {...searchableSetting("thread-navigation")}
-          description="Choose a persistent left sidebar or a global tab strip above the workspace. Top tabs are used on wide screens; compact layouts keep the sidebar."
+          description="Choose a persistent left sidebar or a global tab strip for threads, settings, and pull request reviews. Top tabs are used on wide screens; compact layouts keep the sidebar."
           resetAction={
             settings.threadNavigationMode !== DEFAULT_UNIFIED_SETTINGS.threadNavigationMode ? (
               <SettingResetButton

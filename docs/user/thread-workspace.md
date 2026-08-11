@@ -5,16 +5,19 @@ agents. Selecting another thread from the sidebar switches both the conversation
 
 In **Settings → General → Thread navigation**, choose **Sidebar** or **Top tabs**. Sidebar remains
 the default. Top tabs replace the thread sidebar on desktop-sized windows and keep explicitly opened
-threads in a global strip above the workspace. Opening a thread from search or a direct link adds it
-to the strip. Closing a top tab only closes that view; it does not settle, archive, or delete the
-thread. Compact windows continue to use the sidebar so every thread state remains reachable.
+threads and app pages in a global strip above the workspace. Opening a thread from search or a
+direct link adds it to the strip. Settings uses one tab as you move between sections. Pull requests
+uses one list tab and a separate, full-width tab for each review you open. Closing a top tab only
+closes that view; it does not settle, archive, delete, close, or merge its underlying item. Compact
+windows continue to use the sidebar so every thread state remains reachable.
 
 Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
 monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Projects
 without an icon get a stable colored monogram so their tabs remain recognizable at a glance. Drafts
 keep the same tab position when their first message creates the server thread. Drag tabs to reorder
-them, use the thread search button to reopen other threads, and use the plus button to start a new
-thread.
+them, use the command center to reopen other threads, and use the plus button to open a new thread,
+the pull request list, or Settings. Pull request tabs similarly distinguish open, draft, closed, and
+merged reviews. In Settings, use the current section name in the content header to switch sections.
 
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as
 a pinned tab beside its tool tabs. Its compact status indicator mirrors the sidebar, including

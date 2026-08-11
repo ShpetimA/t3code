@@ -16,6 +16,7 @@ import { SidebarInset } from "../components/ui/sidebar";
 import { isElectron } from "../env";
 import { cn } from "~/lib/utils";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 
 function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
@@ -38,6 +39,7 @@ function SettingsContentLayout() {
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
   const [restoreSignal, setRestoreSignal] = useState(0);
+  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const showRestoreDefaults = location.pathname === "/settings/general";
   const handleRestored = () => setRestoreSignal((value) => value + 1);
   const navigateBackWithinApp = useCallback(() => {
@@ -70,9 +72,14 @@ function SettingsContentLayout() {
   }, [navigateBackWithinApp]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset
+      className={cn(
+        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate",
+        globalTabsEnabled ? "h-full" : "h-dvh",
+      )}
+    >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        {!isElectron && (
+        {(!isElectron || globalTabsEnabled) && (
           <header
             className={cn(
               "workspace-topbar px-3 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none sm:px-5",
@@ -80,7 +87,10 @@ function SettingsContentLayout() {
             )}
           >
             <div className="flex w-full items-center gap-2">
-              <SettingsBreadcrumb pathname={location.pathname} />
+              <SettingsBreadcrumb
+                pathname={location.pathname}
+                showSectionMenu={globalTabsEnabled}
+              />
               {showRestoreDefaults ? (
                 <div className="ms-auto flex items-center gap-2">
                   <RestoreDefaultsButton onRestored={handleRestored} />
@@ -90,7 +100,7 @@ function SettingsContentLayout() {
           </header>
         )}
 
-        {isElectron && (
+        {isElectron && !globalTabsEnabled && (
           <div
             className={cn(
               "drag-region flex h-[52px] shrink-0 items-center px-5 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]",

@@ -6,9 +6,12 @@ import {
   BotIcon,
   CircleDashedIcon,
   GitBranchIcon,
+  GitPullRequestIcon,
   PanelsTopLeftIcon,
   PlusIcon,
   ServerIcon,
+  Settings2Icon,
+  SquarePenIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -22,16 +25,14 @@ import {
 } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
-import { useComposerDraftStore } from "../composerDraftStore";
+import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import {
-  globalThreadTabKey,
-  type GlobalThreadTab,
-  type GlobalThreadTabNavigation,
-} from "../globalThreadTabs";
-import {
-  transitionGlobalThreadTabsStore,
-  useGlobalThreadTabsStore,
-} from "../globalThreadTabsStore";
+  globalTabKey,
+  isGlobalThreadTab,
+  type GlobalTab,
+  type GlobalTabNavigation,
+} from "../globalTabs";
+import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStore";
 import {
   resolveShortcutCommand,
   threadJumpIndexFromCommand,
@@ -44,7 +45,7 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
-import { useEnvironments } from "../state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../threadRoutes";
 import { selectThreadWorkspaceOrDefault, useThreadWorkspaceStore } from "../threadWorkspaceStore";
@@ -57,38 +58,61 @@ import {
   type ThreadStatusPill,
 } from "./Sidebar.logic";
 import { ScrollArea } from "./ui/scroll-area";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
-interface GlobalThreadTabsProps {
-  readonly activeTab: GlobalThreadTab;
+interface GlobalTabsProps {
+  readonly activeTab: GlobalTab | null;
 }
 
-function navigateToGlobalThreadTab(
-  navigate: ReturnType<typeof useNavigate>,
-  tab: GlobalThreadTab,
-): void {
-  if (tab._tag === "ServerThread") {
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(tab.threadRef),
-    });
-    return;
+function navigateToGlobalTab(navigate: ReturnType<typeof useNavigate>, tab: GlobalTab): void {
+  switch (tab._tag) {
+    case "ServerThread":
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(tab.threadRef),
+      });
+      return;
+    case "DraftThread":
+      void navigate({
+        to: "/draft/$draftId",
+        params: buildDraftThreadRouteParams(tab.draftId),
+      });
+      return;
+    case "Settings":
+      void navigate({ to: `/settings/${tab.section}` });
+      return;
+    case "PullRequests":
+      void navigate({
+        to: "/pull-requests",
+        search: { involvement: "all", state: "open" },
+      });
+      return;
+    case "PullRequest":
+      void navigate({
+        to: "/pull-requests",
+        search: {
+          involvement: "all",
+          state: "all",
+          repository: tab.repository,
+          number: tab.number,
+          selectedProjectId: tab.projectId,
+          ...(tab.host ? { host: tab.host } : {}),
+        },
+      });
+      return;
   }
-  void navigate({
-    to: "/draft/$draftId",
-    params: buildDraftThreadRouteParams(tab.draftId),
-  });
 }
 
 function applyTabNavigation(
   navigate: ReturnType<typeof useNavigate>,
-  navigation: GlobalThreadTabNavigation,
+  navigation: GlobalTabNavigation,
 ): void {
   switch (navigation._tag) {
     case "KeepCurrent":
       return;
     case "Activate":
-      navigateToGlobalThreadTab(navigate, navigation.tab);
+      navigateToGlobalTab(navigate, navigation.tab);
       return;
     case "OpenLanding":
       void navigate({ to: "/" });
@@ -144,23 +168,43 @@ function ThreadTabStatusMark({
   );
 }
 
-/** Desktop titlebar that navigates among explicitly opened threads. */
-export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
+function pullRequestStatusPresentation(
+  status: Extract<GlobalTab, { readonly _tag: "PullRequest" }>["reviewStatus"],
+): { readonly label: string; readonly colorClass: string } | null {
+  if (status === undefined) return null;
+  if (status.state === "merged") {
+    return { label: "Merged", colorClass: "text-violet-600 dark:text-violet-300/90" };
+  }
+  if (status.state === "closed") {
+    return { label: "Closed", colorClass: "text-red-600 dark:text-red-300/90" };
+  }
+  if (status.isDraft) {
+    return { label: "Draft", colorClass: "text-zinc-500 dark:text-zinc-400/80" };
+  }
+  return { label: "Open", colorClass: "text-emerald-600 dark:text-emerald-300/90" };
+}
+
+/** Application titlebar that navigates among explicitly opened route-backed tabs. */
+export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const navigate = useNavigate();
-  const tabs = useGlobalThreadTabsStore((state) => state.tabs);
-  const activeTabKey = globalThreadTabKey(activeTab);
+  const tabs = useGlobalTabsStore((state) => state.tabs);
+  const activeTabKey = activeTab === null ? null : globalTabKey(activeTab);
   const threadShells = useThreadShells();
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const projects = useProjects();
   const { environments } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const draftSessions = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const draggedTabKeyRef = useRef<string | null>(null);
-  const activeThreadRef: ScopedThreadRef = activeTab.threadRef;
-  const routeTerminalOpen = useThreadWorkspaceStore(
-    (state) => selectThreadWorkspaceOrDefault(state.byThreadKey, activeThreadRef).bottomPanelOpen,
+  const activeThreadRef: ScopedThreadRef | null =
+    activeTab !== null && isGlobalThreadTab(activeTab) ? activeTab.threadRef : null;
+  const routeTerminalOpen = useThreadWorkspaceStore((state) =>
+    activeThreadRef === null
+      ? false
+      : selectThreadWorkspaceOrDefault(state.byThreadKey, activeThreadRef).bottomPanelOpen,
   );
 
   const threadShellByKey = useMemo(
@@ -184,8 +228,14 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
       ),
     [environments],
   );
+  const primaryEnvironment = environments.find(
+    (environment) => environment.environmentId === primaryEnvironmentId,
+  );
+  const pullRequestsSupported =
+    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
   useLayoutEffect(() => {
-    transitionGlobalThreadTabsStore({ _tag: "Open", tab: activeTab });
+    if (activeTab === null) return;
+    transitionGlobalTabsStore({ _tag: "Open", tab: activeTab });
   }, [activeTab]);
 
   useEffect(() => {
@@ -193,16 +243,25 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
     const validTabKeys = [
       ...threadShells.flatMap((thread) =>
         thread.archivedAt === null
-          ? [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))]
+          ? [
+              globalTabKey({
+                _tag: "ServerThread",
+                threadRef: scopeThreadRef(thread.environmentId, thread.id),
+              }),
+            ]
           : [],
       ),
-      ...Object.values(draftSessions).map((session) =>
-        scopedThreadKey(scopeThreadRef(session.environmentId, session.threadId)),
+      ...Object.entries(draftSessions).map(([draftId, session]) =>
+        globalTabKey({
+          _tag: "DraftThread",
+          draftId: DraftId.make(draftId),
+          threadRef: scopeThreadRef(session.environmentId, session.threadId),
+        }),
       ),
     ];
-    const result = transitionGlobalThreadTabsStore({
+    const result = transitionGlobalTabsStore({
       _tag: "Reconcile",
-      validTabKeys,
+      validThreadTabKeys: validTabKeys,
       activeTabKey,
     });
     applyTabNavigation(navigate, result.navigation);
@@ -215,7 +274,7 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
 
   const closeTab = useCallback(
     (tabKey: string) => {
-      const result = transitionGlobalThreadTabsStore({
+      const result = transitionGlobalTabsStore({
         _tag: "Close",
         tabKey,
         activeTabKey,
@@ -241,20 +300,20 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
       let targetKey: string | null = null;
       if (traversalDirection !== null) {
         targetKey = resolveAdjacentThreadId({
-          threadIds: tabs.map(globalThreadTabKey),
+          threadIds: tabs.map(globalTabKey),
           currentThreadId: activeTabKey,
           direction: traversalDirection,
         });
       } else if (jumpIndex !== null) {
         const target = tabs[jumpIndex];
-        targetKey = target ? globalThreadTabKey(target) : null;
+        targetKey = target ? globalTabKey(target) : null;
       }
       if (targetKey === null) return;
-      const target = tabs.find((tab) => globalThreadTabKey(tab) === targetKey);
+      const target = tabs.find((tab) => globalTabKey(tab) === targetKey);
       if (!target) return;
       event.preventDefault();
       event.stopPropagation();
-      navigateToGlobalThreadTab(navigate, target);
+      navigateToGlobalTab(navigate, target);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -265,12 +324,12 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
     const tabKey = draggedTabKeyRef.current;
     draggedTabKeyRef.current = null;
     if (tabKey === null) return;
-    transitionGlobalThreadTabsStore({ _tag: "Reorder", tabKey, targetIndex });
+    transitionGlobalTabsStore({ _tag: "Reorder", tabKey, targetIndex });
   }, []);
   return (
     <header
       className="workspace-topbar drag-region relative z-[70] gap-0.5 border-b border-border/60 bg-background pl-[var(--workspace-controls-left)] pr-2 wco:pr-[var(--workspace-native-controls-inset)]"
-      data-global-thread-tabs=""
+      data-global-tabs=""
     >
       <Tooltip>
         <TooltipTrigger
@@ -296,27 +355,46 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
         >
           <div className="flex h-full w-max min-w-full items-center gap-0.5">
             {tabs.map((tab, index) => {
-              const tabKey = globalThreadTabKey(tab);
+              const tabKey = globalTabKey(tab);
               const active = tabKey === activeTabKey;
-              const shell = threadShellByKey.get(tabKey);
+              const threadTab = isGlobalThreadTab(tab) ? tab : null;
+              const threadKey = threadTab ? scopedThreadKey(threadTab.threadRef) : null;
+              const shell = threadKey ? threadShellByKey.get(threadKey) : undefined;
               const draftSession = tab._tag === "DraftThread" ? draftSessions[tab.draftId] : null;
-              const projectId = shell?.projectId ?? draftSession?.projectId;
+              const projectId =
+                tab._tag === "PullRequest"
+                  ? tab.projectId
+                  : (shell?.projectId ?? draftSession?.projectId);
+              const environmentId =
+                threadTab?.threadRef.environmentId ??
+                (tab._tag === "PullRequest" ? tab.environmentId : null);
               const project = projectId
-                ? projectByKey.get(`${tab.threadRef.environmentId}:${projectId}`)
+                ? projectByKey.get(`${environmentId}:${projectId}`)
                 : undefined;
-              const title = shell?.title ?? (tab._tag === "DraftThread" ? "New session" : "Thread");
+              const title =
+                tab._tag === "Settings"
+                  ? "Settings"
+                  : tab._tag === "PullRequests"
+                    ? "Pull Requests"
+                    : tab._tag === "PullRequest"
+                      ? `${tab.repository} #${tab.number}`
+                      : (shell?.title ?? (tab._tag === "DraftThread" ? "New session" : "Thread"));
               const status = shell
                 ? resolveThreadStatusPill({
                     thread: {
                       ...shell,
-                      lastVisitedAt: lastVisitedAtByThreadKey[tabKey],
+                      lastVisitedAt:
+                        threadKey === null ? undefined : lastVisitedAtByThreadKey[threadKey],
                     },
                   })
                 : null;
-              const environmentLabel =
-                environmentLabelById.get(tab.threadRef.environmentId) ?? null;
+              const environmentLabel = environmentId
+                ? (environmentLabelById.get(environmentId) ?? null)
+                : null;
               const branch = shell?.branch ?? draftSession?.branch ?? null;
               const modelLabel = shell?.modelSelection.model ?? null;
+              const pullRequestStatus =
+                tab._tag === "PullRequest" ? pullRequestStatusPresentation(tab.reviewStatus) : null;
               return (
                 <Tooltip key={tabKey}>
                   <TooltipTrigger
@@ -351,7 +429,7 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
                           type="button"
                           className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-6"
                           aria-current={active ? "page" : undefined}
-                          onClick={() => navigateToGlobalThreadTab(navigate, tab)}
+                          onClick={() => navigateToGlobalTab(navigate, tab)}
                         >
                           {project ? (
                             <ProjectFavicon
@@ -360,6 +438,12 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
                               projectName={project.title}
                               faviconPath={project.faviconPath}
                               className="size-4"
+                            />
+                          ) : tab._tag === "Settings" ? (
+                            <Settings2Icon className="size-3.5 shrink-0" />
+                          ) : tab._tag === "PullRequests" || tab._tag === "PullRequest" ? (
+                            <GitPullRequestIcon
+                              className={cn("size-3.5 shrink-0", pullRequestStatus?.colorClass)}
                             />
                           ) : null}
                           {status ? <ThreadTabStatusMark status={status} /> : null}
@@ -435,27 +519,54 @@ export function GlobalThreadTabs({ activeTab }: GlobalThreadTabsProps) {
                             </div>
                           </div>
                         ) : null}
+                        {pullRequestStatus ? (
+                          <div
+                            className={cn(
+                              "flex min-w-0 items-center gap-2",
+                              pullRequestStatus.colorClass,
+                            )}
+                          >
+                            <GitPullRequestIcon className="size-3 shrink-0" />
+                            <div className="min-w-0 truncate">{pullRequestStatus.label}</div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </TooltipPopup>
                 </Tooltip>
               );
             })}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[background-color,color] duration-150 ease-out hover:bg-accent hover:text-foreground"
-                    aria-label="New thread"
-                    onClick={() => openCommandPalette({ open: "new-thread-in" })}
+            <Menu>
+              <MenuTrigger
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent data-popup-open:text-foreground"
+                aria-label="Open new tab"
+              >
+                <PlusIcon className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup align="start" side="bottom" sideOffset={6} className="min-w-44">
+                <MenuItem onClick={() => openCommandPalette({ open: "new-thread-in" })}>
+                  <SquarePenIcon />
+                  New thread
+                </MenuItem>
+                {pullRequestsSupported ? (
+                  <MenuItem
+                    onClick={() =>
+                      void navigate({
+                        to: "/pull-requests",
+                        search: { involvement: "all", state: "open" },
+                      })
+                    }
                   >
-                    <PlusIcon className="size-3.5" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="bottom">New thread</TooltipPopup>
-            </Tooltip>
+                    <GitPullRequestIcon />
+                    Pull Requests
+                  </MenuItem>
+                ) : null}
+                <MenuItem onClick={() => void navigate({ to: "/settings" })}>
+                  <Settings2Icon />
+                  Settings
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
           </div>
         </ScrollArea>
       </TooltipProvider>

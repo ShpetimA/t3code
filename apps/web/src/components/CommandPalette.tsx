@@ -33,6 +33,7 @@ import {
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
+  GitPullRequestIcon,
   LinkIcon,
   Maximize2Icon,
   MessageSquareIcon,
@@ -1547,6 +1548,36 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/settings" });
     },
   });
+
+  const primaryEnvironment = environments.find(
+    (environment) => environment.environmentId === primaryEnvironmentId,
+  );
+  const pullRequestsSupported =
+    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
+  if (pullRequestsSupported) {
+    actionItems.push({
+      kind: "action",
+      value: "action:pull-requests",
+      searchTerms: [
+        "pull requests",
+        "pull request list",
+        "reviews",
+        "code review",
+        "github",
+        "gitlab",
+        "bitbucket",
+        "azure devops",
+      ],
+      title: "Open pull requests",
+      icon: <GitPullRequestIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/pull-requests",
+          search: { involvement: "all", state: "open" },
+        });
+      },
+    });
+  }
 
   // There is no projects listing page; the action targets the contextual
   // project (active thread/draft, falling back to the first sidebar group).

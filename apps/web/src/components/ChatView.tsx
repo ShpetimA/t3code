@@ -168,7 +168,6 @@ import {
   RightPanelTabs,
   type PullRequestTabStatus,
 } from "./RightPanelTabs";
-import { GlobalThreadTabs } from "./GlobalThreadTabs";
 import type { WorkspaceTabContextTarget } from "./RightPanelTabs.logic";
 import { SplitPaneGrid } from "./SplitPaneGrid";
 import {
@@ -1601,17 +1600,6 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThreadEnvironmentId, activeThreadId],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
-  const activeGlobalThreadTab = useMemo(
-    () =>
-      activeThreadRef === null
-        ? null
-        : routeKind === "server"
-          ? ({ _tag: "ServerThread", threadRef: activeThreadRef } as const)
-          : draftId
-            ? ({ _tag: "DraftThread", draftId, threadRef: activeThreadRef } as const)
-            : null,
-    [activeThreadRef, draftId, routeKind],
-  );
   const [agentPanelRevealByThreadKey, setAgentPanelRevealByThreadKey] = useState<
     ReadonlyMap<string, AgentPanelRevealRequest>
   >(() => new Map());
@@ -6983,9 +6971,6 @@ function ChatViewContent(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-      {globalThreadTabsEnabled && activeGlobalThreadTab ? (
-        <GlobalThreadTabs activeTab={activeGlobalThreadTab} />
-      ) : null}
       <div
         className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         data-workspace-pane-stage=""
