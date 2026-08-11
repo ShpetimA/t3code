@@ -3,6 +3,17 @@
 Each thread owns its own set of workspace tabs for files, terminals, diffs, browser previews, and
 agents. Selecting another thread from the sidebar switches both the conversation and those tabs.
 
+In **Settings → General → Thread navigation**, choose **Sidebar** or **Top tabs**. Sidebar remains
+the default. Top tabs replace the thread sidebar on desktop-sized windows and keep explicitly opened
+threads in a global strip above the workspace. Opening a thread from search or a direct link adds it
+to the strip. Closing a top tab only closes that view; it does not settle, archive, or delete the
+thread. Compact windows continue to use the sidebar so every thread state remains reachable.
+
+Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
+monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Drafts keep
+the same tab position when their first message creates the server thread. Drag tabs to reorder them,
+use the thread search button to reopen other threads, and use the plus button to start a new thread.
+
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as
 a pinned tab beside its tool tabs. Its compact status indicator mirrors the sidebar, including
 working, attention, plan-ready, monitoring, and completion states. Narrow windows keep tools in a

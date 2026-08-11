@@ -71,7 +71,18 @@ describe("ClientSettings sidebar", () => {
   it("defaults to the current sidebar with a three-day auto-settle threshold", () => {
     const settings = decodeClientSettings({});
     expect(settings.legacySidebarEnabled).toBe(false);
+    expect(settings.threadNavigationMode).toBe("sidebar");
     expect(settings.sidebarAutoSettleAfterDays).toBe(3);
+  });
+
+  it("accepts global tabs as an alternative thread navigation mode", () => {
+    expect(decodeClientSettings({ threadNavigationMode: "tabs" }).threadNavigationMode).toBe(
+      "tabs",
+    );
+    expect(decodeClientSettingsPatch({ threadNavigationMode: "tabs" }).threadNavigationMode).toBe(
+      "tabs",
+    );
+    expect(() => decodeClientSettingsPatch({ threadNavigationMode: "rail" })).toThrow();
   });
 
   it("drops the retired sidebar v2 beta keys, resetting everyone to the default", () => {

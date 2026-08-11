@@ -9,6 +9,7 @@ import {
   ProviderDriverKind,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
+  type ThreadNavigationMode,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -154,6 +155,11 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+const THREAD_NAVIGATION_MODE_LABELS: Record<ThreadNavigationMode, string> = {
+  sidebar: "Sidebar",
+  tabs: "Top tabs",
+};
 
 const BACKGROUND_ACTIVITY_PROFILE_LABELS: Record<BackgroundActivityProfile, string> = {
   balanced: "Balanced",
@@ -1792,6 +1798,43 @@ export function GeneralSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection title="General">
+        <SettingsRow
+          {...searchableSetting("thread-navigation")}
+          description="Choose a persistent left sidebar or a global tab strip above the workspace. Top tabs are used on wide screens; compact layouts keep the sidebar."
+          resetAction={
+            settings.threadNavigationMode !== DEFAULT_UNIFIED_SETTINGS.threadNavigationMode ? (
+              <SettingResetButton
+                label="thread navigation"
+                onClick={() =>
+                  updateSettings({
+                    threadNavigationMode: DEFAULT_UNIFIED_SETTINGS.threadNavigationMode,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.threadNavigationMode}
+              onValueChange={(value) => {
+                if (value === "sidebar" || value === "tabs") {
+                  updateSettings({ threadNavigationMode: value });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40" aria-label="Thread navigation">
+                <SelectValue>
+                  {THREAD_NAVIGATION_MODE_LABELS[settings.threadNavigationMode]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value="sidebar">Sidebar</SelectItem>
+                <SelectItem value="tabs">Top tabs</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."

@@ -1075,6 +1075,25 @@ describe("resolveThreadStatusPill", () => {
     ).toMatchObject({ label: "Working", pulse: true });
   });
 
+  it("shows a failed session before passive background liveness", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          backgroundLiveness: "working",
+          session: {
+            ...baseThread.session,
+            status: "error",
+          },
+        },
+      }),
+    ).toMatchObject({
+      label: "Failed",
+      pulse: false,
+      dotClass: "bg-red-500 dark:bg-red-300/90",
+    });
+  });
+
   it("shows plan ready when a settled plan turn has a proposed plan ready for follow-up", () => {
     expect(
       resolveThreadStatusPill({

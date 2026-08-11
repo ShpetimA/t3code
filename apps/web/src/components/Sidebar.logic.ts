@@ -125,6 +125,7 @@ export interface ThreadStatusPill {
     | "Completed"
     | "Pending Approval"
     | "Awaiting Input"
+    | "Failed"
     | "Plan Ready";
   colorClass: string;
   dotClass: string;
@@ -135,8 +136,9 @@ export interface ThreadStatusPill {
 // then active work, then the actionable plan prompt, then passive
 // monitoring. A Monitoring sibling must never hide a Plan Ready thread.
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 6,
-  "Awaiting Input": 5,
+  "Pending Approval": 7,
+  "Awaiting Input": 6,
+  Failed: 5,
   Working: 4,
   Connecting: 4,
   "Plan Ready": 3,
@@ -655,6 +657,15 @@ export function resolveThreadStatusPill(input: {
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
+    };
+  }
+
+  if (thread.session?.status === "error") {
+    return {
+      label: "Failed",
+      colorClass: "text-red-600 dark:text-red-300/90",
+      dotClass: "bg-red-500 dark:bg-red-300/90",
+      pulse: false,
     };
   }
 

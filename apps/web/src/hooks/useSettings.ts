@@ -22,6 +22,7 @@ import {
   type ClientSettings,
   DEFAULT_CLIENT_SETTINGS,
   type EnvironmentIdentificationMode,
+  type ThreadNavigationMode,
   type UnifiedSettings,
 } from "@t3tools/contracts/settings";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -276,6 +277,16 @@ export function useLegacySidebarEnabled(): boolean {
   const settingsHydrated = useClientSettingsHydrated();
   const legacySidebarEnabled = useClientSettingsValue().legacySidebarEnabled;
   return settingsHydrated && legacySidebarEnabled;
+}
+
+/**
+ * The user-selected thread navigation mode. The sidebar remains mounted until
+ * client settings hydrate so persisted tab mode cannot cause a layout flash.
+ */
+export function useThreadNavigationMode(): ThreadNavigationMode {
+  const settingsHydrated = useClientSettingsHydrated();
+  const mode = useClientSettingsValue().threadNavigationMode;
+  return settingsHydrated ? mode : "sidebar";
 }
 
 /** Read current settings for one environment, merged with client-local preferences. */

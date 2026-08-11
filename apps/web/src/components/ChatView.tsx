@@ -168,6 +168,7 @@ import {
   RightPanelTabs,
   type PullRequestTabStatus,
 } from "./RightPanelTabs";
+import { GlobalThreadTabs } from "./GlobalThreadTabs";
 import type { WorkspaceTabContextTarget } from "./RightPanelTabs.logic";
 import { SplitPaneGrid } from "./SplitPaneGrid";
 import {
@@ -226,6 +227,7 @@ import {
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { buildDraftThreadRouteParams } from "../threadRoutes";
+import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -1379,6 +1381,7 @@ function ChatViewContent(props: ChatViewProps) {
   const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
     useState<Record<string, number>>({});
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  const globalThreadTabsEnabled = useGlobalThreadTabsEnabled();
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [draggedWorkspaceTab, setDraggedWorkspaceTab] = useState<PaneTabDragData | null>(null);
   const [pullRequestDialogState, setPullRequestDialogState] =
@@ -1598,6 +1601,17 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThreadEnvironmentId, activeThreadId],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const activeGlobalThreadTab = useMemo(
+    () =>
+      activeThreadRef === null
+        ? null
+        : routeKind === "server"
+          ? ({ _tag: "ServerThread", threadRef: activeThreadRef } as const)
+          : draftId
+            ? ({ _tag: "DraftThread", draftId, threadRef: activeThreadRef } as const)
+            : null,
+    [activeThreadRef, draftId, routeKind],
+  );
   const [agentPanelRevealByThreadKey, setAgentPanelRevealByThreadKey] = useState<
     ReadonlyMap<string, AgentPanelRevealRequest>
   >(() => new Map());
@@ -6380,7 +6394,7 @@ function ChatViewContent(props: ChatViewProps) {
           }
           keybindings={keybindings}
           availableEditors={availableEditors}
-          rightPanelOpen={!workspaceMode && rightPanelOpen}
+          reserveLayoutControlsSpace={!workspaceMode && !rightPanelOpen}
           gitCwd={gitCwd}
           onNewThreadInProject={handleNewThreadInActiveProject}
           onRunProjectScript={runProjectScript}
@@ -6847,8 +6861,8 @@ function ChatViewContent(props: ChatViewProps) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <RightPanelTabBar
           mode="embedded"
-          titleBar={topPaneIds.has(pane.id)}
-          sidebarTitleBarInset={topLeftPaneId === pane.id}
+          titleBar={topPaneIds.has(pane.id) && !globalThreadTabsEnabled}
+          sidebarTitleBarInset={topLeftPaneId === pane.id && !globalThreadTabsEnabled}
           {...(canCloseEmptyPane
             ? {
                 onCloseGroup: () =>
@@ -6969,6 +6983,9 @@ function ChatViewContent(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      {globalThreadTabsEnabled && activeGlobalThreadTab ? (
+        <GlobalThreadTabs activeTab={activeGlobalThreadTab} />
+      ) : null}
       <div
         className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         data-workspace-pane-stage=""
