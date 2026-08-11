@@ -8,9 +8,10 @@ the default. Top tabs replace the thread sidebar on desktop-sized windows and ke
 threads and app pages in a global strip above the workspace. Opening a thread from search or a
 direct link adds it to the strip. Settings uses one tab as you move between sections, and Usage uses
 one tab. Pull requests use one list tab and a separate, full-width tab for each review you open.
-Closing a top tab only
-closes that view; it does not settle, archive, delete, close, or merge its underlying item. Compact
-windows continue to use the sidebar so every thread state remains reachable.
+Closing a top tab only closes that view; it does not settle, archive, delete, close, or merge its
+underlying item. Compact windows continue to use the sidebar so every thread state remains
+reachable. Closing the final top tab leaves an empty workspace where you can start a thread or open
+the command center.
 
 Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
 monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Projects

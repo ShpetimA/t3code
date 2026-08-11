@@ -7,6 +7,7 @@ import {
   globalTabKey,
   parsePersistedGlobalTabsState,
   projectGlobalTabsState,
+  resolveGlobalTabRouteOpen,
   transitionGlobalTabs,
   type GlobalTab,
   type GlobalTabsState,
@@ -67,6 +68,34 @@ describe("global tabs", () => {
       activeTabKey: globalTabKey(third),
     });
     expect(closeLast.navigation).toEqual({ _tag: "Activate", tab: first });
+  });
+
+  it("does not reopen a closed active tab while its fallback route is pending", () => {
+    const first = serverTab("one");
+    const second = serverTab("two");
+    const observedSecond = resolveGlobalTabRouteOpen(null, second);
+    const closedSecond = transitionGlobalTabs(
+      { tabs: [first, second] },
+      {
+        _tag: "Close",
+        tabKey: globalTabKey(second),
+        activeTabKey: globalTabKey(second),
+      },
+    );
+
+    const pendingOldRoute = resolveGlobalTabRouteOpen(observedSecond.routeSignature, second);
+    const afterPendingRender =
+      pendingOldRoute.transition === null
+        ? closedSecond.state
+        : transitionGlobalTabs(closedSecond.state, pendingOldRoute.transition).state;
+    const committedFallback = resolveGlobalTabRouteOpen(pendingOldRoute.routeSignature, first);
+    const finalState =
+      committedFallback.transition === null
+        ? afterPendingRender
+        : transitionGlobalTabs(afterPendingRender, committedFallback.transition).state;
+
+    expect(finalState.tabs).toEqual([first]);
+    expect(closedSecond.navigation).toEqual({ _tag: "Activate", tab: first });
   });
 
   it("keeps navigation in place when closing a background tab", () => {

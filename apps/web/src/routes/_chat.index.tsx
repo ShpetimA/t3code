@@ -4,6 +4,7 @@ import { LinkIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
+import { GlobalTabsEmptyState } from "../components/GlobalTabsEmptyState";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -15,6 +16,7 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
+import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { cn } from "~/lib/utils";
@@ -23,9 +25,19 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments } = useEnvironments();
+  const globalTabsEnabled = useGlobalThreadTabsEnabled();
 
   if (authGateState.status === "hosted-static" && environments.length === 0) {
     return <HostedStaticOnboardingState />;
+  }
+
+  if (globalTabsEnabled) {
+    return (
+      <GlobalTabsEmptyState
+        onNewThread={() => openCommandPalette({ open: "new-thread-in" })}
+        onOpenCommandCenter={() => openCommandPalette()}
+      />
+    );
   }
 
   return <IndexDraftLanding />;

@@ -166,6 +166,37 @@ function sameTab(left: GlobalTab, right: GlobalTab): boolean {
   }
 }
 
+function globalTabRouteSignature(tab: GlobalTab): string {
+  switch (tab._tag) {
+    case "ServerThread":
+      return JSON.stringify([tab._tag, globalTabKey(tab)]);
+    case "DraftThread":
+      return JSON.stringify([tab._tag, globalTabKey(tab), tab.draftId]);
+    case "Settings":
+      return JSON.stringify([tab._tag, tab.section]);
+    case "Usage":
+    case "PullRequests":
+      return JSON.stringify([tab._tag]);
+    case "PullRequest":
+      return JSON.stringify([tab._tag, globalTabKey(tab), tab.repository, tab.host ?? null]);
+  }
+}
+
+/** Plans route-driven tab opening once per meaningful route destination. */
+export function resolveGlobalTabRouteOpen(
+  previousRouteSignature: string | null,
+  activeTab: GlobalTab | null,
+) {
+  const routeSignature = activeTab === null ? null : globalTabRouteSignature(activeTab);
+  if (routeSignature === previousRouteSignature || activeTab === null) {
+    return { routeSignature, transition: null };
+  }
+  return {
+    routeSignature,
+    transition: { _tag: "Open" as const, tab: activeTab },
+  };
+}
+
 /** Applies deduping, close fallback, reconciliation, and ordering rules for global tabs. */
 export function transitionGlobalTabs(
   current: GlobalTabsState,

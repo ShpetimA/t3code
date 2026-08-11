@@ -30,6 +30,7 @@ import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import {
   globalTabKey,
   isGlobalThreadTab,
+  resolveGlobalTabRouteOpen,
   type GlobalTab,
   type GlobalTabNavigation,
 } from "../globalTabs";
@@ -203,6 +204,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const draggedTabKeyRef = useRef<string | null>(null);
+  const observedRouteSignatureRef = useRef<string | null>(null);
   const activeThreadRef: ScopedThreadRef | null =
     activeTab !== null && isGlobalThreadTab(activeTab) ? activeTab.threadRef : null;
   const routeTerminalOpen = useThreadWorkspaceStore((state) =>
@@ -238,9 +240,12 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const pullRequestsSupported =
     primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
   useLayoutEffect(() => {
-    if (activeTab === null) return;
-    transitionGlobalTabsStore({ _tag: "Open", tab: activeTab });
-  }, [activeTab]);
+    const routeOpen = resolveGlobalTabRouteOpen(observedRouteSignatureRef.current, activeTab);
+    observedRouteSignatureRef.current = routeOpen.routeSignature;
+    if (routeOpen.transition !== null) {
+      transitionGlobalTabsStore(routeOpen.transition);
+    }
+  });
 
   useEffect(() => {
     if (!allShellsBootstrapped) return;
@@ -401,8 +406,15 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               const modelLabel = shell?.modelSelection.model ?? null;
               const pullRequestStatus =
                 tab._tag === "PullRequest" ? pullRequestStatusPresentation(tab.reviewStatus) : null;
+              const hasTooltipDetails =
+                project !== undefined ||
+                environmentLabel !== null ||
+                branch !== null ||
+                modelLabel !== null ||
+                status !== null ||
+                pullRequestStatus !== null;
               return (
-                <Tooltip key={tabKey}>
+                <Tooltip key={tabKey} disabled={!hasTooltipDetails}>
                   <TooltipTrigger
                     render={
                       <div
