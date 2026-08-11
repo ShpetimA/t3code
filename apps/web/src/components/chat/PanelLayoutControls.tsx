@@ -21,6 +21,7 @@ type RightLayoutControl =
     };
 
 interface PanelLayoutControlsProps {
+  showTerminalControl?: boolean;
   terminalAvailable: boolean;
   terminalOpen: boolean;
   terminalShortcutLabel: string | null;
@@ -29,6 +30,7 @@ interface PanelLayoutControlsProps {
 }
 
 export const PanelLayoutControls = memo(function PanelLayoutControls({
+  showTerminalControl = true,
   terminalAvailable,
   terminalOpen,
   terminalShortcutLabel,
@@ -40,28 +42,30 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
       className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"
       data-panel-layout-controls
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Toggle
-              className="shrink-0 [-webkit-app-region:no-drag]"
-              pressed={terminalOpen}
-              onPressedChange={onToggleTerminal}
-              aria-label="Toggle terminal drawer"
-              variant="ghost"
-              size="sm"
-              disabled={!terminalAvailable}
-            >
-              <PanelBottomIcon className="size-3.5" />
-            </Toggle>
-          }
-        />
-        <TooltipPopup side="bottom">
-          {terminalAvailable
-            ? `Toggle terminal drawer${terminalShortcutLabel ? ` (${terminalShortcutLabel})` : ""}`
-            : "Terminal drawer is unavailable"}
-        </TooltipPopup>
-      </Tooltip>
+      {showTerminalControl ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0 [-webkit-app-region:no-drag]"
+                pressed={terminalOpen}
+                onPressedChange={onToggleTerminal}
+                aria-label="Toggle terminal drawer"
+                variant="ghost"
+                size="sm"
+                disabled={!terminalAvailable}
+              >
+                <PanelBottomIcon className="size-3.5" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {terminalAvailable
+              ? `Toggle terminal drawer${terminalShortcutLabel ? ` (${terminalShortcutLabel})` : ""}`
+              : "Terminal drawer is unavailable"}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       {rightControl._tag === "Panel" ? (
         <Tooltip>
           <TooltipTrigger

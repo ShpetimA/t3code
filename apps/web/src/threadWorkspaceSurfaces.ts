@@ -15,6 +15,7 @@ export const RIGHT_PANEL_KINDS = [
   "file",
   "preview",
   "terminal",
+  "pull-request",
   "agents",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
@@ -42,6 +43,13 @@ export type RightPanelSurface =
       revealLine: number | null;
       revealRequestId: number;
     }
+  | {
+      id: `pull-request:${string}`;
+      kind: "pull-request";
+      projectId: string;
+      repository: string;
+      number: number;
+    }
   | { id: "agents"; kind: "agents" };
 
 /** Internal surface fields owned by the thread workspace aggregate. */
@@ -54,7 +62,7 @@ export type ThreadWorkspaceSurfaceFields = Pick<
 export type ThreadWorkspaceSurfaceTransition =
   | {
       readonly _tag: "OpenKind";
-      readonly kind: Exclude<RightPanelKind, "file" | "terminal">;
+      readonly kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">;
       readonly presentation?: RightPanelSurfacePresentation;
     }
   | {
@@ -71,6 +79,13 @@ export type ThreadWorkspaceSurfaceTransition =
   | {
       readonly _tag: "OpenTerminal";
       readonly terminalId: string;
+      readonly presentation?: RightPanelSurfacePresentation;
+    }
+  | {
+      readonly _tag: "OpenPullRequest";
+      readonly projectId: string;
+      readonly repository: string;
+      readonly number: number;
       readonly presentation?: RightPanelSurfacePresentation;
     }
   | {
@@ -94,7 +109,7 @@ export type ThreadWorkspaceSurfaceTransition =
   | { readonly _tag: "TogglePanelVisibility" }
   | {
       readonly _tag: "ToggleKind";
-      readonly kind: Exclude<RightPanelKind, "file" | "terminal">;
+      readonly kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">;
     };
 
 export const EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS: ThreadWorkspaceSurfaceFields = {
@@ -104,7 +119,7 @@ export const EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS: ThreadWorkspaceSurfaceFields
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal">,
+  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request">,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -141,6 +156,30 @@ const terminalSurface = (terminalId: string): RightPanelSurface => ({
   activeTerminalId: terminalId,
 });
 
+export type PullRequestSurface = Extract<RightPanelSurface, { kind: "pull-request" }>;
+
+export function pullRequestSurfaceId(target: {
+  projectId: string;
+  repository: string;
+  number: number;
+}): PullRequestSurface["id"] {
+  return `pull-request:${encodeURIComponent(target.projectId)}:${encodeURIComponent(target.repository)}:${target.number}`;
+}
+
+export function pullRequestSurface(target: {
+  projectId: string;
+  repository: string;
+  number: number;
+}): PullRequestSurface {
+  return {
+    id: pullRequestSurfaceId(target),
+    kind: "pull-request",
+    projectId: target.projectId,
+    repository: target.repository,
+    number: target.number,
+  };
+}
+
 const upsertSurface = (
   current: ThreadWorkspaceSurfaceFields,
   surface: RightPanelSurface,
@@ -170,83 +209,94 @@ export function parsePersistedThreadWorkspaceSurfaces(persistedState: unknown): 
     persistedState.byThreadKey &&
     typeof persistedState.byThreadKey === "object"
       ? Object.fromEntries(
-          Object.entries(persistedState.byThreadKey as Record<string, ThreadWorkspaceSurfaceFields>).map(
-            ([threadKey, threadState]) => {
-              const validThreadState =
-                threadState && typeof threadState === "object" ? threadState : null;
-              const surfaces = Array.isArray(validThreadState?.surfaces)
-                ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
-                    // Dropped surface kind: plans now render inline in the
-                    // transcript (v9).
-                    if ((surface as { kind?: string }).kind === "plan") return [];
-                    if (surface.kind === "file") {
-                      const revealLine =
-                        typeof surface.revealLine === "number" &&
-                        Number.isFinite(surface.revealLine)
-                          ? Math.max(1, Math.trunc(surface.revealLine))
-                          : null;
-                      const revealRequestId =
-                        typeof surface.revealRequestId === "number" &&
-                        Number.isSafeInteger(surface.revealRequestId) &&
-                        surface.revealRequestId >= 0
-                          ? surface.revealRequestId
-                          : 0;
-                      return [{ ...surface, revealLine, revealRequestId }];
-                    }
-                    if (surface.kind !== "terminal") return [surface];
+          Object.entries(
+            persistedState.byThreadKey as Record<string, ThreadWorkspaceSurfaceFields>,
+          ).map(([threadKey, threadState]) => {
+            const validThreadState =
+              threadState && typeof threadState === "object" ? threadState : null;
+            const surfaces = Array.isArray(validThreadState?.surfaces)
+              ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
+                  // Dropped surface kind: plans now render inline in the
+                  // transcript (v9).
+                  if ((surface as { kind?: string }).kind === "plan") return [];
+                  if (surface.kind === "file") {
+                    const revealLine =
+                      typeof surface.revealLine === "number" && Number.isFinite(surface.revealLine)
+                        ? Math.max(1, Math.trunc(surface.revealLine))
+                        : null;
+                    const revealRequestId =
+                      typeof surface.revealRequestId === "number" &&
+                      Number.isSafeInteger(surface.revealRequestId) &&
+                      surface.revealRequestId >= 0
+                        ? surface.revealRequestId
+                        : 0;
+                    return [{ ...surface, revealLine, revealRequestId }];
+                  }
+                  if (surface.kind === "pull-request") {
                     if (
-                      !("resourceId" in surface) ||
-                      typeof surface.resourceId !== "string" ||
-                      surface.id !== `terminal:${surface.resourceId}`
+                      typeof surface.projectId !== "string" ||
+                      typeof surface.repository !== "string" ||
+                      typeof surface.number !== "number" ||
+                      !Number.isSafeInteger(surface.number) ||
+                      surface.number < 1
                     ) {
                       return [];
                     }
-                    const terminalIds =
-                      "terminalIds" in surface && Array.isArray(surface.terminalIds)
-                        ? [
-                            ...new Set(
-                              surface.terminalIds.filter(
-                                (terminalId: unknown): terminalId is string =>
-                                  typeof terminalId === "string",
-                              ),
+                    return [pullRequestSurface(surface)];
+                  }
+                  if (surface.kind !== "terminal") return [surface];
+                  if (
+                    !("resourceId" in surface) ||
+                    typeof surface.resourceId !== "string" ||
+                    surface.id !== `terminal:${surface.resourceId}`
+                  ) {
+                    return [];
+                  }
+                  const terminalIds =
+                    "terminalIds" in surface && Array.isArray(surface.terminalIds)
+                      ? [
+                          ...new Set(
+                            surface.terminalIds.filter(
+                              (terminalId: unknown): terminalId is string =>
+                                typeof terminalId === "string",
                             ),
-                          ]
-                        : [surface.resourceId];
-                    const activeTerminalId =
-                      "activeTerminalId" in surface &&
-                      typeof surface.activeTerminalId === "string" &&
-                      terminalIds.includes(surface.activeTerminalId)
-                        ? surface.activeTerminalId
-                        : (terminalIds[0] ?? surface.resourceId);
-                    return [
-                      {
-                        ...surface,
-                        terminalIds: terminalIds.length > 0 ? terminalIds : [surface.resourceId],
-                        activeTerminalId,
-                      },
-                    ];
-                  })
-                : [];
-              const persistedActiveSurfaceId = surfaces.some(
-                (surface) => surface.id === validThreadState?.activeSurfaceId,
-              )
-                ? (validThreadState?.activeSurfaceId ?? null)
-                : null;
-              // A migration that dropped every surface (e.g. plan-only panels
-              // in v9) must not reopen an empty panel.
-              const isRightPanelOpen =
-                surfaces.length > 0 &&
-                (typeof validThreadState?.isRightPanelOpen === "boolean"
-                  ? validThreadState.isRightPanelOpen
-                  : persistedActiveSurfaceId !== null);
-              // An open panel needs an active surface: if migration dropped
-              // the persisted one (e.g. plan was active), fall back to the
-              // first survivor instead of rendering an open empty panel.
-              const activeSurfaceId =
-                persistedActiveSurfaceId ?? (isRightPanelOpen ? (surfaces[0]?.id ?? null) : null);
-              return [threadKey, { isRightPanelOpen, surfaces, activeSurfaceId }];
-            },
-          ),
+                          ),
+                        ]
+                      : [surface.resourceId];
+                  const activeTerminalId =
+                    "activeTerminalId" in surface &&
+                    typeof surface.activeTerminalId === "string" &&
+                    terminalIds.includes(surface.activeTerminalId)
+                      ? surface.activeTerminalId
+                      : (terminalIds[0] ?? surface.resourceId);
+                  return [
+                    {
+                      ...surface,
+                      terminalIds: terminalIds.length > 0 ? terminalIds : [surface.resourceId],
+                      activeTerminalId,
+                    },
+                  ];
+                })
+              : [];
+            const persistedActiveSurfaceId = surfaces.some(
+              (surface) => surface.id === validThreadState?.activeSurfaceId,
+            )
+              ? (validThreadState?.activeSurfaceId ?? null)
+              : null;
+            // A migration that dropped every surface (e.g. plan-only panels
+            // in v9) must not reopen an empty panel.
+            const isRightPanelOpen =
+              surfaces.length > 0 &&
+              (typeof validThreadState?.isRightPanelOpen === "boolean"
+                ? validThreadState.isRightPanelOpen
+                : persistedActiveSurfaceId !== null);
+            // An open panel needs an active surface: if migration dropped
+            // the persisted one (e.g. plan was active), fall back to the
+            // first survivor instead of rendering an open empty panel.
+            const activeSurfaceId =
+              persistedActiveSurfaceId ?? (isRightPanelOpen ? (surfaces[0]?.id ?? null) : null);
+            return [threadKey, { isRightPanelOpen, surfaces, activeSurfaceId }];
+          }),
         )
       : {};
   return { byThreadKey };
@@ -294,6 +344,8 @@ export function transitionThreadWorkspaceSurfaces(
     }
     case "OpenTerminal":
       return upsertSurface(current, terminalSurface(input.terminalId), true, input.presentation);
+    case "OpenPullRequest":
+      return upsertSurface(current, pullRequestSurface(input), true, input.presentation);
     case "SplitTerminal":
       return {
         ...current,
@@ -359,7 +411,12 @@ export function transitionThreadWorkspaceSurfaces(
     case "CloseOtherSurfaces": {
       const surface = current.surfaces.find((entry) => entry.id === input.surfaceId);
       if (!surface || current.surfaces.length === 1) return current;
-      return { ...current, isRightPanelOpen: true, surfaces: [surface], activeSurfaceId: surface.id };
+      return {
+        ...current,
+        isRightPanelOpen: true,
+        surfaces: [surface],
+        activeSurfaceId: surface.id,
+      };
     }
     case "CloseSurfacesToRight": {
       const index = current.surfaces.findIndex((surface) => surface.id === input.surfaceId);
@@ -442,7 +499,11 @@ function closeRightPanelSurface(
   if (index < 0) return current;
   const surfaces = current.surfaces.filter((surface) => surface.id !== surfaceId);
   if (current.activeSurfaceId !== surfaceId) {
-    return { ...current, isRightPanelOpen: surfaces.length > 0 && current.isRightPanelOpen, surfaces };
+    return {
+      ...current,
+      isRightPanelOpen: surfaces.length > 0 && current.isRightPanelOpen,
+      surfaces,
+    };
   }
   const fallback = surfaces[Math.min(index, surfaces.length - 1)] ?? null;
   return {

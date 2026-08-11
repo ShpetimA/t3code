@@ -140,6 +140,7 @@ import {
 } from "../splitPaneTree";
 import { type ThreadWorkspaceLayoutTransition } from "../threadWorkspace";
 import {
+  pullRequestSurfaceId,
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
   selectThreadWorkspace,
@@ -161,7 +162,12 @@ import {
   selectThreadPreviewMiniPlayer,
   usePreviewMiniPlayerStore,
 } from "../previewMiniPlayerStore";
-import { RightPanelEmptyState, RightPanelTabBar, RightPanelTabs } from "./RightPanelTabs";
+import {
+  RightPanelEmptyState,
+  RightPanelTabBar,
+  RightPanelTabs,
+  type PullRequestTabStatus,
+} from "./RightPanelTabs";
 import type { WorkspaceTabContextTarget } from "./RightPanelTabs.logic";
 import { SplitPaneGrid } from "./SplitPaneGrid";
 import {
@@ -169,6 +175,9 @@ import {
   type AgentPanelRevealRequest,
   type AgentPanelRevealTarget,
 } from "./AgentsPanel";
+import { PullRequestDetailPanel } from "./pullRequest/PullRequestDetailPanel";
+import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
+import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -284,7 +293,13 @@ import {
   ProviderStatusBanner,
   shouldShowProviderStatusBanner,
 } from "./chat/ProviderStatusBanner";
-import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
+import {
+  dismissThreadErrorBannerForSession,
+  getThreadErrorBannerKey,
+  isThreadErrorBannerDismissedForSession,
+  shouldShowThreadErrorBanner,
+  ThreadErrorBanner,
+} from "./chat/ThreadErrorBanner";
 import { resolveThreadPr } from "./ThreadStatusIndicators";
 import { resolveThreadStatusPill } from "./Sidebar.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
@@ -1511,6 +1526,24 @@ function ChatViewContent(props: ChatViewProps) {
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
+  // Dismissals can only mask the shown error, never clear it: a server thread
+  // keeps its error in session.lastError, so clearing the local shadow would
+  // just fall through to the persisted one. Mask the current error until a
+  // different error arrives, mirroring the provider status banner.
+  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
+  const visibleThreadError = shouldShowThreadErrorBanner(
+    routeThreadKey,
+    threadError,
+    isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
+  )
+    ? threadError
+    : null;
+  // Dismissing only mutates the session-scoped mask set, which does not
+  // trigger a render on its own; setThreadError(null) can also bail when the
+  // local shadow is already empty and the banner is driven purely by
+  // session.lastError. Bump a tick so the banner hides immediately. Mirrors
+  // the branch mismatch banner.
+  const [, setThreadErrorBannerDismissTick] = useState(0);
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   // Plan mode is legacy (Settings → Beta). With the flag off the effective
   // mode is forced to "default" — even for threads with a stored plan mode —
@@ -1590,6 +1623,17 @@ function ChatViewContent(props: ChatViewProps) {
   const activeRightPanelSurface = useThreadWorkspaceStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
+  const [pullRequestTabStatuses, setPullRequestTabStatuses] = useState<
+    Record<string, PullRequestTabStatus>
+  >({});
+  const handlePullRequestTabStatusChange = useCallback((status: PullRequestTabStatus) => {
+    const id = pullRequestSurfaceId(status);
+    setPullRequestTabStatuses((current) =>
+      current[id]?.state === status.state && current[id]?.isDraft === status.isDraft
+        ? current
+        : { ...current, [id]: status },
+    );
+  }, []);
   const activePreviewState = useThreadPreviewState(activeThreadRef);
   const activePreviewMiniPlayer = usePreviewMiniPlayerStore((state) =>
     selectThreadPreviewMiniPlayer(state.byThreadKey, activeThreadRef),
@@ -1976,6 +2020,8 @@ function ChatViewContent(props: ChatViewProps) {
   const serverConfig = activeThread
     ? (activeEnvironment?.serverConfig ?? null)
     : (primaryEnvironment?.serverConfig ?? null);
+  const pullRequestsCapabilityKnown = serverConfig !== null;
+  const supportsPullRequests = serverConfig?.environment.capabilities.pullRequests === true;
   const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
   const versionMismatchDismissKey =
     versionMismatch && activeThread
@@ -2634,7 +2680,7 @@ function ChatViewContent(props: ChatViewProps) {
   )
     ? activeProviderStatus
     : null;
-  const hasTimelineTopBanner = Boolean(threadError) || visibleProviderStatus !== null;
+  const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -3302,6 +3348,38 @@ function ChatViewContent(props: ChatViewProps) {
       });
     },
     [activeProject, activeThreadRef, workspaceSurfacePresentation],
+  );
+  // The thread's own change request, placed against the project it belongs to. Without a
+  // project there is nothing to resolve it against, so the caller falls back to the browser.
+  const threadRepository = activeProject?.repositoryIdentity?.displayName ?? null;
+  const openThreadPullRequest = useCallback(
+    (number: number) => {
+      if (
+        !supportsPullRequests ||
+        !activeThreadRef ||
+        !activeProject ||
+        threadRepository === null
+      ) {
+        return;
+      }
+      transitionThreadWorkspace(activeThreadRef, {
+        _tag: "OpenSurface",
+        surface: {
+          _tag: "PullRequest",
+          projectId: activeProject.id,
+          repository: threadRepository,
+          number,
+        },
+        presentation: workspaceSurfacePresentation,
+      });
+    },
+    [
+      activeProject,
+      activeThreadRef,
+      supportsPullRequests,
+      threadRepository,
+      workspaceSurfacePresentation,
+    ],
   );
   const togglePreviewPanel = useCallback(() => {
     if (!activeThreadRef || !isPreviewSupportedInRuntime()) return;
@@ -4160,6 +4238,14 @@ function ChatViewContent(props: ChatViewProps) {
     threadBranch: activeThread?.branch ?? null,
     gitStatus: gitStatusQuery.data ?? null,
   });
+  // The right panel offers the thread's own change request, so it can only offer it once the
+  // branch has one; until then the picker says so rather than opening an empty panel.
+  const addPullRequestSurface = useCallback(() => {
+    if (activeThreadPr === null) return;
+    openThreadPullRequest(activeThreadPr.number);
+  }, [activeThreadPr, openThreadPullRequest]);
+  const pullRequestSurfaceAvailable =
+    supportsPullRequests && activeThreadPr !== null && threadRepository !== null;
   const supportsSettlement = serverConfig?.environment.capabilities.threadSettlement === true;
   const supportsSnooze = serverConfig?.environment.capabilities.threadSnooze === true;
   const nowMinute = useNowMinute();
@@ -6150,6 +6236,29 @@ function ChatViewContent(props: ChatViewProps) {
             initialGitScope={initialDiffPanelGitScope}
           />
         </Suspense>
+      ) : surface.kind === "pull-request" && !pullRequestsCapabilityKnown ? (
+        <PullRequestDetailGhost />
+      ) : surface.kind === "pull-request" && !supportsPullRequests ? (
+        <PullRequestsUnavailableState
+          title="Pull requests unavailable"
+          error="Update this environment's T3 Code server to browse pull requests."
+        />
+      ) : surface.kind === "pull-request" ? (
+        <PullRequestDetailPanel
+          key={`${surface.repository}#${surface.number}`}
+          environmentId={activeThread.environmentId}
+          reference={{
+            projectId: surface.projectId as ProjectId,
+            repository: surface.repository,
+            number: surface.number,
+          }}
+          context={
+            activeThreadPr?.number === surface.number && threadRepository === surface.repository
+              ? "thread"
+              : "page"
+          }
+          onStateChange={handlePullRequestTabStatusChange}
+        />
       ) : surface.kind === "agents" ? (
         <AgentsPanel
           model={agentPanelModel}
@@ -6820,10 +6929,15 @@ function ChatViewContent(props: ChatViewProps) {
           onAddTerminal={() => focusThen(addTerminalSurface)}
           onAddDiff={() => focusThen(addDiffSurface)}
           onAddFiles={() => focusThen(addFilesSurface)}
+          onAddPullRequest={() => focusThen(addPullRequestSurface)}
           onAddAgents={() => focusThen(addAgentsSurface)}
           browserAvailable={isPreviewSupportedInRuntime()}
+          terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
+          pullRequestAvailable={pullRequestSurfaceAvailable}
+          agentsAvailable
+          pullRequestStatuses={pullRequestTabStatuses}
           liveAgentCount={agentPanelModel.liveCount}
         />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -6837,10 +6951,14 @@ function ChatViewContent(props: ChatViewProps) {
               onAddTerminal={() => focusThen(addTerminalSurface)}
               onAddDiff={() => focusThen(addDiffSurface)}
               onAddFiles={() => focusThen(addFilesSurface)}
+              onAddPullRequest={() => focusThen(addPullRequestSurface)}
               onAddAgents={() => focusThen(addAgentsSurface)}
               browserAvailable={isPreviewSupportedInRuntime()}
+              terminalAvailable={activeProject !== null}
               diffAvailable={isServerThread && isGitRepo}
               filesAvailable={activeProject !== null}
+              pullRequestAvailable={pullRequestSurfaceAvailable}
+              agentsAvailable
               liveAgentCount={agentPanelModel.liveCount}
             />
           )}
@@ -6920,10 +7038,15 @@ function ChatViewContent(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
+            terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}
+            pullRequestAvailable={pullRequestSurfaceAvailable}
+            agentsAvailable
+            pullRequestStatuses={pullRequestTabStatuses}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

@@ -10,6 +10,8 @@ import {
   type RightPanelKind,
   type RightPanelSurface,
 } from "./threadWorkspaceSurfaces";
+
+export { pullRequestSurfaceId } from "./threadWorkspaceSurfaces";
 import {
   createThreadWorkspaceState,
   EMPTY_THREAD_WORKSPACE_STATE,

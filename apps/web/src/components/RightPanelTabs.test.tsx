@@ -47,10 +47,14 @@ describe("RightPanelTabBar", () => {
         onAddTerminal={NOOP}
         onAddDiff={NOOP}
         onAddFiles={NOOP}
+        onAddPullRequest={NOOP}
         onAddAgents={NOOP}
         browserAvailable
+        terminalAvailable
         diffAvailable
         filesAvailable
+        pullRequestAvailable={false}
+        agentsAvailable
         liveAgentCount={0}
       />,
     );
@@ -87,10 +91,14 @@ describe("RightPanelTabBar", () => {
         onAddTerminal={NOOP}
         onAddDiff={NOOP}
         onAddFiles={NOOP}
+        onAddPullRequest={NOOP}
         onAddAgents={NOOP}
         browserAvailable
+        terminalAvailable
         diffAvailable
         filesAvailable
+        pullRequestAvailable={false}
+        agentsAvailable
         liveAgentCount={0}
       />,
     );
@@ -114,10 +122,14 @@ describe("RightPanelTabBar", () => {
         onAddTerminal={NOOP}
         onAddDiff={NOOP}
         onAddFiles={NOOP}
+        onAddPullRequest={NOOP}
         onAddAgents={NOOP}
         browserAvailable
+        terminalAvailable
         diffAvailable
         filesAvailable
+        pullRequestAvailable={false}
+        agentsAvailable
         liveAgentCount={0}
       />,
     );

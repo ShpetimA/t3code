@@ -40,7 +40,7 @@ const surfaceHarness = {
     byThreadKey,
     open: (
       ref: typeof refA,
-      kind: Exclude<RightPanelKind, "file" | "terminal">,
+      kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
       presentation?: RightPanelSurfacePresentation,
     ) => apply(ref, { _tag: "OpenKind", kind, ...(presentation ? { presentation } : {}) }),
     openBrowser: (
@@ -70,6 +70,10 @@ const surfaceHarness = {
         terminalId,
         ...(presentation ? { presentation } : {}),
       }),
+    openPullRequest: (
+      ref: typeof refA,
+      target: { projectId: string; repository: string; number: number },
+    ) => apply(ref, { _tag: "OpenPullRequest", ...target }),
     splitTerminal: (
       ref: typeof refA,
       surfaceId: string,
@@ -101,8 +105,10 @@ const surfaceHarness = {
       apply(ref, { _tag: "ReconcileFileSurfaces", workspaceAvailable }),
     close: (ref: typeof refA) => apply(ref, { _tag: "ClosePanel" }),
     toggleVisibility: (ref: typeof refA) => apply(ref, { _tag: "TogglePanelVisibility" }),
-    toggle: (ref: typeof refA, kind: Exclude<RightPanelKind, "file" | "terminal">) =>
-      apply(ref, { _tag: "ToggleKind", kind }),
+    toggle: (
+      ref: typeof refA,
+      kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    ) => apply(ref, { _tag: "ToggleKind", kind }),
     removeThread: (ref: typeof refA) => {
       const threadKey = `${ref.environmentId}:${ref.threadId}`;
       const { [threadKey]: _removed, ...rest } = byThreadKey;
@@ -116,7 +122,8 @@ function selectSurfaceFields(
   ref: typeof refA,
 ): ThreadWorkspaceSurfaceFields {
   return (
-    currentByThreadKey[`${ref.environmentId}:${ref.threadId}`] ?? EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS
+    currentByThreadKey[`${ref.environmentId}:${ref.threadId}`] ??
+    EMPTY_THREAD_WORKSPACE_SURFACE_FIELDS
   );
 }
 
@@ -272,9 +279,9 @@ describe("thread workspace surface state", () => {
     surfaceHarness.getState().open(refA, "agents");
     surfaceHarness.getState().open(refA, "preview");
     expect(selectActiveRightPanel(surfaceHarness.getState().byThreadKey, refA)).toBe("preview");
-    expect(
-      selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA).surfaces,
-    ).toHaveLength(2);
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA).surfaces).toHaveLength(
+      2,
+    );
   });
 
   it("reopening an inactive singleton activates its existing surface", () => {
@@ -486,6 +493,36 @@ describe("thread workspace surface state", () => {
       id: "browser:tab-b",
       kind: "preview",
       resourceId: "tab-b",
+    });
+  });
+
+  it("tracks pull requests as distinct reference-keyed surfaces", () => {
+    surfaceHarness.getState().openPullRequest(refA, {
+      projectId: "project-a",
+      repository: "owner/repo",
+      number: 12,
+    });
+    surfaceHarness.getState().openPullRequest(refA, {
+      projectId: "project-a",
+      repository: "owner/repo",
+      number: 13,
+    });
+
+    expect(selectSurfaceFields(surfaceHarness.getState().byThreadKey, refA)).toMatchObject({
+      isRightPanelOpen: true,
+      activeSurfaceId: "pull-request:project-a:owner%2Frepo:13",
+      surfaces: [
+        {
+          id: "pull-request:project-a:owner%2Frepo:12",
+          kind: "pull-request",
+          number: 12,
+        },
+        {
+          id: "pull-request:project-a:owner%2Frepo:13",
+          kind: "pull-request",
+          number: 13,
+        },
+      ],
     });
   });
 

@@ -32,6 +32,12 @@ export type ThreadWorkspaceSurfaceRequest =
   | { readonly _tag: "Agents" }
   | { readonly _tag: "Browser"; readonly tabId: string | null }
   | { readonly _tag: "File"; readonly relativePath: string; readonly line?: number }
+  | {
+      readonly _tag: "PullRequest";
+      readonly projectId: string;
+      readonly repository: string;
+      readonly number: number;
+    }
   | { readonly _tag: "Terminal"; readonly terminalId: string };
 
 /** Describes one atomic thread-workspace operation. */
@@ -380,6 +386,24 @@ function openThreadWorkspaceSurface(
         surfaceId: `terminal:${request.terminalId}`,
         previousSurfaceIds: [],
       };
+    case "PullRequest": {
+      const surfaceFields = transitionThreadWorkspaceSurfaces(current, {
+        _tag: "OpenPullRequest",
+        projectId: request.projectId,
+        repository: request.repository,
+        number: request.number,
+        ...(presentation ? { presentation } : {}),
+      });
+      const surface = surfaceFields.surfaces.find(
+        (entry) =>
+          entry.kind === "pull-request" &&
+          entry.projectId === request.projectId &&
+          entry.repository === request.repository &&
+          entry.number === request.number,
+      );
+      if (!surface) throw new Error("Pull request surface failed to open.");
+      return { surfaceFields, surfaceId: surface.id, previousSurfaceIds: [] };
+    }
   }
 }
 
