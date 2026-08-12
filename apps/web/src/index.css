@@ -618,12 +618,25 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   }
 
-  .chat-composer-glass-shell {
+  .chat-composer-glass-shell,
+  .chat-composer-context-status-surface {
     --chat-composer-glass-surface: var(--card);
     --chat-composer-outline: rgb(0 0 0 / 8%);
+  }
 
+  .chat-composer-glass-shell {
     position: relative;
     isolation: isolate;
+  }
+
+  .chat-composer-context-status-surface {
+    background: color-mix(
+      in srgb,
+      var(--chat-composer-glass-surface) var(--glass-opacity),
+      transparent
+    );
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   }
 
   .chat-composer-glass-shell::before {
@@ -729,7 +742,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     content: "";
   }
 
-  .dark .chat-composer-glass-shell {
+  .dark .chat-composer-glass-shell,
+  .dark .chat-composer-context-status-surface {
     --chat-composer-glass-surface: color-mix(in srgb, var(--background) 96%, var(--color-white));
     --chat-composer-outline: color-mix(in srgb, var(--color-white) 5%, transparent);
     --chat-composer-highlight: rgb(255 255 255 / 3%);

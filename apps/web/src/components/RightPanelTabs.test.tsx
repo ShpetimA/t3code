@@ -112,6 +112,7 @@ describe("RightPanelTabBar", () => {
     expect(markup.indexOf('aria-label="Split editor right"')).toBeLessThan(
       markup.indexOf('aria-label="Close pane"'),
     );
+    expect(markup).toContain("[--workspace-topbar-height:--spacing(10)]");
     expect(markup).not.toContain("pr-28");
   });
 

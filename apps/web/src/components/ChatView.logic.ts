@@ -577,3 +577,18 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.localDispatch.sessionUpdatedAt !== (session?.updatedAt ?? null)
   );
 }
+
+/** The surface used to present a thread's repository/run context. */
+export type ComposerContextPlacement = "attached" | "status-bar" | null;
+
+/**
+ * Places mutable run context with an empty composer, then moves locked context
+ * into the workspace status bar once the conversation has started.
+ */
+export function resolveComposerContextPlacement(input: {
+  readonly showContext: boolean;
+  readonly messageCount: number;
+}): ComposerContextPlacement {
+  if (!input.showContext) return null;
+  return input.messageCount === 0 ? "attached" : "status-bar";
+}

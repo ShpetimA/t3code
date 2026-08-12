@@ -586,7 +586,7 @@ export function RightPanelTabBar(props: RightPanelTabBarProps) {
     <div
       className={cn(
         "workspace-topbar relative z-[60] gap-1 pl-2",
-        !props.titleBar && "[--workspace-topbar-height:--spacing(11)]",
+        !props.titleBar && "[--workspace-topbar-height:--spacing(10)]",
         "pr-2",
         reservesNativeControls && "wco:pr-[var(--workspace-native-controls-inset)]",
         props.sidebarTitleBarInset && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,

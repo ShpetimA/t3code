@@ -26,6 +26,7 @@ import {
   isBranchMismatchDismissedForSession,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  resolveComposerContextPlacement,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   scheduleEnvironmentReconnectWarning,
@@ -38,6 +39,21 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
+
+describe("composer run context placement", () => {
+  it("stays attached before the first message and moves to the status bar afterward", () => {
+    expect(resolveComposerContextPlacement({ showContext: true, messageCount: 0 })).toBe(
+      "attached",
+    );
+    expect(resolveComposerContextPlacement({ showContext: true, messageCount: 1 })).toBe(
+      "status-bar",
+    );
+  });
+
+  it("does not reserve either surface when there is no run context", () => {
+    expect(resolveComposerContextPlacement({ showContext: false, messageCount: 4 })).toBeNull();
+  });
+});
 
 describe("environment reconnect warning grace", () => {
   afterEach(() => vi.useRealTimers());

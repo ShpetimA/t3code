@@ -338,6 +338,7 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
+  resolveComposerContextPlacement,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
@@ -2694,6 +2695,10 @@ function ChatViewContent(props: ChatViewProps) {
     hasActiveProject: activeProject !== null,
     isGitRepo,
     showEnvironmentIndicator: showComposerEnvironmentIndicator,
+  });
+  const composerContextPlacement = resolveComposerContextPlacement({
+    showContext: showComposerContextStrip,
+    messageCount: timelineMessages.length,
   });
   const initialDiffPanelGitScope =
     gitStatusQuery.data?.hasWorkingTreeChanges === true ? "unstaged" : "branch";
@@ -6521,7 +6526,8 @@ function ChatViewContent(props: ChatViewProps) {
                   <div
                     className={cn(
                       "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
-                      showComposerContextStrip && "chat-composer-glass-shell-with-context",
+                      composerContextPlacement === "attached" &&
+                        "chat-composer-glass-shell-with-context",
                     )}
                   >
                     <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
@@ -6604,7 +6610,7 @@ function ChatViewContent(props: ChatViewProps) {
                         data-terminal-open={bottomPanelOpen ? "true" : undefined}
                         className="relative z-0"
                       >
-                        {showComposerContextStrip && (
+                        {composerContextPlacement === "attached" && (
                           <div className="pointer-events-auto">
                             <BranchToolbar
                               environmentId={activeThread.environmentId}
@@ -6639,11 +6645,44 @@ function ChatViewContent(props: ChatViewProps) {
                   </div>
                   <div
                     aria-hidden
-                    className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                    className={
+                      composerContextPlacement === "status-bar"
+                        ? "h-3"
+                        : "h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                    }
                   />
                 </div>
               </div>
             </div>
+            {composerContextPlacement === "status-bar" ? (
+              <div className="chat-composer-context-status-surface pointer-events-auto border-t border-border/60">
+                <BranchToolbar
+                  placement="status-bar"
+                  environmentId={activeThread.environmentId}
+                  threadId={activeThread.id}
+                  showGitControls={isGitRepo}
+                  {...(routeKind === "draft" && draftId ? { draftId } : {})}
+                  onEnvModeChange={onEnvModeChange}
+                  startFromOrigin={startFromOrigin}
+                  onStartFromOriginChange={onStartFromOriginChange}
+                  {...(canOverrideServerThreadEnvMode ? { effectiveEnvModeOverride: envMode } : {})}
+                  {...(canOverrideServerThreadEnvMode
+                    ? {
+                        activeThreadBranchOverride: activeThreadBranch,
+                        onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
+                      }
+                    : {})}
+                  envLocked={envLocked}
+                  onComposerFocusRequest={scheduleComposerFocus}
+                  {...(canCheckoutPullRequestIntoThread
+                    ? { onCheckoutPullRequestRequest: openPullRequestDialog }
+                    : {})}
+                  {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
+                  availableEnvironments={logicalProjectEnvironments}
+                />
+                <div aria-hidden className="h-[env(safe-area-inset-bottom)]" />
+              </div>
+            ) : null}
           </div>
 
           {activeThreadRef && activePreviewMiniPlayer ? (
