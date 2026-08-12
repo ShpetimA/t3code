@@ -6,11 +6,23 @@ import { GlobalTabsEmptyState } from "./GlobalTabsEmptyState";
 describe("GlobalTabsEmptyState", () => {
   it("offers deliberate ways forward without creating a thread", () => {
     const html = renderToStaticMarkup(
-      <GlobalTabsEmptyState onNewThread={() => undefined} onOpenCommandCenter={() => undefined} />,
+      <GlobalTabsEmptyState
+        onNewThread={() => undefined}
+        onOpenPullRequests={() => undefined}
+        onOpenSettings={() => undefined}
+        onOpenUsage={() => undefined}
+        onOpenThread={() => undefined}
+        pullRequestsSupported
+        recentProjects={[]}
+      />,
     );
 
-    expect(html).toContain("No open tabs");
+    expect(html).toContain("New tab");
     expect(html).toContain("New thread");
-    expect(html).toContain("Open command center");
+    expect(html).toContain("Pull requests");
+    expect(html).toContain("Usage");
+    expect(html).toContain("Settings");
+    expect(html).toContain("No recent threads yet.");
+    expect(html).toContain('data-global-tabs-landing-backdrop=""');
   });
 });

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { DraftId } from "./composerDraftStore";
 import {
   globalTabKey,
+  isGlobalTabCloseShortcut,
   parsePersistedGlobalTabsState,
   projectGlobalTabsState,
   resolveGlobalTabDropTargetIndex,
@@ -43,6 +44,23 @@ function open(state: GlobalTabsState, tab: GlobalTab): GlobalTabsState {
 }
 
 describe("global tabs", () => {
+  it("recognizes the platform close-tab shortcut", () => {
+    const shortcut = {
+      key: "w",
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+    };
+
+    expect(isGlobalTabCloseShortcut(shortcut, "MacIntel")).toBe(true);
+    expect(isGlobalTabCloseShortcut(shortcut, "Linux x86_64")).toBe(false);
+    expect(
+      isGlobalTabCloseShortcut({ ...shortcut, metaKey: false, ctrlKey: true }, "Linux x86_64"),
+    ).toBe(true);
+    expect(isGlobalTabCloseShortcut({ ...shortcut, shiftKey: true }, "MacIntel")).toBe(false);
+  });
+
   it("opens a route once and preserves its original position", () => {
     const first = serverTab("one");
     const state = open(open(globalTabsState(), first), first);

@@ -13,7 +13,6 @@ import {
   PlusIcon,
   ServerIcon,
   Settings2Icon,
-  SquarePenIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -31,6 +30,7 @@ import { openCommandPalette } from "../commandPaletteBus";
 import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import {
   globalTabKey,
+  isGlobalTabCloseShortcut,
   isGlobalThreadTab,
   resolveGlobalTabDropTargetIndex,
   resolveGlobalTabRouteOpen,
@@ -51,7 +51,7 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
-import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
+import { useEnvironments } from "../state/environments";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../threadRoutes";
 import { selectThreadWorkspaceOrDefault, useThreadWorkspaceStore } from "../threadWorkspaceStore";
@@ -64,7 +64,6 @@ import {
   type ThreadStatusPill,
 } from "./Sidebar.logic";
 import { ScrollArea } from "./ui/scroll-area";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 interface GlobalTabsProps {
@@ -237,12 +236,12 @@ function pullRequestStatusPresentation(
 export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const navigate = useNavigate();
   const tabs = useGlobalTabsStore((state) => state.tabs);
+  const storedActiveTabKey = useGlobalTabsStore((state) => state.activeTabKey);
   const activeTabKey = activeTab === null ? null : globalTabKey(activeTab);
   const threadShells = useThreadShells();
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const projects = useProjects();
   const { environments } = useEnvironments();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const draftSessions = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
@@ -283,11 +282,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       ),
     [environments],
   );
-  const primaryEnvironment = environments.find(
-    (environment) => environment.environmentId === primaryEnvironmentId,
-  );
-  const pullRequestsSupported =
-    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
   useLayoutEffect(() => {
     const routeOpen = resolveGlobalTabRouteOpen(observedRouteSignatureRef.current, activeTab);
     observedRouteSignatureRef.current = routeOpen.routeSignature;
@@ -351,7 +345,14 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat) return;
+      if (event.defaultPrevented) return;
+      const closeShortcut =
+        (activeTabKey !== null || storedActiveTabKey !== null) &&
+        isGlobalTabCloseShortcut(event, navigator.platform);
+      if (event.repeat) {
+        if (closeShortcut) event.preventDefault();
+        return;
+      }
       const command = resolveShortcutCommand(event, keybindings, {
         platform: navigator.platform,
         context: {
@@ -360,6 +361,17 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           modelPickerOpen: isModelPickerOpen(),
         },
       });
+      if (command === null && closeShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (activeTabKey !== null) {
+          closeTab(activeTabKey);
+        } else {
+          const result = transitionGlobalTabsStore({ _tag: "RestoreActive" });
+          applyTabNavigation(navigate, result.navigation);
+        }
+        return;
+      }
       const traversalDirection = threadTraversalDirectionFromCommand(command);
       const jumpIndex = threadJumpIndexFromCommand(command ?? "");
       let targetKey: string | null = null;
@@ -382,7 +394,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTabKey, keybindings, navigate, routeTerminalOpen, tabs]);
+  }, [activeTabKey, closeTab, keybindings, navigate, routeTerminalOpen, storedActiveTabKey, tabs]);
 
   const reorderDraggedTab = useCallback(
     (hoveredIndex: number, position: GlobalTabDropPosition) => {
@@ -691,41 +703,21 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
             {tabDropPreview?.position === "end" ? (
               <span className="h-5 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
             ) : null}
-            <Menu>
-              <MenuTrigger
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent data-popup-open:text-foreground"
-                aria-label="Open new tab"
-              >
-                <PlusIcon className="size-3.5" />
-              </MenuTrigger>
-              <MenuPopup align="start" side="bottom" sideOffset={6} className="min-w-44">
-                <MenuItem onClick={() => openCommandPalette({ open: "new-thread-in" })}>
-                  <SquarePenIcon />
-                  New thread
-                </MenuItem>
-                {pullRequestsSupported ? (
-                  <MenuItem
-                    onClick={() =>
-                      void navigate({
-                        to: "/pull-requests",
-                        search: { involvement: "all", state: "open" },
-                      })
-                    }
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Open new tab"
+                    onClick={() => void navigate({ to: "/" })}
                   >
-                    <GitPullRequestIcon />
-                    Pull Requests
-                  </MenuItem>
-                ) : null}
-                <MenuItem onClick={() => void navigate({ to: "/usage" })}>
-                  <ChartNoAxesColumnIcon />
-                  Usage
-                </MenuItem>
-                <MenuItem onClick={() => void navigate({ to: "/settings" })}>
-                  <Settings2Icon />
-                  Settings
-                </MenuItem>
-              </MenuPopup>
-            </Menu>
+                    <PlusIcon className="size-3.5" />
+                  </button>
+                }
+              />
+              <TooltipPopup side="bottom">New tab</TooltipPopup>
+            </Tooltip>
           </div>
         </ScrollArea>
       </TooltipProvider>

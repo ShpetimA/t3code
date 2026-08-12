@@ -28,7 +28,10 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
         const current = get();
         const result = transitionGlobalTabs(current, input);
         if (result.state !== current) {
-          set({ tabs: result.state.tabs });
+          set({
+            tabs: result.state.tabs,
+            activeTabKey: result.state.activeTabKey,
+          });
         }
         return result;
       },

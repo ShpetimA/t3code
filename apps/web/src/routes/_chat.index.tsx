@@ -1,11 +1,12 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
 import { GlobalTabsEmptyState } from "../components/GlobalTabsEmptyState";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
+import { buildGlobalTabsLandingProjects } from "../globalTabsLanding";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
@@ -15,8 +16,9 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
-import { useEnvironments } from "../state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
+import { buildThreadRouteParams } from "../threadRoutes";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { cn } from "~/lib/utils";
@@ -32,15 +34,52 @@ function ChatIndexRouteView() {
   }
 
   if (globalTabsEnabled) {
-    return (
-      <GlobalTabsEmptyState
-        onNewThread={() => openCommandPalette({ open: "new-thread-in" })}
-        onOpenCommandCenter={() => openCommandPalette()}
-      />
-    );
+    return <GlobalTabsLanding />;
   }
 
   return <IndexDraftLanding />;
+}
+
+function GlobalTabsLanding() {
+  const navigate = useNavigate();
+  const projects = useProjects();
+  const threads = useThreadShells();
+  const bootstrapped = useAllEnvironmentShellsBootstrapped();
+  const { environments } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const recentProjects = useMemo(
+    () => buildGlobalTabsLandingProjects({ projects, threads }),
+    [projects, threads],
+  );
+  const primaryEnvironment = environments.find(
+    (environment) => environment.environmentId === primaryEnvironmentId,
+  );
+  const pullRequestsSupported =
+    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
+
+  if (!bootstrapped) return null;
+
+  return (
+    <GlobalTabsEmptyState
+      onNewThread={() => openCommandPalette({ open: "new-thread-in" })}
+      onOpenPullRequests={() =>
+        void navigate({
+          to: "/pull-requests",
+          search: { involvement: "all", state: "open" },
+        })
+      }
+      onOpenSettings={() => void navigate({ to: "/settings" })}
+      onOpenUsage={() => void navigate({ to: "/usage" })}
+      onOpenThread={(thread) =>
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+        })
+      }
+      pullRequestsSupported={pullRequestsSupported}
+      recentProjects={recentProjects}
+    />
+  );
 }
 
 /**

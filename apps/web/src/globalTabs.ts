@@ -9,6 +9,7 @@ import {
 import * as Schema from "effect/Schema";
 
 import { DraftId } from "./composerDraftStore";
+import { isMacPlatform } from "./lib/utils";
 
 /** A settings section represented by the singleton Settings tab. */
 export type GlobalSettingsSection =
@@ -53,6 +54,25 @@ export interface GlobalTabsState {
 
 /** The edge of a hovered tab where a dragged global tab will be inserted. */
 export type GlobalTabDropPosition = "before" | "after";
+
+interface GlobalTabCloseShortcutEvent {
+  readonly key: string;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
+  readonly altKey: boolean;
+}
+
+/** Matches the native browser/window close chord without consuming modified variants. */
+export function isGlobalTabCloseShortcut(
+  event: GlobalTabCloseShortcutEvent,
+  platform: string,
+): boolean {
+  if (event.key.toLowerCase() !== "w" || event.shiftKey || event.altKey) return false;
+  return isMacPlatform(platform)
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey;
+}
 
 /** Navigation requested as a consequence of a tab transition. */
 export type GlobalTabNavigation =
