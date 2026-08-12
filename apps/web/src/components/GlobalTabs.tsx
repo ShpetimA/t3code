@@ -342,6 +342,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       const result = transitionGlobalTabsStore({
         _tag: "Close",
         tabKey,
+        routeActiveTabKey: activeTabKey,
       });
       applyTabNavigation(navigate, result.navigation);
     },

@@ -77,6 +77,7 @@ describe("global tabs", () => {
     const closeMiddle = transitionGlobalTabs(current, {
       _tag: "Close",
       tabKey: globalTabKey(second),
+      routeActiveTabKey: globalTabKey(second),
     });
     expect(closeMiddle.navigation).toEqual({ _tag: "Activate", tab: third });
     expect(closeMiddle.state.activeTabKey).toBe(globalTabKey(third));
@@ -84,6 +85,7 @@ describe("global tabs", () => {
     const closeLast = transitionGlobalTabs(closeMiddle.state, {
       _tag: "Close",
       tabKey: globalTabKey(third),
+      routeActiveTabKey: globalTabKey(third),
     });
     expect(closeLast.navigation).toEqual({ _tag: "Activate", tab: first });
     expect(closeLast.state.activeTabKey).toBe(globalTabKey(first));
@@ -94,6 +96,7 @@ describe("global tabs", () => {
     const result = transitionGlobalTabs(globalTabsState([only], only), {
       _tag: "Close",
       tabKey: globalTabKey(only),
+      routeActiveTabKey: globalTabKey(only),
     });
 
     expect(result.state).toEqual(globalTabsState());
@@ -107,6 +110,7 @@ describe("global tabs", () => {
     const closedSecond = transitionGlobalTabs(globalTabsState([first, second], second), {
       _tag: "Close",
       tabKey: globalTabKey(second),
+      routeActiveTabKey: globalTabKey(second),
     });
 
     const pendingOldRoute = resolveGlobalTabRouteOpen(observedSecond.routeSignature, second);
@@ -130,10 +134,26 @@ describe("global tabs", () => {
     const result = transitionGlobalTabs(globalTabsState([first, second], second), {
       _tag: "Close",
       tabKey: globalTabKey(first),
+      routeActiveTabKey: globalTabKey(second),
     });
     expect(result.navigation).toEqual({ _tag: "KeepCurrent" });
     expect(result.state.tabs).toEqual([second]);
     expect(result.state.activeTabKey).toBe(globalTabKey(second));
+  });
+
+  it("uses the visible route when persisted selection is briefly stale", () => {
+    const first = serverTab("one");
+    const second = serverTab("two");
+    const third = serverTab("three");
+    const result = transitionGlobalTabs(globalTabsState([first, second, third], first), {
+      _tag: "Close",
+      tabKey: globalTabKey(second),
+      routeActiveTabKey: globalTabKey(second),
+    });
+
+    expect(result.state.tabs).toEqual([first, third]);
+    expect(result.state.activeTabKey).toBe(globalTabKey(third));
+    expect(result.navigation).toEqual({ _tag: "Activate", tab: third });
   });
 
   it("reconciles archived or deleted tabs and replaces an invalid active route", () => {

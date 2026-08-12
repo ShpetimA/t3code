@@ -63,7 +63,11 @@ export type GlobalTabNavigation =
 /** Legal user and route-driven changes to the global tab collection. */
 export type GlobalTabsTransition =
   | { readonly _tag: "Open"; readonly tab: GlobalTab }
-  | { readonly _tag: "Close"; readonly tabKey: string }
+  | {
+      readonly _tag: "Close";
+      readonly tabKey: string;
+      readonly routeActiveTabKey: string | null;
+    }
   | {
       readonly _tag: "Reconcile";
       readonly validThreadTabKeys: readonly string[];
@@ -256,9 +260,9 @@ export function transitionGlobalTabs(
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
       const tabs = current.tabs.filter((tab) => globalTabKey(tab) !== input.tabKey);
-      if (current.activeTabKey !== input.tabKey) {
+      if (input.routeActiveTabKey !== input.tabKey) {
         return {
-          state: { tabs, activeTabKey: current.activeTabKey },
+          state: { tabs, activeTabKey: input.routeActiveTabKey },
           navigation: { _tag: "KeepCurrent" },
         };
       }
