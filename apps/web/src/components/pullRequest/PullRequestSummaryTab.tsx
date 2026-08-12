@@ -1,163 +1,81 @@
 import type { EnvironmentId, PullRequestDetailView, PullRequestRef } from "@t3tools/contracts";
 import {
-  ArrowRightIcon,
   CheckCircle2Icon,
   CircleDotIcon,
   FileDiffIcon,
   GitBranchIcon,
-  GitCommitHorizontalIcon,
-  GitMergeIcon,
-  GitPullRequestClosedIcon,
   GitPullRequestIcon,
   HammerIcon,
-  MessageSquareIcon,
   UsersIcon,
 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   PullRequestActorLabel,
-  PullRequestActorAvatar,
   PullRequestCheckStatusIcon,
   PullRequestDiffStat,
   pullRequestCheckStatusLabel,
   resolvePullRequestState,
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
+import { PullRequestActivityFeed } from "./PullRequestActivityFeed";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
-import {
-  buildPullRequestTimeline,
-  pullRequestFindingKey,
-  type PullRequestFinding,
-  type PullRequestTimelineEvent,
-} from "./pullRequestDetail.logic";
+import { pullRequestFindingKey, type PullRequestFinding } from "./pullRequestDetail.logic";
 
 type ActivityStatus = "loading" | "ready" | "unavailable";
 
 const LATEST_ACTIVITY_LIMIT = 3;
 
-function activityTitle(event: PullRequestTimelineEvent): string {
-  if (event.kind === "commit") return event.body ?? "Untitled commit";
-  if (event.actor) return `${event.actor.login} ${event.title}`;
-  return event.title;
-}
-
-function activityExcerpt(event: PullRequestTimelineEvent): string | null {
-  if ((event.kind !== "comment" && event.kind !== "review") || event.body === null) return null;
-  const visible = event.body
-    .replace(/<!--[\s\S]*?-->/gu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-  return visible.length === 0 ? null : visible;
-}
-
-function ActivityMarker({ event }: { readonly event: PullRequestTimelineEvent }) {
-  if (event.actor) {
-    return <PullRequestActorAvatar actor={event.actor} className="size-7 bg-muted text-[9px]" />;
-  }
-
-  const icon =
-    event.kind === "commit" ? (
-      <GitCommitHorizontalIcon className="size-3.5" />
-    ) : event.kind === "merged" ? (
-      <GitMergeIcon className="size-3.5" />
-    ) : event.kind === "closed" ? (
-      <GitPullRequestClosedIcon className="size-3.5" />
-    ) : event.kind === "opened" ? (
-      <GitPullRequestIcon className="size-3.5" />
-    ) : (
-      <MessageSquareIcon className="size-3.5" />
-    );
-  return (
-    <span className="flex size-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-[0_0_0_1px_color-mix(in_srgb,currentColor_16%,transparent)]">
-      {icon}
-    </span>
-  );
-}
-
 function LatestActivity({
+  environmentId,
+  reference,
   detail,
   status,
+  pendingFinding,
+  onFixFinding,
+  onOpenCommit,
+  onRefresh,
   onViewAll,
 }: {
+  readonly environmentId: EnvironmentId;
+  readonly reference: PullRequestRef;
   readonly detail: PullRequestDetailView;
   readonly status: ActivityStatus;
+  readonly pendingFinding: string | null | undefined;
+  readonly onFixFinding: ((finding: PullRequestFinding) => void) | undefined;
+  readonly onOpenCommit: (oid: string) => void;
+  readonly onRefresh: () => void;
   readonly onViewAll: () => void;
 }) {
-  const events = useMemo(
-    () => buildPullRequestTimeline(detail).slice(0, LATEST_ACTIVITY_LIMIT),
-    [detail],
-  );
-
   return (
     <section className="border-t border-border/60 pt-6 lg:col-span-2">
-      <div className="mb-3 flex min-h-10 items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Latest activity</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">The newest updates on this review.</p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="min-h-10 shrink-0"
-          onClick={onViewAll}
-        >
-          View all activity
-          <ArrowRightIcon className="size-3.5" />
-        </Button>
+      <div className="mx-auto max-w-3xl">
+        <h2 className="mb-5 text-sm font-medium text-muted-foreground">Recent activity</h2>
+        {status === "loading" ? (
+          <p className="py-3 text-xs text-muted-foreground">Loading activity…</p>
+        ) : status === "unavailable" ? (
+          <p className="py-3 text-xs text-muted-foreground">
+            Activity is unavailable right now. Open the full view to retry.
+          </p>
+        ) : (
+          <PullRequestActivityFeed
+            environmentId={environmentId}
+            reference={reference}
+            detail={detail}
+            view={{ _tag: "Recent", limit: LATEST_ACTIVITY_LIMIT, onViewAll }}
+            pendingFinding={pendingFinding}
+            onFixFinding={onFixFinding}
+            onOpenCommit={onOpenCommit}
+            onRefresh={onRefresh}
+          />
+        )}
       </div>
-
-      {status === "loading" ? (
-        <p className="py-3 text-xs text-muted-foreground">Loading activity…</p>
-      ) : status === "unavailable" ? (
-        <p className="py-3 text-xs text-muted-foreground">
-          Activity is unavailable right now. Open the full view to retry.
-        </p>
-      ) : (
-        <ol className="relative before:absolute before:bottom-5 before:left-3.5 before:top-5 before:w-px before:bg-border/55">
-          {events.map((event) => {
-            const excerpt = activityExcerpt(event);
-            return (
-              <li key={`${event.kind}:${event.id}`} className="relative flex min-h-14 gap-3 py-2">
-                <span className="relative z-10 flex size-7 shrink-0 items-center justify-center bg-background">
-                  <ActivityMarker event={event} />
-                </span>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                      {activityTitle(event)}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {formatRelativeTimeLabel(event.at)}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-                    {event.kind === "commit" ? (
-                      <code className="shrink-0 font-mono tabular-nums">
-                        {event.id.slice(0, 7)}
-                      </code>
-                    ) : null}
-                    {event.reviewState ? (
-                      <span className="shrink-0 capitalize">
-                        {event.reviewState.toLowerCase().replaceAll("_", " ")}
-                      </span>
-                    ) : null}
-                    {excerpt ? <span className="line-clamp-1 min-w-0">{excerpt}</span> : null}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
     </section>
   );
 }
@@ -191,6 +109,7 @@ export function PullRequestSummaryTab({
   pendingFinding,
   onFixFinding,
   onRefresh,
+  onOpenCommit,
   onViewActivity,
 }: {
   readonly environmentId: EnvironmentId;
@@ -200,6 +119,7 @@ export function PullRequestSummaryTab({
   readonly pendingFinding?: string | null;
   readonly onFixFinding?: (finding: PullRequestFinding) => void;
   readonly onRefresh: () => void;
+  readonly onOpenCommit: (oid: string) => void;
   readonly onViewActivity: () => void;
 }) {
   const state = resolvePullRequestState({
@@ -365,7 +285,17 @@ export function PullRequestSummaryTab({
           </InfoSection>
         </aside>
 
-        <LatestActivity detail={detail} status={activityStatus} onViewAll={onViewActivity} />
+        <LatestActivity
+          environmentId={environmentId}
+          reference={reference}
+          detail={detail}
+          status={activityStatus}
+          pendingFinding={pendingFinding}
+          onFixFinding={onFixFinding}
+          onOpenCommit={onOpenCommit}
+          onRefresh={onRefresh}
+          onViewAll={onViewActivity}
+        />
       </div>
     </div>
   );

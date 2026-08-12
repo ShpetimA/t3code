@@ -43,6 +43,24 @@ export interface PullRequestTimelineEvent {
   readonly reviewState: string | null;
 }
 
+/** One renderable row in pull request activity after review-thread comments are de-duplicated. */
+export type PullRequestActivityRow =
+  | {
+      readonly _tag: "Event";
+      readonly at: string;
+      readonly event: PullRequestTimelineEvent;
+    }
+  | {
+      readonly _tag: "ReviewThread";
+      readonly at: string;
+      readonly thread: PullRequestReviewThread;
+    };
+
+/** Whether activity presents the complete history or only its newest rows. */
+export type PullRequestActivityScope =
+  | { readonly _tag: "Full" }
+  | { readonly _tag: "Recent"; readonly limit: number };
+
 export type PullRequestTimelineRow =
   | { readonly kind: "event"; readonly event: PullRequestTimelineEvent }
   | { readonly kind: "comments"; readonly events: ReadonlyArray<PullRequestTimelineEvent> };
@@ -181,6 +199,45 @@ export function buildPullRequestTimeline(
         ]
       : []),
   ].toSorted((left, right) => right.at.localeCompare(left.at));
+}
+
+/**
+ * Produces chronological activity rows for both the full feed and its bounded Summary preview.
+ * A review thread owns its comments as one row at the time of its newest reply, so neither view
+ * duplicates those comments or loses a recently updated thread when it takes a recent slice.
+ */
+export function selectPullRequestActivityRows(
+  detail: Pick<
+    PullRequestDetailView,
+    "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt" | "reviewThreads"
+  >,
+  scope: PullRequestActivityScope,
+): ReadonlyArray<PullRequestActivityRow> {
+  const reviewCommentIds = new Set(
+    detail.reviewThreads.flatMap((thread) => thread.comments.map((comment) => comment.id)),
+  );
+  const rows: PullRequestActivityRow[] = buildPullRequestTimeline(detail).flatMap((event) =>
+    reviewCommentIds.has(event.id) ? [] : [{ _tag: "Event", at: event.at, event }],
+  );
+
+  for (const thread of detail.reviewThreads) {
+    let newestComment = thread.comments[0];
+    for (const comment of thread.comments) {
+      if (newestComment === undefined || comment.createdAt > newestComment.createdAt) {
+        newestComment = comment;
+      }
+    }
+    if (newestComment !== undefined) {
+      rows.push({ _tag: "ReviewThread", at: newestComment.createdAt, thread });
+    }
+  }
+
+  const newestFirst = rows.toSorted((left, right) => right.at.localeCompare(left.at));
+  const selected =
+    scope._tag === "Recent"
+      ? newestFirst.slice(0, Math.max(0, Math.floor(scope.limit)))
+      : newestFirst;
+  return selected.toReversed();
 }
 
 const FINDING_LIMIT = 20;

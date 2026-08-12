@@ -41,10 +41,11 @@ T3 Code works with the platforms your team already uses:
 - Open several reviews from the **Pull requests** page as full workspace tabs
 - On web and desktop, open the current branch review or any linked review in that thread's
   workspace tabs without leaving the conversation
-- Use **Summary** for the description, checks, status, reviewers, branch details, and latest
-  activity. Choose **View all activity** for the complete commit and discussion history, or
+- Use **Summary** for the description, checks, status, reviewers, branch details, recent activity,
+  and comments. Choose **View all activity** below the recent updates for the complete history, or
   **Code** for the full diff
-- In **Code**, use **Files** to show or hide the file tree and jump directly to a changed file
+- **Code** opens with file diffs expanded and the file tree visible. Use **Files** to hide or show
+  the tree and jump directly to a changed file
 - Open the review on its hosting provider from the review's overflow menu
 - Check out a teammate's branch to review code locally
 

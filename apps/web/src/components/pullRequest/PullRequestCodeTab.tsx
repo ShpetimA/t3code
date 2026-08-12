@@ -192,7 +192,7 @@ export function PullRequestCodeTab({
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
   const [fileTreeOpen, setFileTreeOpen] = useLocalStorage(
     PR_DIFF_FILE_TREE_OPEN_STORAGE_KEY,
-    false,
+    true,
     Schema.Boolean,
   );
   const [selectedLines, setSelectedLines] = useState<{

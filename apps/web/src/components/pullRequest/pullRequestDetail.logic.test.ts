@@ -18,6 +18,7 @@ import {
   orderPullRequestComments,
   pullRequestFindingKey,
   readableFailure,
+  selectPullRequestActivityRows,
   buildPullRequestTimeline,
   describePullRequestState,
 } from "./pullRequestDetail.logic";
@@ -214,6 +215,56 @@ describe("pull request timeline", () => {
       ["comments", "old-comment-1", "old-comment-2"],
       ["event", "created"],
     ]);
+  });
+
+  it("uses the same chronological rows for a recent slice as the full activity feed", () => {
+    const rows = selectPullRequestActivityRows(
+      { ...TIMELINE_SOURCE, reviewThreads: [] },
+      { _tag: "Recent", limit: 2 },
+    );
+
+    expect(rows.map((row) => (row._tag === "Event" ? row.event.id : row.thread.id))).toEqual([
+      "1baf7bdcafe",
+      "c1",
+    ]);
+  });
+
+  it("renders a review thread once at its newest reply instead of duplicating its comments", () => {
+    const reviewThread: PullRequestReviewThread = {
+      id: "thread-1",
+      path: "src/app.ts",
+      line: 12,
+      side: "right",
+      isResolved: false,
+      isOutdated: false,
+      comments: [
+        {
+          id: "c1",
+          author: TIMELINE_SOURCE.comments[0]?.author ?? null,
+          body: "looks good",
+          createdAt: "2026-07-03T00:00:00Z",
+          url: null,
+        },
+        {
+          id: "thread-reply",
+          author: { login: "octocat", name: null, avatarUrl: null },
+          body: "thanks",
+          createdAt: "2026-07-04T00:00:00Z",
+          url: null,
+        },
+      ],
+    };
+    const rows = selectPullRequestActivityRows(
+      { ...TIMELINE_SOURCE, reviewThreads: [reviewThread] },
+      { _tag: "Full" },
+    );
+
+    expect(rows.map((row) => (row._tag === "Event" ? row.event.id : row.thread.id))).toEqual([
+      "created",
+      "1baf7bdcafe",
+      "thread-1",
+    ]);
+    expect(rows.at(-1)).toMatchObject({ _tag: "ReviewThread", at: "2026-07-04T00:00:00Z" });
   });
 });
 

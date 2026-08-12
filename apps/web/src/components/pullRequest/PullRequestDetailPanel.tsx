@@ -954,6 +954,7 @@ export function PullRequestDetailPanel({
                   pendingFinding={handoff}
                   onFixFinding={startFixFinding}
                   onRefresh={refreshDetail}
+                  onOpenCommit={openCommit}
                   onViewActivity={() => setTab("activity")}
                 />
               </div>
