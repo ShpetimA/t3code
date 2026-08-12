@@ -40,6 +40,7 @@ import {
   MessageSquareIcon,
   Minimize2Icon,
   PaletteIcon,
+  SearchIcon,
   SettingsIcon,
   SquarePenIcon,
   TextSearchIcon,
@@ -400,6 +401,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   );
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
+  const openSearchThreads = useCallback(() => dispatch({ _tag: "OpenSearchThreads" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { theme, themeHalves, resolvedTheme } = useTheme();
@@ -472,13 +474,15 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       onOpenCommandPalette((detail) => {
         if (detail.open === "new-thread-in") {
           openNewThreadIn();
+        } else if (detail.open === "search-threads") {
+          openSearchThreads();
         } else if (detail.open === "add-project") {
           openAddProject();
         } else {
           setOpen(true);
         }
       }),
-    [openAddProject, openNewThreadIn, setOpen],
+    [openAddProject, openNewThreadIn, openSearchThreads, setOpen],
   );
 
   return (
@@ -1386,6 +1390,25 @@ function OpenCommandPaletteDialog(props: {
     projectThreadItems,
     pushPaletteView,
   ]);
+
+  useLayoutEffect(() => {
+    if (openIntent?.kind !== "search-threads") return;
+    clearOpenIntent();
+    browseNavigation.invalidate();
+    setAddProjectCloneFlow(null);
+    setViewStack([]);
+    setQuery("");
+    pushPaletteView({
+      addonIcon: <SearchIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "threads",
+          label: "Threads",
+          items: enumerateCommandPaletteItems(allThreadItems),
+        },
+      ],
+    });
+  }, [allThreadItems, browseNavigation, clearOpenIntent, openIntent, pushPaletteView]);
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 

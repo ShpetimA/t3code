@@ -2,10 +2,13 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
-
 import { sortThreads } from "./lib/threadSort";
 
-export const GLOBAL_TABS_RECENT_THREAD_LIMIT = 12;
+/** Number of recent threads considered for the default landing view. */
+export const GLOBAL_TABS_RECENT_THREAD_LIMIT = 30;
+
+/** Number of thread rows initially visible inside each recent project group. */
+export const GLOBAL_TABS_RECENT_THREADS_PER_PROJECT = 5;
 
 export interface GlobalTabsLandingProject {
   readonly project: EnvironmentProject;

@@ -1,11 +1,19 @@
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
 import { GlobalTabsEmptyState } from "../components/GlobalTabsEmptyState";
-import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
+import {
+  resolveThreadStatusPill,
+  sortScopedProjectsForSidebar,
+  type ThreadStatusPill,
+} from "../components/Sidebar.logic";
 import { buildGlobalTabsLandingProjects } from "../globalTabsLanding";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -19,6 +27,7 @@ import {
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { useUiStateStore } from "../uiStateStore";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { cn } from "~/lib/utils";
@@ -47,6 +56,21 @@ function GlobalTabsLanding() {
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const statusByThreadKey = useMemo(() => {
+    const statuses = new Map<string, ThreadStatusPill>();
+    for (const thread of threads) {
+      const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      const status = resolveThreadStatusPill({
+        thread: {
+          ...thread,
+          lastVisitedAt: lastVisitedAtByThreadKey[threadKey],
+        },
+      });
+      if (status) statuses.set(threadKey, status);
+    }
+    return statuses;
+  }, [lastVisitedAtByThreadKey, threads]);
   const recentProjects = useMemo(
     () => buildGlobalTabsLandingProjects({ projects, threads }),
     [projects, threads],
@@ -62,6 +86,7 @@ function GlobalTabsLanding() {
   return (
     <GlobalTabsEmptyState
       onNewThread={() => openCommandPalette({ open: "new-thread-in" })}
+      onSearchThreads={() => openCommandPalette({ open: "search-threads" })}
       onOpenPullRequests={() =>
         void navigate({
           to: "/pull-requests",
@@ -78,6 +103,7 @@ function GlobalTabsLanding() {
       }
       pullRequestsSupported={pullRequestsSupported}
       recentProjects={recentProjects}
+      statusByThreadKey={statusByThreadKey}
     />
   );
 }

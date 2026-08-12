@@ -5,8 +5,6 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   BotIcon,
   ChartNoAxesColumnIcon,
-  CircleDashedIcon,
-  CircleDotIcon,
   GitBranchIcon,
   GitPullRequestIcon,
   PanelsTopLeftIcon,
@@ -63,6 +61,7 @@ import {
   resolveThreadStatusPill,
   type ThreadStatusPill,
 } from "./Sidebar.logic";
+import { ThreadStatusMark } from "./ThreadStatusMark";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
@@ -128,58 +127,6 @@ function applyTabNavigation(
   }
 }
 
-function threadTabStatusGlyph(label: ThreadStatusPill["label"]): string {
-  switch (label) {
-    case "Connecting":
-      return ">_";
-    case "Monitoring":
-      return "~";
-    case "Pending Approval":
-      return "!";
-    case "Awaiting Input":
-      return "?";
-    case "Failed":
-      return "×";
-    case "Plan Ready":
-      return "≡";
-    case "Completed":
-      return "";
-    case "Working":
-      return "";
-  }
-}
-
-function ThreadTabStatusMark({
-  status,
-  decorative = false,
-  animatePulse = true,
-}: {
-  readonly status: ThreadStatusPill;
-  readonly decorative?: boolean;
-  readonly animatePulse?: boolean;
-}) {
-  return (
-    <span
-      aria-hidden={decorative ? true : undefined}
-      aria-label={decorative ? undefined : status.label}
-      className={cn(
-        "inline-flex size-3 shrink-0 items-center justify-center font-mono text-[10px] leading-none font-semibold",
-        status.colorClass,
-        animatePulse && status.pulse && "animate-status-pulse motion-reduce:animate-none",
-      )}
-      role={decorative ? undefined : "img"}
-    >
-      {status.label === "Working" ? (
-        <CircleDashedIcon className="size-3" />
-      ) : status.label === "Completed" ? (
-        <CircleDotIcon className="size-3" />
-      ) : (
-        threadTabStatusGlyph(status.label)
-      )}
-    </span>
-  );
-}
-
 function AnimatedThreadTabStatusMark({ status }: { readonly status: ThreadStatusPill | null }) {
   const [lastStatus, setLastStatus] = useState(status);
   useEffect(() => {
@@ -209,7 +156,7 @@ function AnimatedThreadTabStatusMark({ status }: { readonly status: ThreadStatus
         )}
       >
         {displayedStatus ? (
-          <ThreadTabStatusMark status={displayedStatus} decorative animatePulse={visible} />
+          <ThreadStatusMark status={displayedStatus} decorative animatePulse={visible} />
         ) : null}
       </span>
     </span>
@@ -677,7 +624,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         ) : null}
                         {status ? (
                           <div className="flex min-w-0 items-center gap-2">
-                            <ThreadTabStatusMark status={status} decorative />
+                            <ThreadStatusMark status={status} decorative />
                             <div className={cn("min-w-0 truncate", status.colorClass)}>
                               {status.label}
                             </div>
