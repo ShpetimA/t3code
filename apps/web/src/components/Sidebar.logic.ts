@@ -217,16 +217,17 @@ export function createThreadJumpHintVisibilityController(input: {
   };
 }
 
-export function useThreadJumpHintVisibility(): {
+export function useThreadJumpHintVisibility(options?: { readonly delayMs?: number }): {
   showThreadJumpHints: boolean;
   updateThreadJumpHintsVisibility: (shouldShow: boolean) => void;
 } {
+  const delayMs = options?.delayMs ?? THREAD_JUMP_HINT_SHOW_DELAY_MS;
   const [showThreadJumpHints, setShowThreadJumpHints] = React.useState(false);
   const controllerRef = React.useRef<ThreadJumpHintVisibilityController | null>(null);
 
   React.useEffect(() => {
     const controller = createThreadJumpHintVisibilityController({
-      delayMs: THREAD_JUMP_HINT_SHOW_DELAY_MS,
+      delayMs,
       onVisibilityChange: (visible) => {
         setShowThreadJumpHints(visible);
       },
@@ -239,7 +240,7 @@ export function useThreadJumpHintVisibility(): {
       controller.dispose();
       controllerRef.current = null;
     };
-  }, []);
+  }, [delayMs]);
 
   const updateThreadJumpHintsVisibility = React.useCallback((shouldShow: boolean) => {
     controllerRef.current?.sync(shouldShow);

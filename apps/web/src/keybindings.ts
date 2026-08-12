@@ -265,6 +265,19 @@ export function shortcutLabelForCommand(
   return shortcut ? formatShortcutLabel(shortcut, platform) : null;
 }
 
+/** Returns the non-modifier key to press when the held modifiers match a command shortcut. */
+export function shortcutKeyLabelForCommandMatchingModifiers(
+  modifiers: ShortcutModifierStateLike,
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+  options?: ShortcutMatchOptions,
+): string | null {
+  const platform = resolvePlatform(options);
+  const shortcut = findEffectiveShortcutForCommand(keybindings, command, options);
+  if (!shortcut || !matchesShortcutModifiers(modifiers, shortcut, platform)) return null;
+  return formatShortcutKeyLabel(shortcut.key);
+}
+
 export function threadJumpCommandForIndex(index: number): ThreadJumpKeybindingCommand | null {
   return THREAD_JUMP_KEYBINDING_COMMANDS[index] ?? null;
 }

@@ -26,6 +26,9 @@ keep the same tab position when their first message creates the server thread. D
 them, use the command center to reopen other threads, and use the plus button to open a new thread,
 the pull request list, Usage, or Settings. Pull request tabs similarly distinguish open, draft,
 closed, and merged reviews. Settings keeps its section sidebar below the global tab strip.
+Hold `Cmd` on macOS or `Ctrl` elsewhere to see the remaining key for each of the first nine open
+tabs' `Cmd/Ctrl+1–9` jump shortcut immediately. Keep holding briefly to open every thread tab's info
+card for a quick glance; adding another modifier cancels the peek.
 
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as
 a pinned tab beside its tool tabs. Its compact status indicator mirrors the sidebar, including

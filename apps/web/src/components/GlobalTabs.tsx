@@ -23,6 +23,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
@@ -40,12 +41,16 @@ import {
 import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStore";
 import {
   resolveShortcutCommand,
+  shortcutKeyLabelForCommandMatchingModifiers,
+  shouldShowThreadJumpHintsForModifiers,
+  threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useThreadTabLifecycleMenu } from "../hooks/useThreadActionMenu";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
+import { useShortcutModifierState } from "../shortcutModifierState";
 import {
   useAllEnvironmentShellsBootstrapped,
   useProjects,
@@ -62,13 +67,35 @@ import {
   resolveAdjacentThreadId,
   resolveThreadStatusPill,
   type ThreadStatusPill,
+  useThreadJumpHintVisibility,
 } from "./Sidebar.logic";
 import { ThreadStatusMark } from "./ThreadStatusMark";
+import { Kbd } from "./ui/kbd";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 interface GlobalTabsProps {
   readonly activeTab: GlobalTab | null;
+}
+
+const GLOBAL_TAB_QUICK_LOOK_DELAY_MS = 350;
+
+function GlobalTabDetailsTooltip(props: {
+  readonly children: ReactNode;
+  readonly disabled: boolean;
+  readonly quickLookOpen: boolean;
+}) {
+  const [interactionOpen, setInteractionOpen] = useState(false);
+  const enabled = !props.disabled || props.quickLookOpen;
+  return (
+    <Tooltip
+      disabled={!enabled}
+      open={enabled && (props.quickLookOpen || interactionOpen)}
+      onOpenChange={setInteractionOpen}
+    >
+      {props.children}
+    </Tooltip>
+  );
 }
 
 function navigateToGlobalTab(navigate: ReturnType<typeof useNavigate>, tab: GlobalTab): void {
@@ -195,6 +222,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const { environments } = useEnvironments();
   const draftSessions = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcutModifiers = useShortcutModifierState();
+  const { showThreadJumpHints, updateThreadJumpHintsVisibility } = useThreadJumpHintVisibility({
+    delayMs: GLOBAL_TAB_QUICK_LOOK_DELAY_MS,
+  });
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const draggedTabKeyRef = useRef<string | null>(null);
@@ -211,6 +242,19 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       ? false
       : selectThreadWorkspaceOrDefault(state.byThreadKey, activeThreadRef).bottomPanelOpen,
   );
+  const shortcutContext = {
+    terminalFocus: isTerminalFocused(),
+    terminalOpen: routeTerminalOpen,
+    modelPickerOpen: isModelPickerOpen(),
+  };
+  const jumpModifiersHeld = shouldShowThreadJumpHintsForModifiers(shortcutModifiers, keybindings, {
+    platform: navigator.platform,
+    context: shortcutContext,
+  });
+
+  useEffect(() => {
+    updateThreadJumpHintsVisibility(jumpModifiersHeld);
+  }, [jumpModifiersHeld, updateThreadJumpHintsVisibility]);
 
   const threadShellByKey = useMemo(
     () =>
@@ -495,6 +539,17 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               const modelLabel = shell?.modelSelection.model ?? null;
               const pullRequestStatus =
                 tab._tag === "PullRequest" ? pullRequestStatusPresentation(tab.reviewStatus) : null;
+              const jumpCommand = threadJumpCommandForIndex(index);
+              const jumpKeyLabel = jumpCommand
+                ? shortcutKeyLabelForCommandMatchingModifiers(
+                    shortcutModifiers,
+                    keybindings,
+                    jumpCommand,
+                    { platform: navigator.platform, context: shortcutContext },
+                  )
+                : null;
+              const showJumpHint = jumpModifiersHeld && jumpKeyLabel !== null;
+              const quickLookOpen = showThreadJumpHints && threadTab !== null;
               const hasTooltipDetails =
                 project !== undefined ||
                 environmentLabel !== null ||
@@ -503,7 +558,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 status !== null ||
                 pullRequestStatus !== null;
               return (
-                <Tooltip key={tabKey} disabled={!hasTooltipDetails}>
+                <GlobalTabDetailsTooltip
+                  key={tabKey}
+                  disabled={!hasTooltipDetails}
+                  quickLookOpen={quickLookOpen}
+                >
                   <TooltipTrigger
                     render={
                       <div
@@ -584,9 +643,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             type="button"
                             className={cn(
                               "absolute right-[1.625rem] flex size-6 shrink-0 items-center justify-center rounded-sm text-foreground outline-none transition-[background-color,opacity] duration-150 ease-out hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-                              active
-                                ? "pointer-events-auto opacity-100"
-                                : "pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100",
+                              showJumpHint
+                                ? "pointer-events-none opacity-0"
+                                : active
+                                  ? "pointer-events-auto opacity-100"
+                                  : "pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100",
                             )}
                             aria-label={`Thread actions for ${title}`}
                             onClick={(event) => {
@@ -605,15 +666,26 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           type="button"
                           className={cn(
                             "absolute right-0.5 flex size-6 shrink-0 items-center justify-center rounded-sm text-foreground transition-[background-color,opacity] duration-150 ease-out hover:bg-muted",
-                            active
-                              ? "opacity-100"
-                              : "pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100",
+                            showJumpHint
+                              ? "pointer-events-none opacity-0"
+                              : active
+                                ? "opacity-100"
+                                : "pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100",
                           )}
                           aria-label={`Close ${title}`}
                           onClick={() => closeTab(tabKey)}
                         >
                           <XIcon className="size-3" />
                         </button>
+                        {showJumpHint ? (
+                          <Kbd
+                            aria-hidden
+                            data-global-tab-jump-hint=""
+                            className="absolute right-1 top-1/2 z-10 h-4 min-w-4 -translate-y-1/2 rounded-sm bg-background/95 px-1 font-mono text-[10px] text-foreground shadow-sm tabular-nums"
+                          >
+                            {jumpKeyLabel}
+                          </Kbd>
+                        ) : null}
                       </div>
                     }
                   />
@@ -622,7 +694,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                     align="start"
                     sideOffset={2}
                     variant="glass"
-                    className="w-72 max-w-[calc(100vw-1rem)] text-left whitespace-normal [&_[data-slot=tooltip-viewport]]:p-0"
+                    className="w-72 max-w-[calc(100vw-1rem)] text-left whitespace-normal transition-[width,height,scale,opacity,translate,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-y-1 data-starting-style:-translate-y-1 data-ending-style:blur-[4px] data-starting-style:blur-[4px] data-instant:duration-200 motion-reduce:transition-none [&_[data-slot=tooltip-viewport]]:p-0"
                   >
                     <div className="flex min-w-0 flex-col gap-2 p-[var(--floating-content-inset)]">
                       <div className="truncate text-xs leading-none font-medium text-foreground">
@@ -685,7 +757,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                       </div>
                     </div>
                   </TooltipPopup>
-                </Tooltip>
+                </GlobalTabDetailsTooltip>
               );
             })}
             {tabDropPreview?.position === "end" ? (

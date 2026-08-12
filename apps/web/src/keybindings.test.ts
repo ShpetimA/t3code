@@ -23,6 +23,7 @@ import {
   resolveShortcutCommand,
   shouldShowModelPickerJumpHints,
   shouldShowThreadJumpHints,
+  shortcutKeyLabelForCommandMatchingModifiers,
   shortcutLabelForCommand,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
@@ -387,6 +388,35 @@ describe("shortcutLabelForCommand", () => {
 
     assert.isNull(shortcutLabelForCommand(bindings, "thread.jump.1", "MacIntel"));
     assert.strictEqual(shortcutLabelForCommand(bindings, "thread.jump.7", "MacIntel"), "⇧⌘1");
+  });
+
+  it("returns only the next key when held modifiers match a shortcut", () => {
+    assert.strictEqual(
+      shortcutKeyLabelForCommandMatchingModifiers(
+        event({ metaKey: true }),
+        DEFAULT_BINDINGS,
+        "thread.jump.3",
+        { platform: "MacIntel" },
+      ),
+      "3",
+    );
+    assert.isNull(
+      shortcutKeyLabelForCommandMatchingModifiers(
+        event({ metaKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        "thread.jump.3",
+        { platform: "MacIntel" },
+      ),
+    );
+    assert.strictEqual(
+      shortcutKeyLabelForCommandMatchingModifiers(
+        event({ ctrlKey: true }),
+        DEFAULT_BINDINGS,
+        "thread.jump.3",
+        { platform: "Linux" },
+      ),
+      "3",
+    );
   });
 
   it("respects when-context while resolving labels", () => {
