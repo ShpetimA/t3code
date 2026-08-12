@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "vite-plus/test";
 
 import {
   activatePaneTab,
@@ -71,9 +71,7 @@ describe("split pane tree", () => {
 
     expect(focused.root).toBe(root);
     expect(focused.maximizedPaneId).toBe(group("left"));
-    expect(getVisiblePaneTreeRoot(focused)).toBe(
-      findPane(focused.root, group("left")),
-    );
+    expect(getVisiblePaneTreeRoot(focused)).toBe(findPane(focused.root, group("left")));
 
     const followed = focusPane(focused, group("right"));
     expect(followed.maximizedPaneId).toBe(group("right"));
@@ -108,10 +106,7 @@ describe("split pane tree", () => {
     if (next.root._tag !== "Split") return;
     expect(next.root.orientation).toBe(orientation);
     expect(next.root.first._tag === "Group" ? next.root.first.id : null).toBe(firstGroupId);
-    expect(findPane(next.root, group("source"))?.tabIds).toEqual([
-      tab("thread"),
-      tab("file"),
-    ]);
+    expect(findPane(next.root, group("source"))?.tabIds).toEqual([tab("thread"), tab("file")]);
     expect(findPane(next.root, group("target"))?.tabIds).toEqual([tab("file-copy")]);
     expect(next.focusedPaneId).toBe(group("target"));
   });
@@ -286,9 +281,9 @@ describe("split pane tree", () => {
     expect(closed.root).toEqual(initial.root);
     expect(closed.focusedPaneId).toBe(group("left"));
     expect(closeEmptyPane(splitWorkspace, group("left"))).toBe(splitWorkspace);
-    expect(
-      closeEmptyPane(createPaneTree({ paneId: group("only") }), group("only")),
-    ).toEqual(createPaneTree({ paneId: group("only") }));
+    expect(closeEmptyPane(createPaneTree({ paneId: group("only") }), group("only"))).toEqual(
+      createPaneTree({ paneId: group("only") }),
+    );
   });
 
   test("does not move the only tab out of a group", () => {
@@ -363,9 +358,7 @@ describe("split pane tree", () => {
         mode: "copy",
       },
     );
-    expect(getPanes(closeAllPaneTabs(splitWorkspace, group("target")).root)).toHaveLength(
-      1,
-    );
+    expect(getPanes(closeAllPaneTabs(splitWorkspace, group("target")).root)).toHaveLength(1);
     expect(
       findPane(
         closeAllPaneTabs(

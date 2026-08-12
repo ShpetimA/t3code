@@ -252,6 +252,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     readonly key: string;
     readonly position: GlobalTabDropPosition | "end";
   } | null>(null);
+  const startupRestoreAttemptedRef = useRef(false);
   const observedRouteSignatureRef = useRef<string | null>(null);
   const activeThreadRef: ScopedThreadRef | null =
     activeTab !== null && isGlobalThreadTab(activeTab) ? activeTab.threadRef : null;
@@ -319,8 +320,15 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     const result = transitionGlobalTabsStore({
       _tag: "Reconcile",
       validThreadTabKeys: validTabKeys,
-      activeTabKey,
     });
+    if (!startupRestoreAttemptedRef.current) {
+      startupRestoreAttemptedRef.current = true;
+      if (activeTabKey === null) {
+        const restoreResult = transitionGlobalTabsStore({ _tag: "RestoreActive" });
+        applyTabNavigation(navigate, restoreResult.navigation);
+        return;
+      }
+    }
     applyTabNavigation(navigate, result.navigation);
   }, [activeTabKey, allShellsBootstrapped, draftSessions, navigate, threadShells]);
 
@@ -334,7 +342,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       const result = transitionGlobalTabsStore({
         _tag: "Close",
         tabKey,
-        activeTabKey,
       });
       applyTabNavigation(navigate, result.navigation);
     },

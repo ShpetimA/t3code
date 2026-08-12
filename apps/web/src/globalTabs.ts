@@ -45,9 +45,10 @@ export type GlobalTab =
       };
     };
 
-/** The persisted ordering of global application tabs. The active tab is the URL. */
+/** The persisted ordering and selected destination of the global application tabs. */
 export interface GlobalTabsState {
   readonly tabs: readonly GlobalTab[];
+  readonly activeTabKey: string | null;
 }
 
 /** The edge of a hovered tab where a dragged global tab will be inserted. */
@@ -62,12 +63,12 @@ export type GlobalTabNavigation =
 /** Legal user and route-driven changes to the global tab collection. */
 export type GlobalTabsTransition =
   | { readonly _tag: "Open"; readonly tab: GlobalTab }
-  | { readonly _tag: "Close"; readonly tabKey: string; readonly activeTabKey: string | null }
+  | { readonly _tag: "Close"; readonly tabKey: string }
   | {
       readonly _tag: "Reconcile";
       readonly validThreadTabKeys: readonly string[];
-      readonly activeTabKey: string | null;
     }
+  | { readonly _tag: "RestoreActive" }
   | {
       readonly _tag: "UpdatePullRequestStatus";
       readonly tabKey: string;
@@ -117,6 +118,7 @@ const PersistedGlobalTab = Schema.Union([
 
 const PersistedGlobalTabsState = Schema.Struct({
   tabs: Schema.Array(PersistedGlobalTab),
+  activeTabKey: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 const decodePersistedGlobalTabsState = Schema.decodeUnknownOption(PersistedGlobalTabsState);
@@ -225,22 +227,28 @@ export function transitionGlobalTabs(
           !current.tabs.some((tab) => tab._tag === "PullRequests")
         ) {
           return {
-            state: { tabs: [...current.tabs, { _tag: "PullRequests" }, input.tab] },
+            state: {
+              tabs: [...current.tabs, { _tag: "PullRequests" }, input.tab],
+              activeTabKey: tabKey,
+            },
             navigation: { _tag: "KeepCurrent" },
           };
         }
         return {
-          state: { tabs: [...current.tabs, input.tab] },
+          state: { tabs: [...current.tabs, input.tab], activeTabKey: tabKey },
           navigation: { _tag: "KeepCurrent" },
         };
       }
       const existing = current.tabs[existingIndex];
       if (existing === undefined || sameTab(existing, input.tab)) {
-        return { state: current, navigation: { _tag: "KeepCurrent" } };
+        return {
+          state: current.activeTabKey === tabKey ? current : { ...current, activeTabKey: tabKey },
+          navigation: { _tag: "KeepCurrent" },
+        };
       }
       const tabs = [...current.tabs];
       tabs[existingIndex] = input.tab;
-      return { state: { tabs }, navigation: { _tag: "KeepCurrent" } };
+      return { state: { tabs, activeTabKey: tabKey }, navigation: { _tag: "KeepCurrent" } };
     }
     case "Close": {
       const closingIndex = current.tabs.findIndex((tab) => globalTabKey(tab) === input.tabKey);
@@ -248,12 +256,15 @@ export function transitionGlobalTabs(
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
       const tabs = current.tabs.filter((tab) => globalTabKey(tab) !== input.tabKey);
-      if (input.activeTabKey !== input.tabKey) {
-        return { state: { tabs }, navigation: { _tag: "KeepCurrent" } };
+      if (current.activeTabKey !== input.tabKey) {
+        return {
+          state: { tabs, activeTabKey: current.activeTabKey },
+          navigation: { _tag: "KeepCurrent" },
+        };
       }
       const fallback = tabs[closingIndex] ?? tabs[closingIndex - 1];
       return {
-        state: { tabs },
+        state: { tabs, activeTabKey: fallback ? globalTabKey(fallback) : null },
         navigation: fallback ? { _tag: "Activate", tab: fallback } : { _tag: "OpenLanding" },
       };
     }
@@ -265,17 +276,32 @@ export function transitionGlobalTabs(
       if (tabs.length === current.tabs.length) {
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
-      const activeIndex = current.tabs.findIndex((tab) => globalTabKey(tab) === input.activeTabKey);
+      const activeIndex = current.tabs.findIndex(
+        (tab) => globalTabKey(tab) === current.activeTabKey,
+      );
       if (
-        input.activeTabKey === null ||
-        tabs.some((tab) => globalTabKey(tab) === input.activeTabKey)
+        current.activeTabKey === null ||
+        tabs.some((tab) => globalTabKey(tab) === current.activeTabKey)
       ) {
-        return { state: { tabs }, navigation: { _tag: "KeepCurrent" } };
+        return {
+          state: { tabs, activeTabKey: current.activeTabKey },
+          navigation: { _tag: "KeepCurrent" },
+        };
       }
       const fallback = tabs[activeIndex] ?? tabs[activeIndex - 1];
       return {
-        state: { tabs },
+        state: { tabs, activeTabKey: fallback ? globalTabKey(fallback) : null },
         navigation: fallback ? { _tag: "Activate", tab: fallback } : { _tag: "OpenLanding" },
+      };
+    }
+    case "RestoreActive": {
+      if (current.activeTabKey === null) {
+        return { state: current, navigation: { _tag: "KeepCurrent" } };
+      }
+      const activeTab = current.tabs.find((tab) => globalTabKey(tab) === current.activeTabKey);
+      return {
+        state: current,
+        navigation: activeTab ? { _tag: "Activate", tab: activeTab } : { _tag: "KeepCurrent" },
       };
     }
     case "Reorder": {
@@ -293,7 +319,10 @@ export function transitionGlobalTabs(
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
       tabs.splice(targetIndex, 0, moved);
-      return { state: { tabs }, navigation: { _tag: "KeepCurrent" } };
+      return {
+        state: { tabs, activeTabKey: current.activeTabKey },
+        navigation: { _tag: "KeepCurrent" },
+      };
     }
     case "UpdatePullRequestStatus": {
       const tabIndex = current.tabs.findIndex((tab) => globalTabKey(tab) === input.tabKey);
@@ -309,7 +338,10 @@ export function transitionGlobalTabs(
         ...tab,
         reviewStatus: { state: input.state, isDraft: input.isDraft },
       };
-      return { state: { tabs }, navigation: { _tag: "KeepCurrent" } };
+      return {
+        state: { tabs, activeTabKey: current.activeTabKey },
+        navigation: { _tag: "KeepCurrent" },
+      };
     }
   }
 }
@@ -318,7 +350,7 @@ export function transitionGlobalTabs(
 export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
   const decoded = decodePersistedGlobalTabsState(input);
   if (decoded._tag === "None") {
-    return { tabs: [] };
+    return { tabs: [], activeTabKey: null };
   }
 
   const tabs: GlobalTab[] = [];
@@ -355,12 +387,19 @@ export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
       tabs.push(nextTab);
     }
   }
-  return { tabs };
+  const persistedActiveTabKey = decoded.value.activeTabKey ?? null;
+  const activeTabKey =
+    persistedActiveTabKey !== null &&
+    tabs.some((tab) => globalTabKey(tab) === persistedActiveTabKey)
+      ? persistedActiveTabKey
+      : null;
+  return { tabs, activeTabKey };
 }
 
 /** Projects global tabs into their stable local-storage representation. */
 export function projectGlobalTabsState(state: GlobalTabsState): PersistedGlobalTabsState {
   return {
+    activeTabKey: state.activeTabKey,
     tabs: state.tabs.map((tab) => {
       switch (tab._tag) {
         case "ServerThread":

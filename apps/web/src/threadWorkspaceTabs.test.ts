@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "vite-plus/test";
 
 import { findPane, type PaneTabId } from "./splitPaneTree";
 import {
@@ -203,9 +203,7 @@ describe("thread workspace tabs", () => {
     });
 
     expect(
-      surfaceReordered.paneTree.root._tag === "Group"
-        ? surfaceReordered.paneTree.root.tabIds
-        : [],
+      surfaceReordered.paneTree.root._tag === "Group" ? surfaceReordered.paneTree.root.tabIds : [],
     ).toEqual([threadTab.id, filesTab.id, findSurfaceTabs(initial, "diff")[0]!.id]);
     expect(threadReordered).toBe(surfaceReordered);
   });

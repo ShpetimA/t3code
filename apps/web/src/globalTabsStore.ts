@@ -23,6 +23,7 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
   persist(
     (set, get) => ({
       tabs: [],
+      activeTabKey: null,
       transition: (input: GlobalTabsTransition) => {
         const current = get();
         const result = transitionGlobalTabs(current, input);
