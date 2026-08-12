@@ -13,6 +13,12 @@ underlying item. Compact windows continue to use the sidebar so every thread sta
 reachable. Closing the final top tab leaves an empty workspace where you can start a thread or open
 the command center.
 
+Server-thread tabs also have a thread actions menu. It is always visible on the active tab and
+appears when you hover or focus a background tab, so you can pin, settle, snooze, wake, or archive a
+thread without opening it first. Actions labeled **Settle & close tab**, **Snooze & close tab**, and
+**Archive & close tab** close the view only after the thread action succeeds. The separate close
+button and `Cmd/Ctrl+W` remain view-only.
+
 Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
 monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Projects
 without an icon get a stable colored monogram so their tabs remain recognizable at a glance. Drafts

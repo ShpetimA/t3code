@@ -7,6 +7,7 @@ import {
   ChartNoAxesColumnIcon,
   GitBranchIcon,
   GitPullRequestIcon,
+  MoreHorizontalIcon,
   PanelsTopLeftIcon,
   PlusIcon,
   ServerIcon,
@@ -42,6 +43,7 @@ import {
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
+import { useThreadTabLifecycleMenu } from "../hooks/useThreadActionMenu";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import {
@@ -185,6 +187,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const tabs = useGlobalTabsStore((state) => state.tabs);
   const storedActiveTabKey = useGlobalTabsStore((state) => state.activeTabKey);
   const activeTabKey = activeTab === null ? null : globalTabKey(activeTab);
+  const activeTabKeyRef = useRef(activeTabKey);
+  activeTabKeyRef.current = activeTabKey;
   const threadShells = useThreadShells();
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const projects = useProjects();
@@ -283,12 +287,16 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       const result = transitionGlobalTabsStore({
         _tag: "Close",
         tabKey,
-        routeActiveTabKey: activeTabKey,
+        // Lifecycle commands can finish after the user switches tabs. Read
+        // the latest visible route so that navigation made during the await
+        // wins over the close that follows it.
+        routeActiveTabKey: activeTabKeyRef.current,
       });
       applyTabNavigation(navigate, result.navigation);
     },
-    [activeTabKey, navigate],
+    [navigate],
   );
+  const { openMenu: openThreadTabLifecycleMenu } = useThreadTabLifecycleMenu({ closeTab });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -530,10 +538,21 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           event.preventDefault();
                           closeTab(tabKey);
                         }}
+                        onContextMenu={(event) => {
+                          if (tab._tag !== "ServerThread") return;
+                          event.preventDefault();
+                          openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
                       >
                         <button
                           type="button"
-                          className="flex h-full min-w-0 flex-1 items-center pr-6"
+                          className={cn(
+                            "flex h-full min-w-0 flex-1 items-center",
+                            tab._tag === "ServerThread" ? "pr-12" : "pr-6",
+                          )}
                           aria-current={active ? "page" : undefined}
                           onClick={() => navigateToGlobalTab(navigate, tab)}
                         >
@@ -560,6 +579,28 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           {threadTab ? <AnimatedThreadTabStatusMark status={status} /> : null}
                           <span className="truncate">{title}</span>
                         </button>
+                        {tab._tag === "ServerThread" ? (
+                          <button
+                            type="button"
+                            className={cn(
+                              "absolute right-[1.625rem] flex size-6 shrink-0 items-center justify-center rounded-sm text-foreground outline-none transition-[background-color,opacity] duration-150 ease-out hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+                              active
+                                ? "pointer-events-auto opacity-100"
+                                : "pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100",
+                            )}
+                            aria-label={`Thread actions for ${title}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const bounds = event.currentTarget.getBoundingClientRect();
+                              openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
+                                x: bounds.left,
+                                y: bounds.bottom,
+                              });
+                            }}
+                          >
+                            <MoreHorizontalIcon className="size-3.5" />
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className={cn(
