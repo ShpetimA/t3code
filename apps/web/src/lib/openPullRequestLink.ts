@@ -4,11 +4,11 @@ import * as Schema from "effect/Schema";
 import { type MouseEvent, useCallback } from "react";
 
 import { pullRequestHostOf, type SourceControlProviderKind } from "@t3tools/contracts";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { readLocalApi } from "../localApi";
-import { useRightPanelStore } from "../rightPanelStore";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { transitionThreadWorkspace } from "../threadWorkspaceStore";
 
 import { useProjects, useServerConfigs } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -168,10 +168,10 @@ export function findProjectForChangeRequest(
  * lookalike hostname matches no project and stays a link, and the page is handed the project
  * rather than a host to narrow its whole list by.
  *
- * Given a thread, the link opens beside it in the right panel instead of taking the whole app to
- * the pull requests page: a reader following a link the agent wrote is reading the thread, and
- * should still be reading it afterwards. Any change request opens there, not only the thread's
- * own, since the panel is told which one to show.
+ * Given a thread, the link opens as a tab in that thread's workspace instead of taking the whole
+ * app to the pull requests page: a reader following a link the agent wrote is reading the thread,
+ * and should still be reading it afterwards. Any change request opens there, not only the
+ * thread's own, since the surface is told which one to show.
  */
 export function useOpenChangeRequestLink(
   threadRef?: ScopedThreadRef,
@@ -204,12 +204,16 @@ export function useOpenChangeRequestLink(
       event.preventDefault();
       event.stopPropagation();
       if (resolvedThreadRef) {
-        useRightPanelStore.getState().openPullRequest(resolvedThreadRef, {
-          projectId: project.id,
-          // The identity's own spelling, not the one read out of the URL: the panel asks the
-          // provider for this repository, while matching a link only ever compares lower case.
-          repository: project.repositoryIdentity?.displayName ?? parsed.repository,
-          number: parsed.number,
+        transitionThreadWorkspace(resolvedThreadRef, {
+          _tag: "OpenSurface",
+          surface: {
+            _tag: "PullRequest",
+            projectId: project.id,
+            // The identity's own spelling, not the one read out of the URL: the surface asks the
+            // provider for this repository, while matching a link only ever compares lower case.
+            repository: project.repositoryIdentity?.displayName ?? parsed.repository,
+            number: parsed.number,
+          },
         });
         return true;
       }

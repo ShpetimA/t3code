@@ -62,7 +62,7 @@ interface ChatHeaderProps {
   availableEditors: ReadonlyArray<EditorId>;
   reserveLayoutControlsSpace: boolean;
   gitCwd: string | null;
-  readonly onOpenPullRequest?: ((number: number) => void) | undefined;
+  readonly onOpenPullRequest?: ((number: number) => boolean) | undefined;
   onNewThreadInProject: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;

@@ -78,6 +78,7 @@ export function PendingReviewCommentCard({
 
 /** A conversation already on the host, with whatever this host lets the reader do to it. */
 export function ReviewThreadCard({
+  className,
   thread,
   workspaceRoot,
   canReply,
@@ -88,6 +89,7 @@ export function ReviewThreadCard({
   onReply,
   onToggleResolved,
 }: {
+  className?: string;
   thread: PullRequestReviewThread;
   workspaceRoot: string;
   canReply: boolean;
@@ -125,7 +127,7 @@ export function ReviewThreadCard({
 
   return (
     <div
-      className={CARD_CLASS}
+      className={cn(CARD_CLASS, className)}
       contentEditable={false}
       onPointerDown={(event) => event.stopPropagation()}
     >

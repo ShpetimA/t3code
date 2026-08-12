@@ -8,43 +8,28 @@ import type {
   PullRequestState,
 } from "@t3tools/contracts";
 import {
-  ArrowDownUpIcon,
-  ArrowLeftIcon,
   ArrowUpRightIcon,
   BookOpenIcon,
-  CircleDotIcon,
   ChevronDownIcon,
-  FileDiffIcon,
   FolderGit2Icon,
   GitBranchIcon,
-  GitCommitHorizontalIcon,
   GitMergeIcon,
   GitPullRequestClosedIcon,
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
   HammerIcon,
   MessageCircleQuestionIcon,
-  MessageSquareIcon,
   LinkIcon,
   MoreHorizontalIcon,
   PanelRightIcon,
   RefreshCwIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
-import { useCopyToClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
@@ -53,7 +38,6 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 import {
   AlertDialog,
@@ -96,15 +80,9 @@ import {
   readableFailure,
   type PullRequestFinding,
 } from "./pullRequestDetail.logic";
-import {
-  PullRequestActorLabel,
-  PullRequestDiffStat,
-  PullRequestMetaLine,
-  resolvePullRequestState,
-  summarizePullRequestChecks,
-} from "./pullRequestPresentation";
+import { resolvePullRequestState, summarizePullRequestChecks } from "./pullRequestPresentation";
 
-type DetailTab = "summary" | "timeline" | "code";
+type DetailTab = "summary" | "activity" | "code";
 
 const ACTION_SUCCESS_LABELS: Record<PullRequestAction, string> = {
   merge: "Pull request merged",
@@ -144,7 +122,7 @@ const OPEN_ON_HOST_LABELS: Partial<Record<string, string>> = {
 
 const TABS: ReadonlyArray<{ value: DetailTab; label: string }> = [
   { value: "summary", label: "Summary" },
-  { value: "timeline", label: "Timeline" },
+  { value: "activity", label: "Activity" },
   { value: "code", label: "Code" },
 ];
 
@@ -169,7 +147,6 @@ export function PullRequestDetailPanel({
   onClose,
   onStateChange,
   context = "page",
-  chromeVariant = "full",
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
@@ -186,7 +163,7 @@ export function PullRequestDetailPanel({
   onActed?: () => void;
   /** Page-owned detail columns use this to clear the selected pull request. */
   onClose?: () => void;
-  /** Keeps compact chrome, such as the right-panel tab, in step with refreshed host state. */
+  /** Keeps the workspace tab in step with refreshed host state. */
   onStateChange?: (status: {
     projectId: string;
     repository: string;
@@ -200,16 +177,9 @@ export function PullRequestDetailPanel({
    * again is at best a no-op and at worst git refusing a branch two checkouts.
    */
   context?: "page" | "thread";
-  /**
-   * How the metadata above the content behaves: `full` keeps every row pinned; `collapse`
-   * folds the whole of it into the top row once the active tab scrolls, and unfolds at the
-   * top — the chrome spends its height on what is being read.
-   */
-  chromeVariant?: "full" | "collapse";
 }) {
   const pullRequestKey = `${reference.projectId}:${reference.repository}#${reference.number}`;
   const [tab, setTab] = useState<DetailTab>("summary");
-  const [timelineOrder, setTimelineOrder] = useState<"newest" | "oldest">("newest");
   const [codeCommitScope, setCodeCommitScope] = useState<{
     readonly pullRequestKey: string;
     readonly oid: string | null;
@@ -236,45 +206,11 @@ export function PullRequestDetailPanel({
       previous.has(tab) ? previous : new Set<DetailTab>(previous).add(tab),
     );
   }, [tab]);
-  const [chromeCondensed, setChromeCondensed] = useState(false);
-  // Each tab remembers whether its chrome was condensed. Only the active tab can emit scroll
-  // events, so the capture handler always writes the active tab's entry — and a tab switch
-  // reads the destination's memory instead of inheriting the tab being left. A tab too short
-  // to scroll remembers "expanded", which is what keeps it from being stranded under a chrome
-  // it has no scrollbar to reopen.
-  const chromeStateByTab = useRef<Partial<Record<DetailTab, boolean>>>({});
-  useEffect(() => {
-    setChromeCondensed(chromeStateByTab.current[tab] ?? false);
-  }, [tab]);
-  const condensed = chromeVariant === "collapse" && chromeCondensed;
-  // Collapsing removes the fold's height from the chrome, which would otherwise hand that
-  // height to the scrollport and leap the content up by it mid-scroll. The cure is exact
-  // compensation: collapse only once the reader has scrolled at least the fold's height,
-  // then give that height back to `scrollTop` before the next paint — the content under
-  // their eyes does not move, and the collapse itself is the only thing that changes.
-  const scrollerRef = useRef<HTMLElement | null>(null);
-  const foldRef = useRef<HTMLDivElement | null>(null);
-  // The condensed chrome's second row opens as the fold closes, so the height the scrollport
-  // gains is the fold's minus this row's. Measured the same way the fold is: `scrollHeight`
-  // through a zero track reads its natural height in either state.
-  const condensedRowRef = useRef<HTMLDivElement | null>(null);
-  const compensationRef = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    if (compensationRef.current === null) return;
-    const scroller = scrollerRef.current;
-    const delta = compensationRef.current;
-    compensationRef.current = null;
-    if (scroller) scroller.scrollTop = Math.max(0, scroller.scrollTop + delta);
-  }, [condensed]);
   const [mergeMethod, setMergeMethod] = useState<PullRequestMergeMethod>("merge");
   const [confirmAction, setConfirmAction] = useState<"merge" | "close" | null>(null);
   // Which handoff is preparing, keyed so a per-finding button can say "Preparing..." on itself
   // alone. One at a time whatever the key: they all check the same pull request out.
   const [handoff, setHandoff] = useState<string | null>(null);
-  const { copyToClipboard: copyBranchToClipboard, isCopied: isBranchCopied } = useCopyToClipboard({
-    target: "branch name",
-    timeout: 1600,
-  });
 
   // The chunk is fetched as soon as the panel exists rather than waiting for the Code tab to be
   // clicked, so a reader who does click it lands on a chunk already in the module cache.
@@ -719,8 +655,8 @@ export function PullRequestDetailPanel({
             : allowedMergeMethods.length > 0
               ? "merge"
               : null;
-  // The pull request number carries this state in the overview and the right-panel tab mirrors
-  // it. Conflicts keep their own row below: an open pull request remains green there.
+  // The pull request number carries this state in the overview and the workspace tab mirrors it.
+  // Conflicts keep their own badge: an open pull request remains green there.
   const statePresentation = detail
     ? resolvePullRequestState({ state: detail.state, isDraft: detail.isDraft })
     : null;
@@ -728,91 +664,34 @@ export function PullRequestDetailPanel({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-background">
-      {/* The top row's geometry never changes: both of its states occupy the same stacked
-          cell and crossfade, so the actions on the right have one home whatever the chrome
-          is doing below. The fold and this fade share one 200ms clock. */}
       <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border-b border-border/60">
-        {/* The fixed height lives on the two top-row cells — not the grid, whose later rows
-            are the fold — so the actions have one immovable home in both states. */}
-        <div className="ml-4 grid h-11 min-w-0 items-center">
-          <div
-            aria-hidden={condensed}
-            inert={condensed}
-            className={cn(
-              "col-start-1 row-start-1 flex min-w-0 items-center gap-1 text-sm text-muted-foreground transition-opacity sm:text-xs motion-reduce:transition-none",
-              // Sequenced, not simultaneous: the leaving layer clears quickly before the
-              // arriving one lands, so no frame shows both texts superimposed at half opacity.
-              condensed
-                ? "pointer-events-none opacity-0 duration-100"
-                : "opacity-100 delay-75 duration-150",
-            )}
-          >
-            {detail && statePresentation ? (
-              <>
-                <span className="min-w-0 truncate" title={detail.repository}>
-                  {detail.repository}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}
-                  className={cn(
-                    "shrink-0 font-medium underline-offset-2 hover:underline",
-                    statePresentation.toneClassName,
-                  )}
-                  title={OPEN_ON_HOST_LABELS[detail.provider] ?? "Open on host"}
-                  aria-label={`Open pull request #${detail.number} on host`}
+        <div className="ml-4 flex h-11 min-w-0 items-center gap-1.5 text-sm sm:text-xs">
+          {detail && statePresentation ? (
+            <>
+              <span className="min-w-0 truncate text-muted-foreground" title={detail.repository}>
+                {detail.repository}
+              </span>
+              <span className={cn("shrink-0 font-medium", statePresentation.toneClassName)}>
+                #{detail.number}
+              </span>
+              <span className="min-w-0 truncate font-medium text-foreground" title={detail.title}>
+                {detail.title}
+              </span>
+              {conflicting ? (
+                <Badge
+                  variant="error"
+                  className="h-5 shrink-0 gap-1 rounded px-1.5 text-[10px] text-destructive"
                 >
-                  #{detail.number}
-                </button>
-              </>
-            ) : null}
-          </div>
-          <div
-            aria-hidden={!condensed}
-            inert={!condensed}
-            className={cn(
-              "col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 text-sm transition-opacity sm:text-xs motion-reduce:transition-none",
-              condensed
-                ? "opacity-100 delay-75 duration-150"
-                : "pointer-events-none opacity-0 duration-100",
-            )}
-          >
-            {detail && statePresentation ? (
-              <>
-                <button
-                  type="button"
-                  tabIndex={condensed ? 0 : -1}
-                  onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}
-                  className={cn(
-                    "shrink-0 font-medium underline-offset-2 hover:underline",
-                    statePresentation.toneClassName,
-                  )}
-                  title={OPEN_ON_HOST_LABELS[detail.provider] ?? "Open on host"}
-                  aria-label={`Open pull request #${detail.number} on host`}
-                >
-                  #{detail.number}
-                </button>
-                <span className="min-w-0 truncate font-medium text-foreground" title={detail.title}>
-                  {detail.title}
-                </span>
-                {conflicting ? (
-                  <Badge
-                    variant="error"
-                    className="h-5 shrink-0 gap-1 rounded px-1.5 text-[10px] text-destructive"
-                  >
-                    <TriangleAlertIcon className="size-3" />
-                    Conflicts
-                  </Badge>
-                ) : checksSummary ? (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {checksSummary}
-                  </span>
-                ) : null}
-              </>
-            ) : null}
-          </div>
+                  <TriangleAlertIcon className="size-3" />
+                  Conflicts
+                </Badge>
+              ) : checksSummary ? (
+                <span className="shrink-0 text-[10px] text-muted-foreground">{checksSummary}</span>
+              ) : null}
+            </>
+          ) : null}
         </div>
-        <div className="mr-4 flex h-11 min-w-0 flex-nowrap items-center justify-end gap-1">
+        <div className="col-start-2 row-start-2 mr-4 flex h-10 min-w-0 flex-nowrap items-center justify-end gap-1">
           {detail ? (
             <>
               <Menu>
@@ -997,6 +876,16 @@ export function PullRequestDetailPanel({
                 >
                   {actionPending ? "Merging..." : "Merge"}
                 </Button>
+              ) : primaryAction === "resolve" ? (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="text-destructive"
+                  disabled={handoff !== null}
+                  onClick={startResolveConflicts}
+                >
+                  {handoff === "conflicts" ? "Preparing..." : "Resolve conflicts"}
+                </Button>
               ) : null}
             </>
           ) : null}
@@ -1012,175 +901,10 @@ export function PullRequestDetailPanel({
           ) : null}
         </div>
 
-        {/* The condensed chrome's second row: the tabs that the closing fold takes with it,
-            and compact copies of the branch pair and diff stat so they stay in sight while
-            the full rows are folded away. Same zero-track mechanism as the fold, inverted. */}
-        <div className={cn("col-span-2 grid", condensed ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-          <div
-            ref={condensedRowRef}
-            className={cn(
-              "min-h-0 overflow-hidden",
-              condensed
-                ? "opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none"
-                : "opacity-0",
-            )}
-            inert={!condensed}
-          >
-            {detail ? (
-              <div className="flex min-w-0 items-center gap-1 px-4 pb-2">
-                <nav aria-label="Pull request tabs" className="flex shrink-0 items-center gap-0.5">
-                  {visibleTabs.map((item) => (
-                    <button
-                      key={item.value}
-                      type="button"
-                      tabIndex={condensed ? 0 : -1}
-                      aria-pressed={tab === item.value}
-                      onClick={() => setTab(item.value)}
-                      className={cn(
-                        "rounded-md px-2 py-1 text-[11px] transition-colors",
-                        tab === item.value
-                          ? "bg-accent text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </nav>
-                <span
-                  className="ml-auto inline-flex min-w-0 shrink items-center gap-1 font-mono text-[11px] text-muted-foreground"
-                  title={`${detail.baseBranch} ← ${detail.headBranch}`}
-                >
-                  <span className="truncate">{detail.baseBranch}</span>
-                  <ArrowLeftIcon aria-label="receives changes from" className="size-3 shrink-0" />
-                  <span className="truncate">{detail.headBranch}</span>
-                </span>
-                <span className="ml-2 inline-flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1 tabular-nums">
-                    <FileDiffIcon className="size-3" />
-                    {detail.changedFiles.toLocaleString()}
-                  </span>
-                  <PullRequestDiffStat
-                    additions={detail.additions}
-                    deletions={detail.deletions}
-                    className="shrink-0 font-mono text-[11px]"
-                  />
-                </span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Folding is a grid track going to zero: the rows below stay mounted, the track
-            animates closed over them, and `inert` takes the hidden controls out of the tab
-            order for as long as the chrome is condensed. */}
-        <div
-          className={cn(
-            "col-span-2 grid",
-            // Instant in both directions: the scroll compensation keeps the content pinned
-            // through either flip, and an animated track would fight it frame by frame. The
-            // top row's crossfade is the transition.
-            condensed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
-          )}
-        >
-          <div
-            ref={foldRef}
-            // One-way on purpose: appearing content eases in over ground the instant track
-            // already reserved; departing content cuts, because its ground is gone in the
-            // same frame and the scroll compensation reads it as scrolled past.
-            className={cn(
-              "min-h-0 overflow-hidden",
-              condensed
-                ? "opacity-0"
-                : "opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none",
-            )}
-            inert={condensed}
-          >
-            {detail ? (
-              <div className="col-span-2 mt-3 min-w-0 px-4 pb-4">
-                <h1 className="text-base font-semibold leading-snug">{detail.title}</h1>
-                <PullRequestMetaLine className="mt-2 text-xs text-muted-foreground">
-                  <PullRequestActorLabel actor={detail.author} className="font-medium" />
-                  <span>updated {formatRelativeTimeLabel(detail.updatedAt)}</span>
-                </PullRequestMetaLine>
-
-                <div className="mt-4 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                  <code
-                    className="min-w-0 max-w-48 shrink truncate rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground"
-                    title={detail.baseBranch}
-                  >
-                    {detail.baseBranch}
-                  </code>
-                  <ArrowLeftIcon aria-label="receives changes from" className="size-4 shrink-0" />
-                  <button
-                    type="button"
-                    className="grid min-w-0 max-w-64 shrink cursor-pointer rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-                    aria-label={isBranchCopied ? "Branch name copied" : "Copy pull request branch"}
-                    title={isBranchCopied ? "Copied" : "Copy pull request branch"}
-                    onClick={() => copyBranchToClipboard(detail.headBranch)}
-                  >
-                    <code
-                      className={cn(
-                        "col-start-1 row-start-1 min-w-0 truncate transition-opacity duration-150 motion-reduce:transition-none",
-                        isBranchCopied ? "opacity-0" : "opacity-100",
-                      )}
-                      title={detail.headBranch}
-                    >
-                      {detail.headBranch}
-                    </code>
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "col-start-1 row-start-1 truncate text-center transition-opacity duration-150 motion-reduce:transition-none",
-                        isBranchCopied ? "opacity-100" : "opacity-0",
-                      )}
-                    >
-                      Copied
-                    </span>
-                  </button>
-                  <span className="ml-auto inline-flex shrink-0 items-center justify-end gap-2">
-                    <span className="inline-flex items-center gap-1.5 tabular-nums">
-                      <FileDiffIcon className="size-3.5" />
-                      {detail.changedFiles.toLocaleString()}{" "}
-                      {detail.changedFiles === 1 ? "file" : "files"}
-                    </span>
-                    <PullRequestDiffStat
-                      additions={detail.additions}
-                      deletions={detail.deletions}
-                      className="shrink-0 font-mono text-xs"
-                    />
-                  </span>
-                </div>
-              </div>
-            ) : null}
-
-            {detail && conflicting ? (
-              <div className="col-span-2 flex items-center gap-1 px-4 pb-3">
-                <Badge
-                  variant="error"
-                  className="h-auto gap-1.5 rounded-md px-3 py-1.5 text-xs text-destructive"
-                >
-                  <TriangleAlertIcon className="size-3.5" />
-                  Merge conflicts
-                </Badge>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  className="ml-auto text-destructive hover:bg-destructive/8 hover:text-destructive"
-                  disabled={handoff !== null}
-                  onClick={startResolveConflicts}
-                >
-                  {handoff === "conflicts" ? "Preparing..." : "Resolve in a new thread"}
-                  <ArrowUpRightIcon className="size-3.5 text-destructive" />
-                </Button>
-              </div>
-            ) : null}
-
-            {detail ? (
-              <nav
-                className="col-span-2 flex min-w-0 items-center gap-1 overflow-x-auto border-t border-border/60 px-4 py-2"
-                aria-label="Pull request tabs"
-              >
+        <div className="col-start-1 row-start-2 min-h-0 overflow-hidden">
+          {detail ? (
+            <div className="flex min-w-0 items-center gap-1 px-4">
+              <nav aria-label="Pull request tabs" className="flex shrink-0 items-center gap-0.5">
                 {visibleTabs.map((item) => (
                   <button
                     key={item.value}
@@ -1188,7 +912,7 @@ export function PullRequestDetailPanel({
                     aria-pressed={tab === item.value}
                     onClick={() => setTab(item.value)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition-colors",
+                      "min-h-10 rounded-md px-3 text-xs transition-colors",
                       tab === item.value
                         ? "bg-accent text-foreground"
                         : "text-muted-foreground hover:text-foreground",
@@ -1197,119 +921,17 @@ export function PullRequestDetailPanel({
                     {item.label}
                   </button>
                 ))}
-                {tab === "summary" ? (
-                  <span
-                    className="ml-auto inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-                    aria-label={checksSummary ? `Checks: ${checksSummary}` : "Checks"}
-                  >
-                    <CircleDotIcon aria-hidden className="size-3.5" />
-                    {checksSummary}
-                  </span>
-                ) : tab === "timeline" ? (
-                  <div className="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                    <PullRequestMetaLine
-                      className={cn(
-                        "whitespace-nowrap text-[11px] transition-opacity",
-                        (activityPending || activityError) && "opacity-35",
-                      )}
-                    >
-                      <span
-                        className="inline-flex items-center gap-1"
-                        aria-label={
-                          activityError
-                            ? "Comments unavailable"
-                            : `${detail.commentCount.toLocaleString()} ${
-                                detail.commentCount === 1 ? "comment" : "comments"
-                              }`
-                        }
-                      >
-                        <MessageSquareIcon aria-hidden className="size-3" />
-                        {activityError
-                          ? "—"
-                          : activityPending
-                            ? "…"
-                            : detail.commentCount.toLocaleString()}
-                      </span>
-                      <span
-                        className="inline-flex items-center gap-1"
-                        aria-label={
-                          activityError
-                            ? "Commits unavailable"
-                            : `${detail.commits.length.toLocaleString()} ${
-                                detail.commits.length === 1 ? "commit" : "commits"
-                              }`
-                        }
-                      >
-                        <GitCommitHorizontalIcon aria-hidden className="size-3" />
-                        {activityError
-                          ? "—"
-                          : activityPending
-                            ? "…"
-                            : detail.commits.length.toLocaleString()}
-                      </span>
-                    </PullRequestMetaLine>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      className="h-7 px-2 text-[10px] text-muted-foreground"
-                      aria-label={
-                        timelineOrder === "newest"
-                          ? "Show oldest activity first"
-                          : "Show newest activity first"
-                      }
-                      onClick={() =>
-                        setTimelineOrder((value) => (value === "newest" ? "oldest" : "newest"))
-                      }
-                    >
-                      <ArrowDownUpIcon aria-hidden className="size-3" />
-                      {timelineOrder === "newest" ? "Newest first" : "Oldest first"}
-                    </Button>
-                  </div>
-                ) : null}
               </nav>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div
-        className="relative min-h-0 flex-1 overflow-hidden"
-        // Scroll does not bubble, but it captures: one listener hears every tab's own scroll
-        // container. Collapse past two line-heights, expand only back at the very top, so the
-        // boundary row cannot flap the chrome open and shut.
-        onScrollCapture={(event) => {
-          if (chromeVariant !== "collapse") return;
-          const scroller = event.target as HTMLElement;
-          scrollerRef.current = scroller;
-          const top = scroller.scrollTop;
-          setChromeCondensed((previous) => {
-            let next = previous;
-            // `scrollHeight` reads the fold's natural height whichever state the track is in.
-            const foldHeight = foldRef.current?.scrollHeight ?? 0;
-            // The chrome trades the fold for the condensed second row, so the height the
-            // scrollport actually gains is the difference between the two.
-            const chromeDelta = foldHeight - (condensedRowRef.current?.scrollHeight ?? 0);
-            if (previous) {
-              // The hard top reopens the chrome. The refund puts the reader a fold's height
-              // from the top, pinned to the same pixels — the metadata is scrolled up to,
-              // not thrown at them.
-              if (top < 4 && foldHeight > 0) {
-                compensationRef.current = chromeDelta;
-                next = false;
-              }
-            } else if (foldHeight > 0 && top > foldHeight + 32) {
-              compensationRef.current = -chromeDelta;
-              next = true;
-            }
-            chromeStateByTab.current[tab] = next;
-            return next;
-          });
-        }}
-      >
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {detailQuery.isPending && !detail ? (
           // The ghost wears the shape of the tab being waited on, so switching tabs mid-load
           // does not flash a summary outline under a timeline heading.
-          tab === "timeline" ? (
+          tab === "activity" ? (
             <PullRequestTimelineGhost />
           ) : tab === "code" ? (
             <DiffPanelLoadingState label="Loading pull request diff..." />
@@ -1326,16 +948,14 @@ export function PullRequestDetailPanel({
                   environmentId={environmentId}
                   reference={reference}
                   detail={detail}
-                  activityPending={activityPending}
-                  activityError={activityError}
                   pendingFinding={handoff}
                   onFixFinding={startFixFinding}
                   onRefresh={refreshDetail}
                 />
               </div>
             ) : null}
-            {mountedTabs.has("timeline") ? (
-              <div className={cn("absolute inset-0", tab !== "timeline" && "invisible")}>
+            {mountedTabs.has("activity") ? (
+              <div className={cn("absolute inset-0", tab !== "activity" && "invisible")}>
                 {activityPending ? (
                   <PullRequestTimelineGhost />
                 ) : activityError ? (
@@ -1345,9 +965,13 @@ export function PullRequestDetailPanel({
                   />
                 ) : (
                   <PullRequestTimelineTab
+                    environmentId={environmentId}
+                    reference={reference}
                     detail={detail}
-                    order={timelineOrder}
+                    pendingFinding={handoff}
+                    onFixFinding={startFixFinding}
                     onOpenCommit={openCommit}
+                    onRefresh={refreshDetail}
                   />
                 )}
               </div>

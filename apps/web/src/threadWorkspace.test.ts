@@ -49,6 +49,33 @@ describe("thread workspace lifecycle", () => {
     expect(findSurfaceTabs(result.state, "files")).toHaveLength(1);
   });
 
+  test("deduplicates a pull request tab within its thread workspace", () => {
+    const request = {
+      _tag: "OpenSurface",
+      surface: {
+        _tag: "PullRequest",
+        projectId: "project-test",
+        repository: "owner/repository",
+        number: 42,
+      },
+    } as const;
+
+    transitionThreadWorkspace(THREAD_REF, request);
+    const reopened = transitionThreadWorkspace(THREAD_REF, request).state;
+    const pullRequest = reopened.surfaces[0];
+
+    expect(reopened.surfaces).toHaveLength(1);
+    expect(pullRequest).toBeDefined();
+    if (!pullRequest) return;
+    expect(findSurfaceTabs(reopened, pullRequest.id)).toHaveLength(1);
+    expect(
+      selectThreadWorkspaceOrDefault(
+        useThreadWorkspaceStore.getState().byThreadKey,
+        OTHER_THREAD_REF,
+      ).surfaces,
+    ).toEqual([]);
+  });
+
   test("reveals agents in a new pane beside the thread", () => {
     const result = transitionThreadWorkspace(THREAD_REF, {
       _tag: "RevealAgentsBesideThread",

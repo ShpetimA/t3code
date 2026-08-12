@@ -1168,7 +1168,6 @@ function PullRequestsRouteView() {
                   isDraft: status.isDraft,
                 });
               }}
-              chromeVariant="collapse"
             />
           </PreviewPanelShell>
         ) : (
@@ -1237,7 +1236,6 @@ function PullRequestsRouteView() {
                     reviewingQuery.refresh();
                   }}
                   onStateChange={handlePullRequestTabStatusChange}
-                  chromeVariant="collapse"
                 />
               </RightPanelTabs>
             ) : null}

@@ -97,10 +97,10 @@ interface GitActionsControlProps {
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
   /**
-   * Opens the thread's own change request beside it. Absent when the thread has no project to
-   * place it against, in which case it still opens in the browser.
+   * Opens the thread's own change request in its workspace. Returns false when the workspace
+   * cannot represent it, in which case the control falls back to the browser.
    */
-  onOpenPullRequest?: ((number: number) => void) | undefined;
+  onOpenPullRequest?: ((number: number) => boolean) | undefined;
 }
 
 interface PendingDefaultBranchAction {
@@ -1221,10 +1221,9 @@ export default function GitActionsControl({
 
   const openExistingPr = useCallback(async () => {
     const openPr = gitStatusForActions?.pr?.state === "open" ? gitStatusForActions.pr : null;
-    // Beside the thread where it was made, the way the browser opens beside it. Checked before
-    // the shell, which opening in the app does not need.
-    if (openPr && onOpenPullRequest) {
-      onOpenPullRequest(openPr.number);
+    // In the thread workspace where it was made. Checked before the shell, which opening in the
+    // app does not need.
+    if (openPr && onOpenPullRequest?.(openPr.number)) {
       return;
     }
     const api = readLocalApi();

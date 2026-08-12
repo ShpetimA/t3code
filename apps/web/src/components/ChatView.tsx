@@ -3367,7 +3367,7 @@ function ChatViewContent(props: ChatViewProps) {
         !activeProject ||
         threadRepository === null
       ) {
-        return;
+        return false;
       }
       transitionThreadWorkspace(activeThreadRef, {
         _tag: "OpenSurface",
@@ -3379,6 +3379,7 @@ function ChatViewContent(props: ChatViewProps) {
         },
         presentation: workspaceSurfacePresentation,
       });
+      return true;
     },
     [
       activeProject,
@@ -6389,6 +6390,7 @@ function ChatViewContent(props: ChatViewProps) {
           availableEditors={availableEditors}
           reserveLayoutControlsSpace={!workspaceMode && !rightPanelOpen}
           gitCwd={gitCwd}
+          onOpenPullRequest={openThreadPullRequest}
           onNewThreadInProject={handleNewThreadInActiveProject}
           onRunProjectScript={runProjectScript}
           onAddProjectScript={saveProjectScript}

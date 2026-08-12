@@ -47,3 +47,8 @@ The row below the active tab is contextual. For the thread it contains the usual
 editor, script, and source-control actions. For a file it shows the file path and file actions.
 The group layout, focused group, and split sizes are restored when T3 Code reopens, then reconciled
 with the thread's available files, terminals, diffs, previews, and agents.
+
+On web and desktop, when the current branch has a pull request, **View PR** and the pull request
+number beside the branch open that review as a tab in the current thread workspace. Opening it
+again activates the existing tab. Review links in the conversation use the same behavior. The
+hosting provider remains available from the review's overflow menu when you need its website.

@@ -38,10 +38,13 @@ T3 Code works with the platforms your team already uses:
 **Stay on top of open reviews**
 
 - See if your current branch already has an open PR/MR
-- Open several reviews from the **Pull requests** page as tabs in the right panel
-- While working in a thread, open linked reviews in the same compact right-panel tabs without
-  leaving the conversation
-- Open the review directly in your browser with one click
+- Open several reviews from the **Pull requests** page as full workspace tabs
+- On web and desktop, open the current branch review or any linked review in that thread's
+  workspace tabs without leaving the conversation
+- Use **Summary** for the description, checks, status, reviewers, and branch details; **Activity**
+  for commits and discussion; and **Code** for the complete diff
+- In **Code**, use **Files** to show or hide the file tree and jump directly to a changed file
+- Open the review on its hosting provider from the review's overflow menu
 - Check out a teammate's branch to review code locally
 
 ### Know Your Setup at a Glance
