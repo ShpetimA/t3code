@@ -7,6 +7,7 @@ import {
   globalTabKey,
   parsePersistedGlobalTabsState,
   projectGlobalTabsState,
+  resolveGlobalTabDropTargetIndex,
   resolveGlobalTabRouteOpen,
   transitionGlobalTabs,
   type GlobalTab,
@@ -180,6 +181,27 @@ describe("global tabs", () => {
 
     expect(state.tabs).toEqual([usage]);
     expect(parsePersistedGlobalTabsState(projectGlobalTabsState(state))).toEqual(state);
+  });
+
+  it("reorders at the indicated edge of a hovered tab", () => {
+    const first = serverTab("one");
+    const second = serverTab("two");
+    const third = serverTab("three");
+    const current = { tabs: [first, second, third] };
+
+    const beforeThird = transitionGlobalTabs(current, {
+      _tag: "Reorder",
+      tabKey: globalTabKey(first),
+      targetIndex: resolveGlobalTabDropTargetIndex(0, 2, "before"),
+    });
+    const afterFirst = transitionGlobalTabs(current, {
+      _tag: "Reorder",
+      tabKey: globalTabKey(third),
+      targetIndex: resolveGlobalTabDropTargetIndex(2, 0, "after"),
+    });
+
+    expect(beforeThird.state.tabs).toEqual([second, first, third]);
+    expect(afterFirst.state.tabs).toEqual([first, third, second]);
   });
 
   it("updates pull request status without changing its position", () => {

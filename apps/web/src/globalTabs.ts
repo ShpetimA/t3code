@@ -50,6 +50,9 @@ export interface GlobalTabsState {
   readonly tabs: readonly GlobalTab[];
 }
 
+/** The edge of a hovered tab where a dragged global tab will be inserted. */
+export type GlobalTabDropPosition = "before" | "after";
+
 /** Navigation requested as a consequence of a tab transition. */
 export type GlobalTabNavigation =
   | { readonly _tag: "KeepCurrent" }
@@ -135,6 +138,16 @@ export function globalTabKey(tab: GlobalTab): string {
     case "PullRequest":
       return `pull-request:${tab.environmentId}:${tab.projectId}:${tab.repository.toLowerCase()}#${tab.number}`;
   }
+}
+
+/** Resolves a hovered tab edge to the moved tab's final index. */
+export function resolveGlobalTabDropTargetIndex(
+  sourceIndex: number,
+  hoveredIndex: number,
+  position: GlobalTabDropPosition,
+): number {
+  const insertionIndex = hoveredIndex + (position === "after" ? 1 : 0);
+  return insertionIndex > sourceIndex ? insertionIndex - 1 : insertionIndex;
 }
 
 /** Whether the tab points at a thread whose lifetime is reconciled from thread projections. */

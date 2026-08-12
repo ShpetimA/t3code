@@ -6,6 +6,7 @@ import {
   BotIcon,
   ChartNoAxesColumnIcon,
   CircleDashedIcon,
+  CircleDotIcon,
   GitBranchIcon,
   GitPullRequestIcon,
   PanelsTopLeftIcon,
@@ -21,6 +22,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -30,8 +32,10 @@ import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import {
   globalTabKey,
   isGlobalThreadTab,
+  resolveGlobalTabDropTargetIndex,
   resolveGlobalTabRouteOpen,
   type GlobalTab,
+  type GlobalTabDropPosition,
   type GlobalTabNavigation,
 } from "../globalTabs";
 import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStore";
@@ -140,7 +144,7 @@ function threadTabStatusGlyph(label: ThreadStatusPill["label"]): string {
     case "Plan Ready":
       return "≡";
     case "Completed":
-      return "✓";
+      return "";
     case "Working":
       return "";
   }
@@ -149,9 +153,11 @@ function threadTabStatusGlyph(label: ThreadStatusPill["label"]): string {
 function ThreadTabStatusMark({
   status,
   decorative = false,
+  animatePulse = true,
 }: {
   readonly status: ThreadStatusPill;
   readonly decorative?: boolean;
+  readonly animatePulse?: boolean;
 }) {
   return (
     <span
@@ -160,15 +166,53 @@ function ThreadTabStatusMark({
       className={cn(
         "inline-flex size-3 shrink-0 items-center justify-center font-mono text-[10px] leading-none font-semibold",
         status.colorClass,
-        status.pulse && "animate-status-pulse motion-reduce:animate-none",
+        animatePulse && status.pulse && "animate-status-pulse motion-reduce:animate-none",
       )}
       role={decorative ? undefined : "img"}
     >
       {status.label === "Working" ? (
         <CircleDashedIcon className="size-3" />
+      ) : status.label === "Completed" ? (
+        <CircleDotIcon className="size-3" />
       ) : (
         threadTabStatusGlyph(status.label)
       )}
+    </span>
+  );
+}
+
+function AnimatedThreadTabStatusMark({ status }: { readonly status: ThreadStatusPill | null }) {
+  const [lastStatus, setLastStatus] = useState(status);
+  useEffect(() => {
+    if (status !== null) setLastStatus(status);
+  }, [status]);
+
+  const visible = status !== null;
+  const displayedStatus = status ?? lastStatus;
+  return (
+    <span
+      aria-hidden={visible ? undefined : true}
+      aria-label={status?.label}
+      data-thread-tab-status-slot=""
+      data-visible={visible}
+      role={visible ? "img" : undefined}
+      className={cn(
+        "pointer-events-none inline-flex h-3 shrink-0 items-center justify-center transition-[width,margin-right] duration-150 motion-reduce:transition-none",
+        visible ? "mr-1.5 w-3 ease-out" : "mr-0 w-0 ease-in",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-flex size-3 origin-center items-center justify-center transition-[scale,opacity,filter] duration-150 motion-reduce:transition-none",
+          visible
+            ? "scale-100 opacity-100 blur-0 ease-out"
+            : "scale-[0.25] opacity-0 blur-[4px] ease-in",
+        )}
+      >
+        {displayedStatus ? (
+          <ThreadTabStatusMark status={displayedStatus} decorative animatePulse={visible} />
+        ) : null}
+      </span>
     </span>
   );
 }
@@ -204,6 +248,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const draggedTabKeyRef = useRef<string | null>(null);
+  const [tabDropPreview, setTabDropPreview] = useState<{
+    readonly key: string;
+    readonly position: GlobalTabDropPosition | "end";
+  } | null>(null);
   const observedRouteSignatureRef = useRef<string | null>(null);
   const activeThreadRef: ScopedThreadRef | null =
     activeTab !== null && isGlobalThreadTab(activeTab) ? activeTab.threadRef : null;
@@ -328,13 +376,74 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeTabKey, keybindings, navigate, routeTerminalOpen, tabs]);
 
-  const handleTabDrop = useCallback((event: ReactDragEvent, targetIndex: number) => {
-    event.preventDefault();
-    const tabKey = draggedTabKeyRef.current;
+  const reorderDraggedTab = useCallback(
+    (hoveredIndex: number, position: GlobalTabDropPosition) => {
+      const tabKey = draggedTabKeyRef.current;
+      draggedTabKeyRef.current = null;
+      if (tabKey === null) return;
+      const sourceIndex = tabs.findIndex((tab) => globalTabKey(tab) === tabKey);
+      if (sourceIndex < 0) return;
+      transitionGlobalTabsStore({
+        _tag: "Reorder",
+        tabKey,
+        targetIndex: resolveGlobalTabDropTargetIndex(sourceIndex, hoveredIndex, position),
+      });
+    },
+    [tabs],
+  );
+  const handleTabDragEnd = useCallback(() => {
     draggedTabKeyRef.current = null;
-    if (tabKey === null) return;
-    transitionGlobalTabsStore({ _tag: "Reorder", tabKey, targetIndex });
+    setTabDropPreview(null);
   }, []);
+  const handleTabDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+    setTabDropPreview(null);
+  }, []);
+  const handleTabDragOver = useCallback((event: ReactDragEvent<HTMLElement>, tabKey: string) => {
+    if (draggedTabKeyRef.current === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = event.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
+    setTabDropPreview((current) =>
+      current?.key === tabKey && current.position === position
+        ? current
+        : { key: tabKey, position },
+    );
+  }, []);
+  const handleTabDrop = useCallback(
+    (event: ReactDragEvent<HTMLElement>, targetIndex: number, targetKey: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const position =
+        tabDropPreview?.key === targetKey && tabDropPreview.position !== "end"
+          ? tabDropPreview.position
+          : "after";
+      setTabDropPreview(null);
+      reorderDraggedTab(targetIndex, position);
+    },
+    [reorderDraggedTab, tabDropPreview],
+  );
+  const handleTabBarDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
+    if (draggedTabKeyRef.current === null) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setTabDropPreview((current) =>
+      current?.position === "end" ? current : { key: "end", position: "end" },
+    );
+  }, []);
+  const handleTabBarDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setTabDropPreview(null);
+      const lastTabIndex = tabs.length - 1;
+      if (lastTabIndex < 0) return;
+      reorderDraggedTab(lastTabIndex, "after");
+    },
+    [reorderDraggedTab, tabs.length],
+  );
   return (
     <header
       className="workspace-topbar drag-region relative z-[70] gap-0.5 border-b border-border/60 bg-background pl-[var(--workspace-controls-left)] pr-2 wco:pr-[var(--workspace-native-controls-inset)]"
@@ -362,7 +471,12 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           scrollFade
           className="min-w-0 flex-1 rounded-none"
         >
-          <div className="flex h-full w-max min-w-full items-center gap-0.5">
+          <div
+            className="flex h-full w-max min-w-full items-center gap-0.5"
+            onDragLeave={handleTabDragLeave}
+            onDragOver={handleTabBarDragOver}
+            onDrop={handleTabBarDrop}
+          >
             {tabs.map((tab, index) => {
               const tabKey = globalTabKey(tab);
               const active = tabKey === activeTabKey;
@@ -422,18 +536,25 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         data-active-tab={active}
                         className={cn(
                           "group/tab relative flex h-7 max-w-44 shrink-0 items-center rounded-md pl-1.5 text-xs transition-[background-color,color] duration-150 ease-out",
+                          tabDropPreview?.key === tabKey &&
+                            tabDropPreview.position === "before" &&
+                            "before:absolute before:inset-y-0.5 before:-left-0.5 before:w-0.5 before:rounded-full before:bg-primary",
+                          tabDropPreview?.key === tabKey &&
+                            tabDropPreview.position === "after" &&
+                            "after:absolute after:inset-y-0.5 after:-right-0.5 after:w-0.5 after:rounded-full after:bg-primary",
                           active
                             ? "bg-accent text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--border)_65%,transparent)]"
                             : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                         )}
-                        onDragStart={() => {
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", title);
                           draggedTabKeyRef.current = tabKey;
                         }}
-                        onDragEnd={() => {
-                          draggedTabKeyRef.current = null;
-                        }}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => handleTabDrop(event, index)}
+                        onDragEnd={handleTabDragEnd}
+                        onDragLeave={handleTabDragLeave}
+                        onDragOver={(event) => handleTabDragOver(event, tabKey)}
+                        onDrop={(event) => handleTabDrop(event, index, tabKey)}
                         onMouseDown={(event: ReactMouseEvent) => {
                           if (event.button === 1) event.preventDefault();
                         }}
@@ -445,7 +566,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                       >
                         <button
                           type="button"
-                          className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-6"
+                          className="flex h-full min-w-0 flex-1 items-center pr-6"
                           aria-current={active ? "page" : undefined}
                           onClick={() => navigateToGlobalTab(navigate, tab)}
                         >
@@ -455,18 +576,21 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                               cwd={project.workspaceRoot}
                               projectName={project.title}
                               faviconPath={project.faviconPath}
-                              className="size-4"
+                              className="mr-1.5 size-4"
                             />
                           ) : tab._tag === "Settings" ? (
-                            <Settings2Icon className="size-3.5 shrink-0" />
+                            <Settings2Icon className="mr-1.5 size-3.5 shrink-0" />
                           ) : tab._tag === "Usage" ? (
-                            <ChartNoAxesColumnIcon className="size-3.5 shrink-0" />
+                            <ChartNoAxesColumnIcon className="mr-1.5 size-3.5 shrink-0" />
                           ) : tab._tag === "PullRequests" || tab._tag === "PullRequest" ? (
                             <GitPullRequestIcon
-                              className={cn("size-3.5 shrink-0", pullRequestStatus?.colorClass)}
+                              className={cn(
+                                "mr-1.5 size-3.5 shrink-0",
+                                pullRequestStatus?.colorClass,
+                              )}
                             />
                           ) : null}
-                          {status ? <ThreadTabStatusMark status={status} /> : null}
+                          {threadTab ? <AnimatedThreadTabStatusMark status={status} /> : null}
                           <span className="truncate">{title}</span>
                         </button>
                         <button
@@ -556,6 +680,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 </Tooltip>
               );
             })}
+            {tabDropPreview?.position === "end" ? (
+              <span className="h-5 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
+            ) : null}
             <Menu>
               <MenuTrigger
                 className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent data-popup-open:text-foreground"
