@@ -135,6 +135,15 @@ export class ThreadPinReorderUnsupportedError extends Schema.TaggedErrorClass<Th
   }
 }
 
+/** Decides whether archive should replace the current route with a draft.
+ * Tab-owned flows preserve the route until their own view transition runs. */
+export function shouldNavigateAfterArchive(
+  navigation: "new-draft" | "preserve" | undefined,
+  isCurrentRoute: boolean,
+): boolean {
+  return navigation !== "preserve" && isCurrentRoute;
+}
+
 export function useThreadActions() {
   const closeTerminal = useAtomCommand(terminalEnvironment.close);
   const archiveThreadMutation = useAtomCommand(threadEnvironment.archive, {
@@ -207,7 +216,15 @@ export function useThreadActions() {
   }, [router]);
 
   const archiveThread = useCallback(
-    async (target: ScopedThreadRef, opts: { onArchived?: () => void } = {}) => {
+    async (
+      target: ScopedThreadRef,
+      opts: {
+        onArchived?: () => void;
+        /** Preserve the current route when another view model owns the
+         * post-archive navigation, such as the top tab strip. */
+        navigation?: "new-draft" | "preserve";
+      } = {},
+    ) => {
       const resolved = resolveThreadTarget(target);
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
@@ -223,9 +240,11 @@ export function useThreadActions() {
       }
 
       const currentRouteThreadRef = getCurrentRouteThreadRef();
-      const shouldNavigateToDraft =
+      const shouldNavigateToDraft = shouldNavigateAfterArchive(
+        opts.navigation,
         currentRouteThreadRef?.threadId === threadRef.threadId &&
-        currentRouteThreadRef.environmentId === threadRef.environmentId;
+          currentRouteThreadRef.environmentId === threadRef.environmentId,
+      );
       const archiveResult = await archiveThreadMutation({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId },
