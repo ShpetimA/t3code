@@ -948,9 +948,13 @@ export function PullRequestDetailPanel({
                   environmentId={environmentId}
                   reference={reference}
                   detail={detail}
+                  activityStatus={
+                    activityPending ? "loading" : activityError ? "unavailable" : "ready"
+                  }
                   pendingFinding={handoff}
                   onFixFinding={startFixFinding}
                   onRefresh={refreshDetail}
+                  onViewActivity={() => setTab("activity")}
                 />
               </div>
             ) : null}
