@@ -341,7 +341,15 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
 
   const openMenu = useCallback(
-    (threadRef: ScopedThreadRef, tabKey: string, position: { x: number; y: number }) => {
+    (
+      threadRef: ScopedThreadRef,
+      tabKey: string,
+      position: { x: number; y: number },
+      lifecycle: {
+        readonly isSettled: boolean;
+        readonly closePolicy: "direct" | "settle-first";
+      },
+    ) => {
       void (async () => {
         const api = readLocalApi();
         if (!api) return;
@@ -358,16 +366,7 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
         const items = buildThreadTabLifecycleMenuItems({
           branch: thread.branch ?? null,
           isPinned: thread.pinnedAt != null,
-          isSettled:
-            supports.settlement &&
-            effectiveSettled(thread, {
-              now: `${now.toISOString().slice(0, 16)}:00.000Z`,
-              // The tab strip does not subscribe every open tab to VCS state.
-              // Without knowing whether a PR is open, do not infer settled
-              // from age; explicit server lifecycle state remains reliable.
-              autoSettleAfterDays: null,
-              changeRequestState: null,
-            }),
+          isSettled: supports.settlement && lifecycle.isSettled,
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           canArchiveNow: !(
@@ -376,6 +375,7 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
           isRegeneratingTitle: false,
           supports,
           snoozePresets,
+          closePolicy: lifecycle.closePolicy,
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -471,5 +471,16 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
     ],
   );
 
-  return { openMenu };
+  const settleAndClose = useCallback(
+    async (threadRef: ScopedThreadRef, tabKey: string): Promise<void> => {
+      const succeeded = lifecycleCommandSucceeded(
+        "Failed to settle thread",
+        await settleThread(threadRef),
+      );
+      if (succeeded) closeTab(tabKey);
+    },
+    [closeTab, settleThread],
+  );
+
+  return { openMenu, settleAndClose };
 }

@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   BotIcon,
   ChartNoAxesColumnIcon,
+  CheckIcon,
   GitBranchIcon,
   GitPullRequestIcon,
   MoreHorizontalIcon,
@@ -34,6 +35,7 @@ import {
   isGlobalThreadTab,
   resolveGlobalTabDropTargetIndex,
   resolveGlobalTabRouteOpen,
+  resolveGlobalThreadTabLifecycle,
   type GlobalTab,
   type GlobalTabDropPosition,
   type GlobalTabNavigation,
@@ -48,12 +50,15 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useThreadTabLifecycleMenu } from "../hooks/useThreadActionMenu";
+import { useClientSettings } from "../hooks/useSettings";
+import { useNowMinute } from "../hooks/useNowMinute";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { useShortcutModifierState } from "../shortcutModifierState";
 import {
   useAllEnvironmentShellsBootstrapped,
   useProjects,
+  useServerConfigs,
   useThreadShells,
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
@@ -66,6 +71,8 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import {
   resolveAdjacentThreadId,
   resolveThreadStatusPill,
+  sortPinnedThreadsForSidebar,
+  sortThreadsForSidebar,
   type ThreadStatusPill,
   useThreadJumpHintVisibility,
 } from "./Sidebar.logic";
@@ -78,7 +85,7 @@ interface GlobalTabsProps {
   readonly activeTab: GlobalTab | null;
 }
 
-const GLOBAL_TAB_QUICK_LOOK_DELAY_MS = 350;
+const GLOBAL_TAB_QUICK_LOOK_DELAY_MS = 1_000;
 
 function GlobalTabDetailsTooltip(props: {
   readonly children: ReactNode;
@@ -208,7 +215,7 @@ function pullRequestStatusPresentation(
   return { label: "Open", colorClass: "text-emerald-600 dark:text-emerald-300/90" };
 }
 
-/** Application titlebar that navigates among explicitly opened route-backed tabs. */
+/** Application titlebar for lifecycle-required threads and route-backed tab history. */
 export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const navigate = useNavigate();
   const tabs = useGlobalTabsStore((state) => state.tabs);
@@ -218,6 +225,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   activeTabKeyRef.current = activeTabKey;
   const threadShells = useThreadShells();
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
+  const serverConfigs = useServerConfigs();
+  const autoSettleAfterDays = useClientSettings((state) => state.sidebarAutoSettleAfterDays);
+  const nowMinute = useNowMinute();
   const projects = useProjects();
   const { environments } = useEnvironments();
   const draftSessions = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
@@ -266,6 +276,44 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       ),
     [threadShells],
   );
+  const { requiredThreadTabs, threadLifecycleByTabKey } = useMemo(() => {
+    const pinnedThreads: Array<(typeof threadShells)[number]> = [];
+    const activeThreads: Array<(typeof threadShells)[number]> = [];
+    const lifecycleByTabKey = new Map<
+      string,
+      { readonly isSettled: boolean; readonly closePolicy: "direct" | "settle-first" }
+    >();
+    const now = `${nowMinute}:00.000Z`;
+
+    for (const thread of threadShells) {
+      const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
+      const supportsSettlement = capabilities?.threadSettlement === true;
+      const supportsSnooze = capabilities?.threadSnooze === true;
+      const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+      const tabKey = globalTabKey({ _tag: "ServerThread", threadRef });
+      const lifecycle = resolveGlobalThreadTabLifecycle(thread, {
+        now,
+        autoSettleAfterDays,
+        supportsSettlement,
+        supportsSnooze,
+      });
+      lifecycleByTabKey.set(tabKey, lifecycle);
+      if (!lifecycle.isRequired) continue;
+      if (thread.pinnedAt != null) pinnedThreads.push(thread);
+      else activeThreads.push(thread);
+    }
+
+    return {
+      requiredThreadTabs: [
+        ...sortPinnedThreadsForSidebar(pinnedThreads),
+        ...sortThreadsForSidebar(activeThreads),
+      ].map((thread) => ({
+        _tag: "ServerThread" as const,
+        threadRef: scopeThreadRef(thread.environmentId, thread.id),
+      })),
+      threadLifecycleByTabKey: lifecycleByTabKey,
+    };
+  }, [autoSettleAfterDays, nowMinute, serverConfigs, threadShells]);
   const projectByKey = useMemo(
     () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
     [projects],
@@ -309,6 +357,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     const result = transitionGlobalTabsStore({
       _tag: "Reconcile",
       validThreadTabKeys: validTabKeys,
+      requiredThreadTabs,
     });
     if (!startupRestoreAttemptedRef.current) {
       startupRestoreAttemptedRef.current = true;
@@ -319,7 +368,14 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       }
     }
     applyTabNavigation(navigate, result.navigation);
-  }, [activeTabKey, allShellsBootstrapped, draftSessions, navigate, threadShells]);
+  }, [
+    activeTabKey,
+    allShellsBootstrapped,
+    draftSessions,
+    navigate,
+    requiredThreadTabs,
+    threadShells,
+  ]);
 
   useEffect(() => {
     const activeElement = tabListRef.current?.querySelector<HTMLElement>("[data-active-tab=true]");
@@ -340,7 +396,20 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     },
     [navigate],
   );
-  const { openMenu: openThreadTabLifecycleMenu } = useThreadTabLifecycleMenu({ closeTab });
+  const { openMenu: openThreadTabLifecycleMenu, settleAndClose: settleAndCloseThreadTab } =
+    useThreadTabLifecycleMenu({ closeTab });
+  const requestCloseTab = useCallback(
+    (tab: GlobalTab) => {
+      const tabKey = globalTabKey(tab);
+      const lifecycle = threadLifecycleByTabKey.get(tabKey);
+      if (tab._tag === "ServerThread" && lifecycle?.closePolicy === "settle-first") {
+        void settleAndCloseThreadTab(tab.threadRef, tabKey);
+        return;
+      }
+      closeTab(tabKey);
+    },
+    [closeTab, settleAndCloseThreadTab, threadLifecycleByTabKey],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -364,7 +433,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         event.preventDefault();
         event.stopPropagation();
         if (activeTabKey !== null) {
-          closeTab(activeTabKey);
+          const activeStoredTab = tabs.find((tab) => globalTabKey(tab) === activeTabKey);
+          if (activeStoredTab !== undefined) requestCloseTab(activeStoredTab);
         } else {
           const result = transitionGlobalTabsStore({ _tag: "RestoreActive" });
           applyTabNavigation(navigate, result.navigation);
@@ -393,7 +463,15 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTabKey, closeTab, keybindings, navigate, routeTerminalOpen, storedActiveTabKey, tabs]);
+  }, [
+    activeTabKey,
+    keybindings,
+    navigate,
+    requestCloseTab,
+    routeTerminalOpen,
+    storedActiveTabKey,
+    tabs,
+  ]);
 
   const reorderDraggedTab = useCallback(
     (hoveredIndex: number, position: GlobalTabDropPosition) => {
@@ -502,6 +580,14 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               const threadTab = isGlobalThreadTab(tab) ? tab : null;
               const threadKey = threadTab ? scopedThreadKey(threadTab.threadRef) : null;
               const shell = threadKey ? threadShellByKey.get(threadKey) : undefined;
+              const threadLifecycle =
+                tab._tag === "ServerThread"
+                  ? (threadLifecycleByTabKey.get(tabKey) ?? {
+                      isSettled: false,
+                      closePolicy: "direct" as const,
+                    })
+                  : null;
+              const settlesBeforeClose = threadLifecycle?.closePolicy === "settle-first";
               const draftSession = tab._tag === "DraftThread" ? draftSessions[tab.draftId] : null;
               const projectId =
                 tab._tag === "PullRequest"
@@ -595,15 +681,23 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         onAuxClick={(event: ReactMouseEvent) => {
                           if (event.button !== 1) return;
                           event.preventDefault();
-                          closeTab(tabKey);
+                          requestCloseTab(tab);
                         }}
                         onContextMenu={(event) => {
                           if (tab._tag !== "ServerThread") return;
                           event.preventDefault();
-                          openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
+                          openThreadTabLifecycleMenu(
+                            tab.threadRef,
+                            tabKey,
+                            {
+                              x: event.clientX,
+                              y: event.clientY,
+                            },
+                            {
+                              isSettled: threadLifecycle?.isSettled ?? false,
+                              closePolicy: threadLifecycle?.closePolicy ?? "direct",
+                            },
+                          );
                         }}
                       >
                         <button
@@ -653,10 +747,18 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             onClick={(event) => {
                               event.stopPropagation();
                               const bounds = event.currentTarget.getBoundingClientRect();
-                              openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
-                                x: bounds.left,
-                                y: bounds.bottom,
-                              });
+                              openThreadTabLifecycleMenu(
+                                tab.threadRef,
+                                tabKey,
+                                {
+                                  x: bounds.left,
+                                  y: bounds.bottom,
+                                },
+                                {
+                                  isSettled: threadLifecycle?.isSettled ?? false,
+                                  closePolicy: threadLifecycle?.closePolicy ?? "direct",
+                                },
+                              );
                             }}
                           >
                             <MoreHorizontalIcon className="size-3.5" />
@@ -672,10 +774,34 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                                 ? "opacity-100"
                                 : "pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100",
                           )}
-                          aria-label={`Close ${title}`}
-                          onClick={() => closeTab(tabKey)}
+                          aria-label={
+                            settlesBeforeClose ? `Settle and close ${title}` : `Close ${title}`
+                          }
+                          title={settlesBeforeClose ? "Settle and close tab" : "Close tab"}
+                          onClick={() => requestCloseTab(tab)}
                         >
-                          <XIcon className="size-3" />
+                          <span className="relative size-3">
+                            <span
+                              className={cn(
+                                "absolute inset-0 flex items-center justify-center transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+                                settlesBeforeClose
+                                  ? "scale-100 opacity-100 blur-0"
+                                  : "scale-[0.25] opacity-0 blur-[4px]",
+                              )}
+                            >
+                              <CheckIcon className="size-3" />
+                            </span>
+                            <span
+                              className={cn(
+                                "flex size-3 items-center justify-center transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+                                settlesBeforeClose
+                                  ? "scale-[0.25] opacity-0 blur-[4px]"
+                                  : "scale-100 opacity-100 blur-0",
+                              )}
+                            >
+                              <XIcon className="size-3" />
+                            </span>
+                          </span>
                         </button>
                         {showJumpHint ? (
                           <Kbd

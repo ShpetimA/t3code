@@ -48,6 +48,8 @@ export interface ThreadActionMenuState {
 /** Additional availability state needed by the top-tab lifecycle menu. */
 export interface ThreadTabLifecycleMenuState extends ThreadActionMenuState {
   readonly canArchiveNow: boolean;
+  /** Unsettled inbox tabs must complete settlement before the view can close. */
+  readonly closePolicy: "direct" | "settle-first";
 }
 
 /**
@@ -140,7 +142,9 @@ export function buildThreadTabLifecycleMenuItems(
       snooze: "Snooze & close tab",
     }),
     { id: "archive", label: "Archive & close tab", disabled: !state.canArchiveNow },
-    { id: "close-tab", label: "Close tab (keep thread)" },
+    ...(state.closePolicy === "direct"
+      ? [{ id: "close-tab" as const, label: "Close tab (keep thread)" }]
+      : []),
   ];
 }
 

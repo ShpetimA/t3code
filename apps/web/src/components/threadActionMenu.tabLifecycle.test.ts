@@ -14,6 +14,7 @@ const baseState: ThreadTabLifecycleMenuState = {
   isSnoozed: false,
   canSnoozeNow: true,
   canArchiveNow: true,
+  closePolicy: "settle-first",
   isRegeneratingTitle: false,
   supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: false },
   snoozePresets: [
@@ -32,13 +33,14 @@ function menuIds(state: ThreadTabLifecycleMenuState): string[] {
 
 describe("thread tab lifecycle menu", () => {
   it("gates lifecycle actions by capability and current state", () => {
-    expect(menuIds(baseState)).toEqual(["pin", "settle", "snooze", "archive", "close-tab"]);
+    expect(menuIds(baseState)).toEqual(["pin", "settle", "snooze", "archive"]);
     expect(
       menuIds({
         ...baseState,
         isPinned: true,
         isSettled: true,
         isSnoozed: true,
+        closePolicy: "direct",
       }),
     ).toEqual(["unpin", "unsettle", "unsnooze", "archive", "close-tab"]);
     expect(
@@ -50,6 +52,7 @@ describe("thread tab lifecycle menu", () => {
           pinning: false,
           titleRegeneration: false,
         },
+        closePolicy: "direct",
       }),
     ).toEqual(["archive", "close-tab"]);
   });
@@ -62,8 +65,12 @@ describe("thread tab lifecycle menu", () => {
       ["settle", "Settle & close tab"],
       ["snooze", "Snooze & close tab"],
       ["archive", "Archive & close tab"],
-      ["close-tab", "Close tab (keep thread)"],
     ]);
+  });
+
+  it("offers direct close only when the tab is not required by unsettled state", () => {
+    expect(menuIds(baseState)).not.toContain("close-tab");
+    expect(menuIds({ ...baseState, closePolicy: "direct" })).toContain("close-tab");
   });
 
   it("keeps snooze presets visible while snoozing is temporarily unavailable", () => {

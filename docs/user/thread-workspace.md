@@ -4,20 +4,26 @@ Each thread owns its own set of workspace tabs for files, terminals, diffs, brow
 agents. Selecting another thread from the sidebar switches both the conversation and those tabs.
 
 In **Settings → General → Thread navigation**, choose **Sidebar** or **Top tabs**. Sidebar remains
-the default. Top tabs replace the thread sidebar on desktop-sized windows and keep explicitly opened
-threads and app pages in a global strip above the workspace. Opening a thread from search or a
-direct link adds it to the strip. Settings uses one tab as you move between sections, and Usage uses
-one tab. Pull requests use one list tab and a separate, full-width tab for each review you open.
-Closing a top tab only closes that view; it does not settle, archive, delete, close, or merge its
-underlying item. Compact windows continue to use the sidebar so every thread state remains
-reachable. Closing the final top tab leaves an empty workspace where you can start a thread or open
-the command center.
+the default. Top tabs replace the thread sidebar on desktop-sized windows. Every unsettled thread is
+kept in the global strip automatically, alongside settled threads and app pages you explicitly open.
+Opening a thread from search or a direct link adds it without changing whether the thread is settled.
+Settings uses one tab as you move between sections, and Usage uses one tab. Pull requests use one
+list tab and a separate, full-width tab for each review you open. The open-tab order, selected tab,
+and manually opened history are restored after T3 Code reopens, then reconciled with the current
+unsettled threads. Compact windows continue to use the sidebar so every thread state remains
+reachable.
+
+An unsettled thread tab shows a tick instead of an X. The tick settles the thread and closes the tab
+only after settlement succeeds; middle-click and `Cmd/Ctrl+W` follow the same rule. A settled thread
+you opened from history has the ordinary X, which closes only that view without changing the thread.
+Other app and pull request tabs are also view-only when closed. Closing the final closable tab leaves
+an empty workspace where you can start a thread or open the command center.
 
 Server-thread tabs also have a thread actions menu. It is always visible on the active tab and
 appears when you hover or focus a background tab, so you can pin, settle, snooze, wake, or archive a
 thread without opening it first. Actions labeled **Settle & close tab**, **Snooze & close tab**, and
-**Archive & close tab** close the view only after the thread action succeeds. The separate close
-button and `Cmd/Ctrl+W` remain view-only.
+**Archive & close tab** close the view only after the thread action succeeds. **Close tab (keep
+thread)** is available only when the thread is not required in the strip by its unsettled state.
 
 Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
 monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Projects
@@ -27,7 +33,7 @@ them, use the command center to reopen other threads, and use the plus button to
 the pull request list, Usage, or Settings. Pull request tabs similarly distinguish open, draft,
 closed, and merged reviews. Settings keeps its section sidebar below the global tab strip.
 Hold `Cmd` on macOS or `Ctrl` elsewhere to see the remaining key for each of the first nine open
-tabs' `Cmd/Ctrl+1–9` jump shortcut immediately. Keep holding briefly to open every thread tab's info
+tabs' `Cmd/Ctrl+1–9` jump shortcut immediately. Keep holding for one second to open every thread tab's info
 card for a quick glance; adding another modifier cancels the peek.
 
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as

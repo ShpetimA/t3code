@@ -18,12 +18,13 @@ interface GlobalTabsStoreState extends GlobalTabsState {
 const GLOBAL_THREAD_TABS_STORAGE_KEY = "t3code:global-thread-tabs:v1";
 const GLOBAL_THREAD_TABS_STORAGE_VERSION = 1;
 
-/** Client-local persisted collection of explicitly opened global application tabs. */
+/** Client-local persisted tab ordering, selection, and explicitly visited history. */
 export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
   persist(
     (set, get) => ({
       tabs: [],
       activeTabKey: null,
+      historyTabKeys: [],
       transition: (input: GlobalTabsTransition) => {
         const current = get();
         const result = transitionGlobalTabs(current, input);
@@ -31,6 +32,7 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
           set({
             tabs: result.state.tabs,
             activeTabKey: result.state.activeTabKey,
+            historyTabKeys: result.state.historyTabKeys,
           });
         }
         return result;

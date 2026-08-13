@@ -1,8 +1,10 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { effectiveSettled, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import {
   EnvironmentId,
   ProjectId,
   ThreadId,
+  type OrchestrationThreadShell,
   type PullRequestState,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -50,6 +52,42 @@ export type GlobalTab =
 export interface GlobalTabsState {
   readonly tabs: readonly GlobalTab[];
   readonly activeTabKey: string | null;
+  /** Tabs explicitly visited by the user, retained independently of thread lifecycle. */
+  readonly historyTabKeys: readonly string[];
+}
+
+/** Lifecycle-derived visibility and close behavior for one server-thread tab. */
+export interface GlobalThreadTabLifecycle {
+  readonly isRequired: boolean;
+  readonly isSettled: boolean;
+  readonly closePolicy: "direct" | "settle-first";
+}
+
+/** Resolves whether a server thread must remain in the global tab strip. */
+export function resolveGlobalThreadTabLifecycle(
+  thread: OrchestrationThreadShell,
+  options: {
+    readonly now: string;
+    readonly autoSettleAfterDays: number | null;
+    readonly supportsSettlement: boolean;
+    readonly supportsSnooze: boolean;
+  },
+): GlobalThreadTabLifecycle {
+  const isSnoozed = options.supportsSnooze && effectiveSnoozed(thread, { now: options.now });
+  const isSettled =
+    options.supportsSettlement &&
+    effectiveSettled(thread, {
+      now: options.now,
+      autoSettleAfterDays: options.autoSettleAfterDays,
+      changeRequestState: null,
+    });
+  const isRequired =
+    thread.archivedAt === null && !isSnoozed && (thread.pinnedAt != null || !isSettled);
+  return {
+    isRequired,
+    isSettled,
+    closePolicy: isRequired && options.supportsSettlement ? "settle-first" : "direct",
+  };
 }
 
 /** The edge of a hovered tab where a dragged global tab will be inserted. */
@@ -91,6 +129,9 @@ export type GlobalTabsTransition =
   | {
       readonly _tag: "Reconcile";
       readonly validThreadTabKeys: readonly string[];
+      readonly requiredThreadTabs: ReadonlyArray<
+        Extract<GlobalTab, { readonly _tag: "ServerThread" }>
+      >;
     }
   | { readonly _tag: "RestoreActive" }
   | {
@@ -143,6 +184,7 @@ const PersistedGlobalTab = Schema.Union([
 const PersistedGlobalTabsState = Schema.Struct({
   tabs: Schema.Array(PersistedGlobalTab),
   activeTabKey: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  historyTabKeys: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 const decodePersistedGlobalTabsState = Schema.decodeUnknownOption(PersistedGlobalTabsState);
@@ -244,6 +286,9 @@ export function transitionGlobalTabs(
   switch (input._tag) {
     case "Open": {
       const tabKey = globalTabKey(input.tab);
+      const historyTabKeys = current.historyTabKeys.includes(tabKey)
+        ? current.historyTabKeys
+        : [...current.historyTabKeys, tabKey];
       const existingIndex = current.tabs.findIndex((tab) => globalTabKey(tab) === tabKey);
       if (existingIndex < 0) {
         if (
@@ -254,25 +299,34 @@ export function transitionGlobalTabs(
             state: {
               tabs: [...current.tabs, { _tag: "PullRequests" }, input.tab],
               activeTabKey: tabKey,
+              historyTabKeys: current.historyTabKeys.includes("pull-requests")
+                ? historyTabKeys
+                : ["pull-requests", ...historyTabKeys],
             },
             navigation: { _tag: "KeepCurrent" },
           };
         }
         return {
-          state: { tabs: [...current.tabs, input.tab], activeTabKey: tabKey },
+          state: { tabs: [...current.tabs, input.tab], activeTabKey: tabKey, historyTabKeys },
           navigation: { _tag: "KeepCurrent" },
         };
       }
       const existing = current.tabs[existingIndex];
       if (existing === undefined || sameTab(existing, input.tab)) {
         return {
-          state: current.activeTabKey === tabKey ? current : { ...current, activeTabKey: tabKey },
+          state:
+            current.activeTabKey === tabKey && historyTabKeys === current.historyTabKeys
+              ? current
+              : { ...current, activeTabKey: tabKey, historyTabKeys },
           navigation: { _tag: "KeepCurrent" },
         };
       }
       const tabs = [...current.tabs];
       tabs[existingIndex] = input.tab;
-      return { state: { tabs, activeTabKey: tabKey }, navigation: { _tag: "KeepCurrent" } };
+      return {
+        state: { tabs, activeTabKey: tabKey, historyTabKeys },
+        navigation: { _tag: "KeepCurrent" },
+      };
     }
     case "Close": {
       const closingIndex = current.tabs.findIndex((tab) => globalTabKey(tab) === input.tabKey);
@@ -280,24 +334,61 @@ export function transitionGlobalTabs(
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
       const tabs = current.tabs.filter((tab) => globalTabKey(tab) !== input.tabKey);
+      const historyTabKeys = current.historyTabKeys.filter((tabKey) => tabKey !== input.tabKey);
       if (input.routeActiveTabKey !== input.tabKey) {
         return {
-          state: { tabs, activeTabKey: input.routeActiveTabKey },
+          state: { tabs, activeTabKey: input.routeActiveTabKey, historyTabKeys },
           navigation: { _tag: "KeepCurrent" },
         };
       }
       const fallback = tabs[closingIndex] ?? tabs[closingIndex - 1];
       return {
-        state: { tabs, activeTabKey: fallback ? globalTabKey(fallback) : null },
+        state: {
+          tabs,
+          activeTabKey: fallback ? globalTabKey(fallback) : null,
+          historyTabKeys,
+        },
         navigation: fallback ? { _tag: "Activate", tab: fallback } : { _tag: "OpenLanding" },
       };
     }
     case "Reconcile": {
       const validThreadTabKeys = new Set(input.validThreadTabKeys);
-      const tabs = current.tabs.filter(
-        (tab) => !isGlobalThreadTab(tab) || validThreadTabKeys.has(globalTabKey(tab)),
+      const requiredThreadTabKeys = new Set(input.requiredThreadTabs.map(globalTabKey));
+      const historyTabKeys = new Set(current.historyTabKeys);
+      const tabs = current.tabs.filter((tab) => {
+        if (!isGlobalThreadTab(tab)) return true;
+        const tabKey = globalTabKey(tab);
+        if (!validThreadTabKeys.has(tabKey)) return false;
+        return (
+          tab._tag === "DraftThread" ||
+          historyTabKeys.has(tabKey) ||
+          requiredThreadTabKeys.has(tabKey)
+        );
+      });
+      let changed = tabs.length !== current.tabs.length;
+      for (const requiredTab of input.requiredThreadTabs) {
+        const requiredTabKey = globalTabKey(requiredTab);
+        if (!validThreadTabKeys.has(requiredTabKey)) continue;
+        const existingIndex = tabs.findIndex((tab) => globalTabKey(tab) === requiredTabKey);
+        if (existingIndex < 0) {
+          tabs.push(requiredTab);
+          changed = true;
+          continue;
+        }
+        const existing = tabs[existingIndex];
+        if (existing !== undefined && !sameTab(existing, requiredTab)) {
+          tabs[existingIndex] = requiredTab;
+          changed = true;
+        }
+      }
+      const reconciledTabKeys = new Set(tabs.map(globalTabKey));
+      const reconciledHistoryTabKeys = current.historyTabKeys.filter((tabKey) =>
+        reconciledTabKeys.has(tabKey),
       );
-      if (tabs.length === current.tabs.length) {
+      if (reconciledHistoryTabKeys.length !== current.historyTabKeys.length) {
+        changed = true;
+      }
+      if (!changed) {
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
       const activeIndex = current.tabs.findIndex(
@@ -308,13 +399,21 @@ export function transitionGlobalTabs(
         tabs.some((tab) => globalTabKey(tab) === current.activeTabKey)
       ) {
         return {
-          state: { tabs, activeTabKey: current.activeTabKey },
+          state: {
+            tabs,
+            activeTabKey: current.activeTabKey,
+            historyTabKeys: reconciledHistoryTabKeys,
+          },
           navigation: { _tag: "KeepCurrent" },
         };
       }
       const fallback = tabs[activeIndex] ?? tabs[activeIndex - 1];
       return {
-        state: { tabs, activeTabKey: fallback ? globalTabKey(fallback) : null },
+        state: {
+          tabs,
+          activeTabKey: fallback ? globalTabKey(fallback) : null,
+          historyTabKeys: reconciledHistoryTabKeys,
+        },
         navigation: fallback ? { _tag: "Activate", tab: fallback } : { _tag: "OpenLanding" },
       };
     }
@@ -344,7 +443,7 @@ export function transitionGlobalTabs(
       }
       tabs.splice(targetIndex, 0, moved);
       return {
-        state: { tabs, activeTabKey: current.activeTabKey },
+        state: { ...current, tabs },
         navigation: { _tag: "KeepCurrent" },
       };
     }
@@ -363,7 +462,7 @@ export function transitionGlobalTabs(
         reviewStatus: { state: input.state, isDraft: input.isDraft },
       };
       return {
-        state: { tabs, activeTabKey: current.activeTabKey },
+        state: { ...current, tabs },
         navigation: { _tag: "KeepCurrent" },
       };
     }
@@ -374,7 +473,7 @@ export function transitionGlobalTabs(
 export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
   const decoded = decodePersistedGlobalTabsState(input);
   if (decoded._tag === "None") {
-    return { tabs: [], activeTabKey: null };
+    return { tabs: [], activeTabKey: null, historyTabKeys: [] };
   }
 
   const tabs: GlobalTab[] = [];
@@ -417,13 +516,18 @@ export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
     tabs.some((tab) => globalTabKey(tab) === persistedActiveTabKey)
       ? persistedActiveTabKey
       : null;
-  return { tabs, activeTabKey };
+  const tabKeys = new Set(tabs.map(globalTabKey));
+  const historyTabKeys = [
+    ...new Set(decoded.value.historyTabKeys ?? tabs.map(globalTabKey)),
+  ].filter((tabKey) => tabKeys.has(tabKey));
+  return { tabs, activeTabKey, historyTabKeys };
 }
 
 /** Projects global tabs into their stable local-storage representation. */
 export function projectGlobalTabsState(state: GlobalTabsState): PersistedGlobalTabsState {
   return {
     activeTabKey: state.activeTabKey,
+    historyTabKeys: state.historyTabKeys,
     tabs: state.tabs.map((tab) => {
       switch (tab._tag) {
         case "ServerThread":

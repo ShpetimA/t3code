@@ -11,7 +11,7 @@ const tab: GlobalTab = {
 };
 
 afterEach(() => {
-  useGlobalTabsStore.setState({ tabs: [], activeTabKey: null });
+  useGlobalTabsStore.setState({ tabs: [], activeTabKey: null, historyTabKeys: [] });
 });
 
 describe("global tabs store", () => {
@@ -21,6 +21,7 @@ describe("global tabs store", () => {
     expect(useGlobalTabsStore.getState()).toMatchObject({
       tabs: [tab],
       activeTabKey: globalTabKey(tab),
+      historyTabKeys: [globalTabKey(tab)],
     });
   });
 });
