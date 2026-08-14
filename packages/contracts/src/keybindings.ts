@@ -7,6 +7,21 @@ export const MAX_WHEN_EXPRESSION_DEPTH = 64;
 export const MAX_SCRIPT_ID_LENGTH = 24;
 export const MAX_KEYBINDINGS_COUNT = 256;
 
+/** Positional commands for activating the first nine tabs in the global tab strip. */
+export const TAB_JUMP_KEYBINDING_COMMANDS = [
+  "tab.jump.1",
+  "tab.jump.2",
+  "tab.jump.3",
+  "tab.jump.4",
+  "tab.jump.5",
+  "tab.jump.6",
+  "tab.jump.7",
+  "tab.jump.8",
+  "tab.jump.9",
+] as const;
+/** A command that activates a global tab by its visible position. */
+export type TabJumpKeybindingCommand = (typeof TAB_JUMP_KEYBINDING_COMMANDS)[number];
+
 export const THREAD_JUMP_KEYBINDING_COMMANDS = [
   "thread.jump.1",
   "thread.jump.2",
@@ -71,6 +86,7 @@ const STATIC_KEYBINDING_COMMANDS = [
   "chat.newLocal",
   "editor.openFavorite",
   "editor.toggleFocus",
+  ...TAB_JUMP_KEYBINDING_COMMANDS,
   ...MODEL_PICKER_KEYBINDING_COMMANDS,
   ...THREAD_KEYBINDING_COMMANDS,
 ] as const;

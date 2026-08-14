@@ -331,6 +331,23 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @layer components {
+  [data-global-tab] {
+    container-name: global-tab;
+    container-type: inline-size;
+  }
+
+  /* Browser-style compression keeps the close affordance reachable while
+     reclaiming the overflow menu's reserved slot on narrow thread tabs. */
+  @container global-tab (max-width: 5.5rem) {
+    [data-global-tab-thread-actions] {
+      display: none;
+    }
+
+    [data-global-tab-content][data-server-thread] {
+      padding-right: 1.5rem;
+    }
+  }
+
   .sidebar-brand {
     display: none;
   }

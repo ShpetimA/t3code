@@ -21,10 +21,13 @@ import {
   isTerminalSplitVerticalShortcut,
   isTerminalToggleShortcut,
   resolveShortcutCommand,
+  shouldShowTabJumpHintsForModifiers,
   shouldShowModelPickerJumpHints,
   shouldShowThreadJumpHints,
   shortcutKeyLabelForCommandMatchingModifiers,
   shortcutLabelForCommand,
+  tabJumpCommandForIndex,
+  tabJumpIndexFromCommand,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
   threadJumpCommandForIndex,
@@ -144,6 +147,9 @@ const DEFAULT_BINDINGS = compile([
   { shortcut: modShortcut("enter", { shiftKey: true }), command: "editor.toggleFocus" },
   { shortcut: modShortcut("[", { shiftKey: true }), command: "thread.previous" },
   { shortcut: modShortcut("]", { shiftKey: true }), command: "thread.next" },
+  { shortcut: modShortcut("1", { altKey: true }), command: "tab.jump.1" },
+  { shortcut: modShortcut("2", { altKey: true }), command: "tab.jump.2" },
+  { shortcut: modShortcut("3", { altKey: true }), command: "tab.jump.3" },
   { shortcut: modShortcut("1"), command: "thread.jump.1" },
   { shortcut: modShortcut("2"), command: "thread.jump.2" },
   { shortcut: modShortcut("3"), command: "thread.jump.3" },
@@ -363,6 +369,7 @@ describe("shortcutLabelForCommand", () => {
       shortcutLabelForCommand(DEFAULT_BINDINGS, "editor.toggleFocus", "MacIntel"),
       "⇧⌘Enter",
     );
+    assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "tab.jump.3", "MacIntel"), "⌥⌘3");
     assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_BINDINGS, "thread.jump.3", "MacIntel"),
       "⌘3",
@@ -484,6 +491,62 @@ describe("thread navigation helpers", () => {
       shouldShowThreadJumpHints(event({ ctrlKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
       }),
+    );
+  });
+});
+
+describe("global tab navigation helpers", () => {
+  it("maps jump commands to visible tab indices", () => {
+    assert.strictEqual(tabJumpCommandForIndex(0), "tab.jump.1");
+    assert.strictEqual(tabJumpCommandForIndex(2), "tab.jump.3");
+    assert.isNull(tabJumpCommandForIndex(9));
+    assert.strictEqual(tabJumpIndexFromCommand("tab.jump.1"), 0);
+    assert.strictEqual(tabJumpIndexFromCommand("tab.jump.3"), 2);
+    assert.isNull(tabJumpIndexFromCommand("thread.jump.1"));
+  });
+
+  it("shows tab hints only while Mod+Alt is held", () => {
+    assert.isTrue(
+      shouldShowTabJumpHintsForModifiers(event({ metaKey: true, altKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
+    );
+    assert.isFalse(
+      shouldShowTabJumpHintsForModifiers(event({ metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
+    );
+    assert.isFalse(
+      shouldShowTabJumpHintsForModifiers(
+        event({ metaKey: true, altKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        { platform: "MacIntel" },
+      ),
+    );
+    assert.isTrue(
+      shouldShowTabJumpHintsForModifiers(event({ ctrlKey: true, altKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+      }),
+    );
+    assert.strictEqual(
+      shortcutKeyLabelForCommandMatchingModifiers(
+        event({ metaKey: true, altKey: true }),
+        DEFAULT_BINDINGS,
+        "tab.jump.3",
+        { platform: "MacIntel" },
+      ),
+      "3",
+    );
+  });
+
+  it("resolves Option-modified number keys by their physical digit code", () => {
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "¡", code: "Digit1", metaKey: true, altKey: true }),
+        DEFAULT_BINDINGS,
+        { platform: "MacIntel" },
+      ),
+      "tab.jump.1",
     );
   });
 });

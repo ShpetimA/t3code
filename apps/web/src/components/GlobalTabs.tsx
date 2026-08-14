@@ -6,6 +6,7 @@ import {
   BotIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
+  CircleCheckIcon,
   GitBranchIcon,
   GitPullRequestIcon,
   MoreHorizontalIcon,
@@ -44,7 +45,10 @@ import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStor
 import {
   resolveShortcutCommand,
   shortcutKeyLabelForCommandMatchingModifiers,
+  shouldShowTabJumpHintsForModifiers,
   shouldShowThreadJumpHintsForModifiers,
+  tabJumpCommandForIndex,
+  tabJumpIndexFromCommand,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
@@ -74,18 +78,14 @@ import {
   sortPinnedThreadsForSidebar,
   sortThreadsForSidebar,
   type ThreadStatusPill,
-  useThreadJumpHintVisibility,
 } from "./Sidebar.logic";
 import { ThreadStatusMark } from "./ThreadStatusMark";
 import { Kbd } from "./ui/kbd";
-import { ScrollArea } from "./ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 interface GlobalTabsProps {
   readonly activeTab: GlobalTab | null;
 }
-
-const GLOBAL_TAB_QUICK_LOOK_DELAY_MS = 1_000;
 
 function GlobalTabDetailsTooltip(props: {
   readonly children: ReactNode;
@@ -163,18 +163,26 @@ function applyTabNavigation(
   }
 }
 
-function AnimatedThreadTabStatusMark({ status }: { readonly status: ThreadStatusPill | null }) {
+function AnimatedThreadTabStatusMark({
+  status,
+  isSettled,
+}: {
+  readonly status: ThreadStatusPill | null;
+  readonly isSettled: boolean;
+}) {
   const [lastStatus, setLastStatus] = useState(status);
   useEffect(() => {
     if (status !== null) setLastStatus(status);
   }, [status]);
 
-  const visible = status !== null;
+  const resolvedStatusVisible = status !== null;
+  const settledStatusVisible = status === null && isSettled;
+  const visible = resolvedStatusVisible || settledStatusVisible;
   const displayedStatus = status ?? lastStatus;
   return (
     <span
       aria-hidden={visible ? undefined : true}
-      aria-label={status?.label}
+      aria-label={status?.label ?? (settledStatusVisible ? "Settled" : undefined)}
       data-thread-tab-status-slot=""
       data-visible={visible}
       role={visible ? "img" : undefined}
@@ -183,17 +191,33 @@ function AnimatedThreadTabStatusMark({ status }: { readonly status: ThreadStatus
         visible ? "mr-1.5 w-3 ease-out" : "mr-0 w-0 ease-in",
       )}
     >
-      <span
-        className={cn(
-          "inline-flex size-3 origin-center items-center justify-center transition-[scale,opacity,filter] duration-150 motion-reduce:transition-none",
-          visible
-            ? "scale-100 opacity-100 blur-0 ease-out"
-            : "scale-[0.25] opacity-0 blur-[4px] ease-in",
-        )}
-      >
-        {displayedStatus ? (
-          <ThreadStatusMark status={displayedStatus} decorative animatePulse={visible} />
-        ) : null}
+      <span className="relative inline-flex size-3 origin-center items-center justify-center">
+        <span
+          className={cn(
+            "absolute inset-0 inline-flex items-center justify-center transition-[scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+            resolvedStatusVisible
+              ? "scale-100 opacity-100 blur-0"
+              : "scale-[0.25] opacity-0 blur-[4px]",
+          )}
+        >
+          {displayedStatus ? (
+            <ThreadStatusMark
+              status={displayedStatus}
+              decorative
+              animatePulse={resolvedStatusVisible}
+            />
+          ) : null}
+        </span>
+        <span
+          className={cn(
+            "absolute inset-0 inline-flex items-center justify-center text-muted-foreground transition-[scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+            settledStatusVisible
+              ? "scale-100 opacity-100 blur-0"
+              : "scale-[0.25] opacity-0 blur-[4px]",
+          )}
+        >
+          <CircleCheckIcon className="size-3" />
+        </span>
       </span>
     </span>
   );
@@ -233,11 +257,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const draftSessions = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const shortcutModifiers = useShortcutModifierState();
-  const { showThreadJumpHints, updateThreadJumpHintsVisibility } = useThreadJumpHintVisibility({
-    delayMs: GLOBAL_TAB_QUICK_LOOK_DELAY_MS,
-  });
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const tabListRef = useRef<HTMLDivElement | null>(null);
   const draggedTabKeyRef = useRef<string | null>(null);
   const [tabDropPreview, setTabDropPreview] = useState<{
     readonly key: string;
@@ -257,14 +277,22 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     terminalOpen: routeTerminalOpen,
     modelPickerOpen: isModelPickerOpen(),
   };
-  const jumpModifiersHeld = shouldShowThreadJumpHintsForModifiers(shortcutModifiers, keybindings, {
-    platform: navigator.platform,
-    context: shortcutContext,
-  });
-
-  useEffect(() => {
-    updateThreadJumpHintsVisibility(jumpModifiersHeld);
-  }, [jumpModifiersHeld, updateThreadJumpHintsVisibility]);
+  const fastTabJumpModifiersHeld = shouldShowThreadJumpHintsForModifiers(
+    shortcutModifiers,
+    keybindings,
+    {
+      platform: navigator.platform,
+      context: shortcutContext,
+    },
+  );
+  const contextualTabJumpModifiersHeld = shouldShowTabJumpHintsForModifiers(
+    shortcutModifiers,
+    keybindings,
+    {
+      platform: navigator.platform,
+      context: shortcutContext,
+    },
+  );
 
   const threadShellByKey = useMemo(
     () =>
@@ -377,11 +405,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     threadShells,
   ]);
 
-  useEffect(() => {
-    const activeElement = tabListRef.current?.querySelector<HTMLElement>("[data-active-tab=true]");
-    activeElement?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeTabKey, tabs.length]);
-
   const closeTab = useCallback(
     (tabKey: string) => {
       const result = transitionGlobalTabsStore({
@@ -442,7 +465,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         return;
       }
       const traversalDirection = threadTraversalDirectionFromCommand(command);
-      const jumpIndex = threadJumpIndexFromCommand(command ?? "");
+      const jumpIndex =
+        tabJumpIndexFromCommand(command ?? "") ?? threadJumpIndexFromCommand(command ?? "");
       let targetKey: string | null = null;
       if (traversalDirection !== null) {
         targetKey = resolveAdjacentThreadId({
@@ -562,14 +586,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         <TooltipPopup side="bottom">Command center</TooltipPopup>
       </Tooltip>
       <TooltipProvider delay={60} closeDelay={0} timeout={300}>
-        <ScrollArea
-          ref={tabListRef}
-          hideScrollbars
-          scrollFade
-          className="min-w-0 flex-1 rounded-none"
-        >
+        <div className="min-w-0 flex-1 overflow-hidden">
           <div
-            className="flex h-full w-max min-w-full items-center gap-0.5"
+            className="flex h-full min-w-0 items-center gap-0.5"
             onDragLeave={handleTabDragLeave}
             onDragOver={handleTabBarDragOver}
             onDrop={handleTabBarDrop}
@@ -587,6 +606,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                       closePolicy: "direct" as const,
                     })
                   : null;
+              const isSettled = threadLifecycle?.isSettled ?? false;
               const settlesBeforeClose = threadLifecycle?.closePolicy === "settle-first";
               const draftSession = tab._tag === "DraftThread" ? draftSessions[tab.draftId] : null;
               const projectId =
@@ -625,7 +645,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               const modelLabel = shell?.modelSelection.model ?? null;
               const pullRequestStatus =
                 tab._tag === "PullRequest" ? pullRequestStatusPresentation(tab.reviewStatus) : null;
-              const jumpCommand = threadJumpCommandForIndex(index);
+              const jumpCommand = contextualTabJumpModifiersHeld
+                ? tabJumpCommandForIndex(index)
+                : fastTabJumpModifiersHeld
+                  ? threadJumpCommandForIndex(index)
+                  : null;
               const jumpKeyLabel = jumpCommand
                 ? shortcutKeyLabelForCommandMatchingModifiers(
                     shortcutModifiers,
@@ -634,14 +658,15 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                     { platform: navigator.platform, context: shortcutContext },
                   )
                 : null;
-              const showJumpHint = jumpModifiersHeld && jumpKeyLabel !== null;
-              const quickLookOpen = showThreadJumpHints && threadTab !== null;
+              const showJumpHint = jumpKeyLabel !== null;
+              const quickLookOpen = contextualTabJumpModifiersHeld && threadTab !== null;
               const hasTooltipDetails =
                 project !== undefined ||
                 environmentLabel !== null ||
                 branch !== null ||
                 modelLabel !== null ||
                 status !== null ||
+                isSettled ||
                 pullRequestStatus !== null;
               return (
                 <GlobalTabDetailsTooltip
@@ -654,8 +679,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                       <div
                         draggable
                         data-active-tab={active}
+                        data-global-tab=""
                         className={cn(
-                          "group/tab relative flex h-7 max-w-44 shrink-0 items-center rounded-md pl-1.5 text-xs transition-[background-color,color] duration-150 ease-out",
+                          "group/tab relative flex h-7 min-w-0 max-w-44 flex-[1_1_11rem] items-center rounded-md pl-1.5 text-xs transition-[background-color,color] duration-150 ease-out",
                           tabDropPreview?.key === tabKey &&
                             tabDropPreview.position === "before" &&
                             "before:absolute before:inset-y-0.5 before:-left-0.5 before:w-0.5 before:rounded-full before:bg-primary",
@@ -703,9 +729,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         <button
                           type="button"
                           className={cn(
-                            "flex h-full min-w-0 flex-1 items-center",
+                            "flex h-full min-w-0 flex-1 items-center overflow-hidden",
                             tab._tag === "ServerThread" ? "pr-12" : "pr-6",
                           )}
+                          data-global-tab-content=""
+                          data-server-thread={tab._tag === "ServerThread" ? "" : undefined}
                           aria-current={active ? "page" : undefined}
                           onClick={() => navigateToGlobalTab(navigate, tab)}
                         >
@@ -729,12 +757,15 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                               )}
                             />
                           ) : null}
-                          {threadTab ? <AnimatedThreadTabStatusMark status={status} /> : null}
+                          {threadTab ? (
+                            <AnimatedThreadTabStatusMark status={status} isSettled={isSettled} />
+                          ) : null}
                           <span className="truncate">{title}</span>
                         </button>
                         {tab._tag === "ServerThread" ? (
                           <button
                             type="button"
+                            data-global-tab-thread-actions=""
                             className={cn(
                               "absolute right-[1.625rem] flex size-6 shrink-0 items-center justify-center rounded-sm text-foreground outline-none transition-[background-color,opacity] duration-150 ease-out hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
                               showJumpHint
@@ -868,6 +899,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                               {status.label}
                             </div>
                           </div>
+                        ) : isSettled ? (
+                          <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                            <CircleCheckIcon className="size-3 shrink-0" />
+                            <div className="min-w-0 truncate">Settled</div>
+                          </div>
                         ) : null}
                         {pullRequestStatus ? (
                           <div
@@ -889,23 +925,23 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
             {tabDropPreview?.position === "end" ? (
               <span className="h-5 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
             ) : null}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label="Open new tab"
-                    onClick={() => void navigate({ to: "/" })}
-                  >
-                    <PlusIcon className="size-3.5" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="bottom">New tab</TooltipPopup>
-            </Tooltip>
           </div>
-        </ScrollArea>
+        </div>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Open new tab"
+                onClick={() => void navigate({ to: "/" })}
+              >
+                <PlusIcon className="size-3.5" />
+              </button>
+            }
+          />
+          <TooltipPopup side="bottom">New tab</TooltipPopup>
+        </Tooltip>
       </TooltipProvider>
     </header>
   );

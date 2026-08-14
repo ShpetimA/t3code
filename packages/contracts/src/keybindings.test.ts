@@ -102,6 +102,12 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedModelPickerJump.command, "modelPicker.jump.1");
 
+    const parsedTabJump = yield* decode(KeybindingRule, {
+      key: "mod+alt+1",
+      command: "tab.jump.1",
+    });
+    assert.strictEqual(parsedTabJump.command, "tab.jump.1");
+
     const parsedThreadPrevious = yield* decode(KeybindingRule, {
       key: "mod+shift+[",
       command: "thread.previous",

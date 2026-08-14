@@ -27,14 +27,18 @@ thread)** is available only when the thread is not required in the strip by its 
 
 Top tabs show the project icon, thread title, and a compact status indicator for work in progress,
 monitoring, pending approval, pending input, failure, a ready plan, or unread completion. Projects
-without an icon get a stable colored monogram so their tabs remain recognizable at a glance. Drafts
-keep the same tab position when their first message creates the server thread. Drag tabs to reorder
-them, use the command center to reopen other threads, and use the plus button to open a new thread,
-the pull request list, Usage, or Settings. Pull request tabs similarly distinguish open, draft,
-closed, and merged reviews. Settings keeps its section sidebar below the global tab strip.
-Hold `Cmd` on macOS or `Ctrl` elsewhere to see the remaining key for each of the first nine open
-tabs' `Cmd/Ctrl+1–9` jump shortcut immediately. Keep holding for one second to open every thread tab's info
-card for a quick glance; adding another modifier cancels the peek.
+without an icon get a stable colored monogram so their tabs remain recognizable at a glance. When no
+higher-priority status needs attention, a settled thread shows a muted circled check while a resting
+unsettled thread remains unmarked. Drafts keep the same tab position when their first message creates
+the server thread. Tabs share the available strip width and progressively shrink like browser tabs
+instead of making the strip horizontally scroll. Drag tabs to reorder them, use the command center to
+reopen other threads, and use the plus button to open a new thread, the pull request list, Usage, or
+Settings. Pull request tabs similarly distinguish open, draft, closed, and merged reviews. Settings
+keeps its section sidebar below the global tab strip.
+Hold `Cmd` on macOS or `Ctrl` elsewhere to show the remaining number for each of the first nine open
+tabs, then add `1–9` to jump directly to one. Add `Option` on macOS or `Alt` elsewhere to open every
+thread tab's info card immediately while keeping the same numbered navigation available. Releasing
+the modifiers closes the hints and peek.
 
 On desktop-sized windows, the full-width workspace is the thread view. The current thread appears as
 a pinned tab beside its tool tabs. Its compact status indicator mirrors the sidebar, including
