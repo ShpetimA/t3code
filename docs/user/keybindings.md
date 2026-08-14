@@ -50,6 +50,7 @@ successful pick; its hover glow and badge preview the element and token that cli
 **Cancel** or `Escape` exits Inspect and clears its selection and spotlight.
 `tab.jump.1` through `tab.jump.9` activate the corresponding global tab and default to
 `mod+alt+1` through `mod+alt+9`.
+`tab.new` opens the new-tab landing view and defaults to `mod+t`.
 
 The command palette searches active thread titles, projects, branches, user messages, and final
 agent responses across connected environments. Message matches show one labeled excerpt while

@@ -84,6 +84,7 @@ const STATIC_KEYBINDING_COMMANDS = [
   "composer.stash",
   "chat.new",
   "chat.newLocal",
+  "tab.new",
   "editor.openFavorite",
   "editor.toggleFocus",
   ...TAB_JUMP_KEYBINDING_COMMANDS,

@@ -35,6 +35,8 @@ instead of making the strip horizontally scroll. Drag tabs to reorder them, use 
 reopen other threads, and use the plus button to open a new thread, the pull request list, Usage, or
 Settings. Pull request tabs similarly distinguish open, draft, closed, and merged reviews. Settings
 keeps its section sidebar below the global tab strip.
+Press `Cmd+T` on macOS or `Ctrl+T` elsewhere to open the same new-tab landing view as the plus
+button.
 Hold `Cmd` on macOS or `Ctrl` elsewhere to show the remaining number for each of the first nine open
 tabs, then add `1–9` to jump directly to one. Add `Option` on macOS or `Alt` elsewhere to open every
 thread tab's info card immediately while keeping the same numbered navigation available. Releasing
