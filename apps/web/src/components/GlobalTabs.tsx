@@ -45,6 +45,7 @@ import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStor
 import {
   resolveShortcutCommand,
   shortcutKeyLabelForCommandMatchingModifiers,
+  shortcutLabelForCommand,
   shouldShowTabJumpHintsForModifiers,
   shouldShowThreadJumpHintsForModifiers,
   tabJumpCommandForIndex,
@@ -293,6 +294,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       context: shortcutContext,
     },
   );
+  const newTabShortcutLabel = shortcutLabelForCommand(keybindings, "tab.new", {
+    platform: navigator.platform,
+    context: shortcutContext,
+  });
 
   const threadShellByKey = useMemo(
     () =>
@@ -452,6 +457,12 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           modelPickerOpen: isModelPickerOpen(),
         },
       });
+      if (command === "tab.new") {
+        event.preventDefault();
+        event.stopPropagation();
+        void navigate({ to: "/" });
+        return;
+      }
       if (command === null && closeShortcut) {
         event.preventDefault();
         event.stopPropagation();
@@ -940,7 +951,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               </button>
             }
           />
-          <TooltipPopup side="bottom">New tab</TooltipPopup>
+          <TooltipPopup side="bottom">
+            {newTabShortcutLabel ? `New tab (${newTabShortcutLabel})` : "New tab"}
+          </TooltipPopup>
         </Tooltip>
       </TooltipProvider>
     </header>
