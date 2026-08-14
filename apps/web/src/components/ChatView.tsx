@@ -27,6 +27,7 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
+  changeRequestAutoSettles,
   effectiveSettled,
   effectiveSnoozed,
   threadWokeAt,
@@ -140,7 +141,6 @@ import {
 } from "../splitPaneTree";
 import { type ThreadWorkspaceLayoutTransition } from "../threadWorkspace";
 import {
-  pullRequestSurfaceId,
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
   selectThreadWorkspace,
@@ -175,6 +175,7 @@ import {
   type AgentPanelRevealRequest,
   type AgentPanelRevealTarget,
 } from "./AgentsPanel";
+import { isThreadOwnPullRequest } from "./pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "./pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
@@ -206,6 +207,7 @@ import {
 } from "~/projectScripts";
 import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import { useBrowserHistoryStore } from "~/browserHistoryStore";
+import { registerFaviconProjectForThread } from "~/browserFaviconStore";
 import { getProviderModelCapabilities, resolveSelectableProvider } from "../providerModels";
 import { NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import {
@@ -511,6 +513,13 @@ function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
   if (eventPathContainsSelector(event, TYPE_TO_FOCUS_EDITABLE_SELECTOR)) return false;
   if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
   if (document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR)) return false;
+
+  // The right-panel surface launcher claims its shortcut letters while it is
+  // visible; those keys open surfaces instead of typing into the composer.
+  const launcherKeys = document
+    .querySelector("[data-surface-launcher-keys]")
+    ?.getAttribute("data-surface-launcher-keys");
+  if (launcherKeys?.toLowerCase().includes(event.key.toLowerCase()) === true) return false;
 
   return true;
 }
@@ -1629,14 +1638,20 @@ function ChatViewContent(props: ChatViewProps) {
   const [pullRequestTabStatuses, setPullRequestTabStatuses] = useState<
     Record<string, PullRequestTabStatus>
   >({});
-  const handlePullRequestTabStatusChange = useCallback((status: PullRequestTabStatus) => {
-    const id = pullRequestSurfaceId(status);
-    setPullRequestTabStatuses((current) =>
-      current[id]?.state === status.state && current[id]?.isDraft === status.isDraft
-        ? current
-        : { ...current, [id]: status },
-    );
-  }, []);
+  const activePullRequestSurfaceId =
+    activeRightPanelSurface?.kind === "pull-request" ? activeRightPanelSurface.id : undefined;
+  const handlePullRequestTabStatusChange = useCallback(
+    (status: PullRequestTabStatus) => {
+      if (activePullRequestSurfaceId === undefined) return;
+      setPullRequestTabStatuses((current) => {
+        const previous = current[activePullRequestSurfaceId];
+        return previous?.state === status.state && previous.isDraft === status.isDraft
+          ? current
+          : { ...current, [activePullRequestSurfaceId]: status };
+      });
+    },
+    [activePullRequestSurfaceId],
+  );
   const activePreviewState = useThreadPreviewState(activeThreadRef);
   const activePreviewMiniPlayer = usePreviewMiniPlayerStore((state) =>
     selectThreadPreviewMiniPlayer(state.byThreadKey, activeThreadRef),
@@ -1729,9 +1744,11 @@ function ChatViewContent(props: ChatViewProps) {
     });
   }, [activeThreadKey, existingOpenBottomPanelThreadKeys, bottomPanelOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
-  const activeProjectRef = activeThread
-    ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
-    : null;
+  const activeProjectRef = useMemo(
+    () =>
+      activeThread ? scopeProjectRef(activeThread.environmentId, activeThread.projectId) : null,
+    [activeThread?.environmentId, activeThread?.projectId],
+  );
   const activeProject = useProject(activeProjectRef);
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
@@ -1783,6 +1800,10 @@ function ChatViewContent(props: ChatViewProps) {
 
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.
+  useEffect(() => {
+    if (!activeThreadRef || !activeProjectRef) return;
+    registerFaviconProjectForThread(activeThreadRef, activeProjectRef);
+  }, [activeProjectRef, activeThreadRef]);
   const allProjects = useProjects();
   const primaryEnvironmentId = primaryEnvironment?.environmentId ?? null;
   useEffect(() => {
@@ -4242,6 +4263,7 @@ function ChatViewContent(props: ChatViewProps) {
   // so the banner and the sidebar row never disagree.
   const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
   const autoSettleAfterDays = useClientSettings((settings) => settings.sidebarAutoSettleAfterDays);
+  const autoSettleOnMerge = useClientSettings((settings) => settings.sidebarAutoSettleOnMerge);
   const activeThreadPr = resolveThreadPr({
     threadBranch: activeThread?.branch ?? null,
     gitStatus: gitStatusQuery.data ?? null,
@@ -4282,9 +4304,8 @@ function ChatViewContent(props: ChatViewProps) {
     if (activeThreadRef === null || activeThreadWokeAt === null) return;
     markThreadVisited(scopedThreadKey(activeThreadRef), activeThreadWokeAt);
   }, [activeThreadRef, activeThreadWokeAt, markThreadVisited]);
-  // Mirror of the sidebar's Woke pill for the open thread: same visit
-  // comparison, same merged/closed-PR suppression (finished work needs no
-  // wake-up call). Drives the dismissible composer banner below.
+  // Mirror of the sidebar's Woke pill for the open thread. It uses the same
+  // visit comparison and change request settle rule.
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     activeThreadKey === null ? undefined : store.threadLastVisitedAtById[activeThreadKey],
   );
@@ -4298,7 +4319,7 @@ function ChatViewContent(props: ChatViewProps) {
     : null;
   const activeThreadWokeVisible = useMemo(() => {
     if (activeThreadWokeAt === null) return false;
-    if (activeThreadPr?.state === "merged" || activeThreadPr?.state === "closed") return false;
+    if (changeRequestAutoSettles(activeThreadPr?.state, autoSettleOnMerge)) return false;
     const wokeAtMs = Date.parse(activeThreadWokeAt);
     if (Number.isNaN(wokeAtMs)) return false;
     // Having the thread open counts as a visit at completedAt (the effect
@@ -4320,18 +4341,21 @@ function ChatViewContent(props: ChatViewProps) {
     activeThreadLastVisitedAt,
     activeThreadPr?.state,
     activeThreadWokeAt,
+    autoSettleOnMerge,
   ]);
   const activeThreadSettled = useMemo(() => {
     if (activeThreadShell === null || !supportsSettlement) return false;
     return effectiveSettled(activeThreadShell, {
       now: `${nowMinute}:00.000Z`,
       autoSettleAfterDays,
+      autoSettleOnMerge,
       changeRequestState: activeThreadPr?.state ?? null,
     });
   }, [
     activeThreadPr?.state,
     activeThreadShell,
     autoSettleAfterDays,
+    autoSettleOnMerge,
     nowMinute,
     supportsSettlement,
   ]);
@@ -6261,10 +6285,23 @@ function ChatViewContent(props: ChatViewProps) {
             number: surface.number,
           }}
           context={
-            activeThreadPr?.number === surface.number && threadRepository === surface.repository
+            isThreadOwnPullRequest(
+              {
+                projectId: activeProject?.id ?? null,
+                repository: threadRepository,
+                number: activeThreadPr?.number ?? null,
+              },
+              {
+                projectId: surface.projectId,
+                repository: surface.repository,
+                number: surface.number,
+              },
+            )
               ? "thread"
               : "page"
           }
+          chromeVariant="collapse"
+          composerDraftTarget={composerDraftTarget}
           onStateChange={handlePullRequestTabStatusChange}
         />
       ) : surface.kind === "agents" ? (
@@ -6923,6 +6960,7 @@ function ChatViewContent(props: ChatViewProps) {
           activeSurfaceId={activeSurface?.id ?? null}
           pendingSurfaceIds={pendingFileSurfaceIds}
           previewSessions={activePreviewState.sessions}
+          desktopByTabId={activePreviewState.desktopByTabId}
           terminalLabelsById={activeTerminalLabelsById}
           onActivate={(surface) => {
             const tabId = tabIdForTarget({ _tag: "Surface", surface });
@@ -7065,11 +7103,12 @@ function ChatViewContent(props: ChatViewProps) {
         <RightPanelSheet open onClose={closePreviewPanel}>
           <RightPanelTabs
             mode="sheet"
-            layoutControls={panelToggleControls}
+            layoutControls={<div className="mr-px flex items-center">{panelToggleControls}</div>}
             surfaces={threadWorkspaceState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}
+            desktopByTabId={activePreviewState.desktopByTabId}
             terminalLabelsById={activeTerminalLabelsById}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}

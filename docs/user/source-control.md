@@ -47,7 +47,16 @@ T3 Code works with the platforms your team already uses:
 - **Code** opens with file diffs expanded and the file tree visible. Use **Files** to hide or show
   the tree and jump directly to a changed file
 - Open the review on its hosting provider from the review's overflow menu
+- Command-click (Control-click on Windows and Linux) a pull request number in the sidebar to open it in your browser instead of in T3 Code
 - Check out a teammate's branch to review code locally
+
+**Fix what you wrote, in place**
+
+- Rewrite a pull request's title and description from the review itself, in Markdown, with a
+  preview before you save
+- Rewrite your own comments the same way, wherever they are shown
+- Works on GitHub, GitLab, and Bitbucket. Azure DevOps takes a new title and description; its
+  comments stay read-only here, as they already were
 
 ### Know Your Setup at a Glance
 

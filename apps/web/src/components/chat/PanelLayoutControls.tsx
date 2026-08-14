@@ -55,7 +55,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
                 size="sm"
                 disabled={!terminalAvailable}
               >
-                <PanelBottomIcon className="size-3.5" />
+                <PanelBottomIcon className="size-4" />
               </Toggle>
             }
           />
@@ -83,7 +83,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
                 size="sm"
                 disabled={!rightControl.available}
               >
-                <PanelRightIcon className="size-3.5" />
+                <PanelRightIcon className="size-4" />
                 {rightControl.liveAgentCount > 0 ? (
                   <span
                     aria-hidden
