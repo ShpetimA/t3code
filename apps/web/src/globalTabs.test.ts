@@ -116,7 +116,12 @@ describe("global tabs", () => {
         supportsSettlement: true,
         supportsSnooze: true,
       }),
-    ).toEqual({ isRequired: true, isSettled: false, closePolicy: "settle-first" });
+    ).toEqual({
+      isRequired: true,
+      isSettled: false,
+      isSnoozed: false,
+      closePolicy: "settle-first",
+    });
   });
 
   it("makes settled, snoozed, and archived thread history directly closable", () => {
@@ -132,13 +137,13 @@ describe("global tabs", () => {
         threadShell({ activityAt: "2026-08-13T11:00:00.000Z", settledOverride: "settled" }),
         options,
       ),
-    ).toEqual({ isRequired: false, isSettled: true, closePolicy: "direct" });
+    ).toEqual({ isRequired: false, isSettled: true, isSnoozed: false, closePolicy: "direct" });
     expect(
       resolveGlobalThreadTabLifecycle(
         threadShell({ activityAt: "2026-08-09T11:00:00.000Z" }),
         options,
       ),
-    ).toEqual({ isRequired: false, isSettled: true, closePolicy: "direct" });
+    ).toEqual({ isRequired: false, isSettled: true, isSnoozed: false, closePolicy: "direct" });
     expect(
       resolveGlobalThreadTabLifecycle(
         threadShell({
@@ -147,7 +152,7 @@ describe("global tabs", () => {
         }),
         options,
       ),
-    ).toEqual({ isRequired: false, isSettled: false, closePolicy: "direct" });
+    ).toEqual({ isRequired: false, isSettled: false, isSnoozed: true, closePolicy: "direct" });
     expect(
       resolveGlobalThreadTabLifecycle(
         threadShell({
@@ -156,7 +161,7 @@ describe("global tabs", () => {
         }),
         options,
       ),
-    ).toEqual({ isRequired: false, isSettled: false, closePolicy: "direct" });
+    ).toEqual({ isRequired: false, isSettled: false, isSnoozed: false, closePolicy: "direct" });
   });
 
   it("keeps old-server threads visible but directly closable", () => {
@@ -167,7 +172,7 @@ describe("global tabs", () => {
         supportsSettlement: false,
         supportsSnooze: false,
       }),
-    ).toEqual({ isRequired: true, isSettled: false, closePolicy: "direct" });
+    ).toEqual({ isRequired: true, isSettled: false, isSnoozed: false, closePolicy: "direct" });
   });
 
   it("recognizes the platform close-tab shortcut", () => {

@@ -1,8 +1,14 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/shell";
 import type { ResolvedKeybindingsConfig, ScopedThreadRef } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  AlarmClockIcon,
   BotIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
@@ -81,12 +87,14 @@ import { cn } from "../lib/utils";
 import { useUiStateStore } from "../uiStateStore";
 import { ProjectFavicon } from "./ProjectFavicon";
 import {
+  firstValidTimestampMs,
   resolveAdjacentThreadId,
   resolveThreadStatusPill,
   sortPinnedThreadsForSidebar,
   sortThreadsForSidebar,
   type ThreadStatusPill,
 } from "./Sidebar.logic";
+import { snoozeWakeDescription, snoozeWakeLabel } from "./Sidebar.snooze";
 import { ThreadStatusMark } from "./ThreadStatusMark";
 import { Kbd } from "./ui/kbd";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -296,6 +304,124 @@ function AnimatedComposerDraftTabMark({ target }: { readonly target: DraftId | S
   );
 }
 
+function SnoozedThreadsIndicator(props: {
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly projectByKey: ReadonlyMap<string, EnvironmentProject>;
+  readonly environmentLabelById: ReadonlyMap<EnvironmentThreadShell["environmentId"], string>;
+  readonly now: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  const { environmentLabelById, now, projectByKey, threads, timestampFormat } = props;
+  const count = threads.length;
+  const visible = count > 0;
+  const displayedCount = count > 99 ? "99+" : String(count);
+  const nowDate = new Date(now);
+  return (
+    <span
+      aria-hidden={visible ? undefined : true}
+      className={cn(
+        "inline-flex h-8 shrink-0 origin-center transition-[width,scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+        visible
+          ? "w-8 scale-100 opacity-100 blur-0"
+          : "pointer-events-none w-0 scale-[0.25] opacity-0 blur-[4px]",
+      )}
+    >
+      <Tooltip disabled={!visible}>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={`${count} snoozed ${count === 1 ? "session" : "sessions"}`}
+              className="flex size-8 shrink-0 items-center justify-center rounded-md text-amber-600 outline-none transition-[background-color,color] duration-150 ease-out hover:bg-amber-500/10 hover:text-amber-700 focus-visible:ring-2 focus-visible:ring-amber-500/60 dark:text-amber-300/90 dark:hover:bg-amber-300/10 dark:hover:text-amber-200"
+              tabIndex={visible ? 0 : -1}
+            />
+          }
+        >
+          <span aria-hidden className="relative inline-flex size-5 items-center justify-center">
+            <AlarmClockIcon className="absolute inset-0 size-5 stroke-[1.6]" />
+            <span className="absolute inset-[5px] rounded-full bg-background/95" />
+            <span
+              className={cn(
+                "relative pt-px leading-none font-bold tabular-nums",
+                displayedCount.length > 1 ? "text-[6px]" : "text-[8px]",
+              )}
+            >
+              {displayedCount}
+            </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup
+          side="bottom"
+          align="end"
+          sideOffset={2}
+          variant="glass"
+          className="pointer-events-auto w-80 max-w-[calc(100vw-1rem)] text-left whitespace-normal transition-[width,height,scale,opacity,translate,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-y-1 data-starting-style:-translate-y-1 data-ending-style:blur-[4px] data-starting-style:blur-[4px] data-instant:duration-200 motion-reduce:transition-none [&_[data-slot=tooltip-viewport]]:p-0"
+        >
+          <div className="flex items-center gap-2 border-border/60 border-b px-3 py-2.5">
+            <AlarmClockIcon className="size-3.5 shrink-0 text-amber-600 dark:text-amber-300/90" />
+            <span className="min-w-0 flex-1 text-xs font-medium text-foreground">
+              Snoozed sessions
+            </span>
+            <span className="text-[10px] font-medium text-amber-700 tabular-nums dark:text-amber-300">
+              {count}
+            </span>
+          </div>
+          <ul className="max-h-80 divide-y divide-border/50 overflow-y-auto overscroll-contain">
+            {threads.map((thread) => {
+              const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
+              const environmentLabel = environmentLabelById.get(thread.environmentId) ?? null;
+              const projectLabel = project?.title ?? "Unknown project";
+              const contextLabel =
+                environmentLabel === null ? projectLabel : `${projectLabel} · ${environmentLabel}`;
+              const snoozedUntil = thread.snoozedUntil;
+              const wakeLabel =
+                snoozedUntil == null ? "now" : snoozeWakeLabel(snoozedUntil, { now });
+              const wakeDescription =
+                snoozedUntil == null
+                  ? "now"
+                  : snoozeWakeDescription(snoozedUntil, nowDate, timestampFormat);
+              return (
+                <li
+                  key={scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))}
+                  className="flex min-w-0 items-center gap-2.5 px-3 py-2"
+                >
+                  {project ? (
+                    <ProjectFavicon
+                      environmentId={project.environmentId}
+                      cwd={project.workspaceRoot}
+                      projectName={project.title}
+                      faviconPath={project.faviconPath}
+                      className="size-4 shrink-0"
+                    />
+                  ) : (
+                    <AlarmClockIcon className="size-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-foreground/90">
+                      {thread.title}
+                    </span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      {contextLabel}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right tabular-nums">
+                    <span className="block text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                      in {wakeLabel}
+                    </span>
+                    <span className="block text-[9px] text-muted-foreground">
+                      {wakeDescription}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </TooltipPopup>
+      </Tooltip>
+    </span>
+  );
+}
+
 /** Application titlebar for lifecycle-required threads and route-backed tab history. */
 export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const navigate = useNavigate();
@@ -309,7 +435,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const serverConfigs = useServerConfigs();
   const autoSettleAfterDays = useClientSettings((state) => state.sidebarAutoSettleAfterDays);
+  const timestampFormat = useClientSettings((state) => state.timestampFormat);
   const nowMinute = useNowMinute();
+  const lifecycleNow = `${nowMinute}:00.000Z`;
   const projects = useProjects();
   const { environments } = useEnvironments();
   const draftSessions = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
@@ -366,11 +494,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       ),
     [threadShells],
   );
-  const { requiredThreadTabs, threadLifecycleByTabKey } = useMemo(() => {
+  const { requiredThreadTabs, snoozedThreads, threadLifecycleByTabKey } = useMemo(() => {
     const pinnedThreads: Array<(typeof threadShells)[number]> = [];
     const activeThreads: Array<(typeof threadShells)[number]> = [];
+    const snoozedThreads: Array<(typeof threadShells)[number]> = [];
     const lifecycleByTabKey = new Map<string, GlobalThreadTabLifecycle>();
-    const now = `${nowMinute}:00.000Z`;
 
     for (const thread of threadShells) {
       const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
@@ -379,12 +507,16 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       const threadRef = scopeThreadRef(thread.environmentId, thread.id);
       const tabKey = globalTabKey({ _tag: "ServerThread", threadRef });
       const lifecycle = resolveGlobalThreadTabLifecycle(thread, {
-        now,
+        now: lifecycleNow,
         autoSettleAfterDays,
         supportsSettlement,
         supportsSnooze,
       });
       lifecycleByTabKey.set(tabKey, lifecycle);
+      if (lifecycle.isSnoozed) {
+        snoozedThreads.push(thread);
+        continue;
+      }
       if (!lifecycle.isRequired) continue;
       if (thread.pinnedAt != null) pinnedThreads.push(thread);
       else activeThreads.push(thread);
@@ -398,9 +530,13 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         _tag: "ServerThread" as const,
         threadRef: scopeThreadRef(thread.environmentId, thread.id),
       })),
+      snoozedThreads: snoozedThreads.toSorted(
+        (left, right) =>
+          firstValidTimestampMs(left.snoozedUntil) - firstValidTimestampMs(right.snoozedUntil),
+      ),
       threadLifecycleByTabKey: lifecycleByTabKey,
     };
-  }, [autoSettleAfterDays, nowMinute, serverConfigs, threadShells]);
+  }, [autoSettleAfterDays, lifecycleNow, serverConfigs, threadShells]);
   const projectByKey = useMemo(
     () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
     [projects],
@@ -670,6 +806,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                   ? (threadLifecycleByTabKey.get(tabKey) ?? {
                       isRequired: false,
                       isSettled: false,
+                      isSnoozed: false,
                       closePolicy: "direct" as const,
                     })
                   : null;
@@ -971,6 +1108,13 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
             ) : null}
           </div>
         </div>
+        <SnoozedThreadsIndicator
+          threads={snoozedThreads}
+          projectByKey={projectByKey}
+          environmentLabelById={environmentLabelById}
+          now={lifecycleNow}
+          timestampFormat={timestampFormat}
+        />
         <Tooltip>
           <TooltipTrigger
             render={

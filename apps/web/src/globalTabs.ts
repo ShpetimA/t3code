@@ -48,6 +48,7 @@ export interface GlobalTabsState {
 export interface GlobalThreadTabLifecycle {
   readonly isRequired: boolean;
   readonly isSettled: boolean;
+  readonly isSnoozed: boolean;
   readonly closePolicy: "direct" | "settle-first";
 }
 
@@ -61,7 +62,10 @@ export function resolveGlobalThreadTabLifecycle(
     readonly supportsSnooze: boolean;
   },
 ): GlobalThreadTabLifecycle {
-  const isSnoozed = options.supportsSnooze && effectiveSnoozed(thread, { now: options.now });
+  const isSnoozed =
+    thread.archivedAt === null &&
+    options.supportsSnooze &&
+    effectiveSnoozed(thread, { now: options.now });
   const isSettled =
     options.supportsSettlement &&
     effectiveSettled(thread, {
@@ -74,6 +78,7 @@ export function resolveGlobalThreadTabLifecycle(
   return {
     isRequired,
     isSettled,
+    isSnoozed,
     closePolicy: isRequired && options.supportsSettlement ? "settle-first" : "direct",
   };
 }
