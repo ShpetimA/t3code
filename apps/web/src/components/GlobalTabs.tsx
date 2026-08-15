@@ -422,7 +422,7 @@ function SnoozedThreadsIndicator(props: {
                     onClick={() => void onWakeAndOpenThread(threadRef)}
                     className="flex w-10 shrink-0 items-center justify-center self-stretch text-amber-700 outline-none transition-[background-color,color] duration-150 ease-out hover:bg-amber-500/10 focus-visible:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500/60 dark:text-amber-300"
                   >
-                    <AlarmClockOffIcon className="size-3.5 scale-[0.25] opacity-0 blur-[4px] transition-[scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] group-hover/snoozed-thread:scale-100 group-hover/snoozed-thread:opacity-100 group-hover/snoozed-thread:blur-0 group-focus-within/snoozed-thread:scale-100 group-focus-within/snoozed-thread:opacity-100 group-focus-within/snoozed-thread:blur-0 motion-reduce:transition-none" />
+                    <AlarmClockOffIcon className="size-3.5 scale-[0.25] opacity-0 transition-[scale,opacity] duration-150 ease-out group-hover/snoozed-thread:scale-100 group-hover/snoozed-thread:opacity-100 group-focus-within/snoozed-thread:scale-100 group-focus-within/snoozed-thread:opacity-100 motion-reduce:transition-none" />
                   </button>
                 </li>
               );
