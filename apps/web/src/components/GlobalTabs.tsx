@@ -631,6 +631,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
             {tabs.map((tab, index) => {
               const tabKey = globalTabKey(tab);
               const active = tabKey === activeTabKey;
+              const previousTab = tabs[index - 1];
+              const bordersActiveTab =
+                active || (previousTab !== undefined && globalTabKey(previousTab) === activeTabKey);
               const threadTab = isGlobalThreadTab(tab) ? tab : null;
               const threadKey = threadTab ? scopedThreadKey(threadTab.threadRef) : null;
               const shell = threadKey ? threadShellByKey.get(threadKey) : undefined;
@@ -744,6 +747,16 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           });
                         }}
                       >
+                        {index > 0 ? (
+                          <span
+                            aria-hidden
+                            data-global-tab-divider=""
+                            className={cn(
+                              "pointer-events-none absolute top-1/2 -left-px h-3 w-px -translate-y-1/2 rounded-full bg-border/70 transition-opacity duration-150 ease-out",
+                              bordersActiveTab ? "opacity-0" : "opacity-100",
+                            )}
+                          />
+                        ) : null}
                         <button
                           type="button"
                           className={cn(
