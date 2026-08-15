@@ -24,7 +24,7 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
-import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
+import { useEnvironments } from "../state/environments";
 import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
@@ -55,7 +55,6 @@ function GlobalTabsLanding() {
   const threads = useThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const { environments } = useEnvironments();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
   const statusByThreadKey = useMemo(() => {
     const statuses = new Map<string, ThreadStatusPill>();
@@ -75,11 +74,9 @@ function GlobalTabsLanding() {
     () => buildGlobalTabsLandingProjects({ projects, threads }),
     [projects, threads],
   );
-  const primaryEnvironment = environments.find(
-    (environment) => environment.environmentId === primaryEnvironmentId,
+  const pullRequestsSupported = environments.some(
+    (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
   );
-  const pullRequestsSupported =
-    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
 
   if (!bootstrapped) return null;
 

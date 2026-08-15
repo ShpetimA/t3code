@@ -1578,11 +1578,9 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
-  const primaryEnvironment = environments.find(
-    (environment) => environment.environmentId === primaryEnvironmentId,
+  const pullRequestsSupported = environments.some(
+    (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
   );
-  const pullRequestsSupported =
-    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
   if (pullRequestsSupported) {
     actionItems.push({
       kind: "action",
