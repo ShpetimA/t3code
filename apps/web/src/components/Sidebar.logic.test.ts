@@ -111,23 +111,18 @@ describe("archiveSelectedThreadEntries", () => {
   it("records every entry after full success", async () => {
     const outcome = await archiveSelectedThreadEntries({
       entries,
-      archive: async (_entry, onArchived) => {
-        onArchived();
-        return success;
-      },
+      archive: async () => success,
     });
 
     expect(outcome).toEqual({
       archivedThreadKeys: ["one", "two", "three"],
       mutationFailure: null,
-      followupFailures: [],
     });
   });
 
   it("stops at a mutation failure and retains prior successes", async () => {
-    const archive = vi.fn(async (entry: (typeof entries)[number], onArchived: () => void) => {
+    const archive = vi.fn(async (entry: (typeof entries)[number]) => {
       if (entry.threadKey === "two") return failure;
-      onArchived();
       return success;
     });
     const outcome = await archiveSelectedThreadEntries({ entries, archive });
@@ -136,22 +131,6 @@ describe("archiveSelectedThreadEntries", () => {
     expect(outcome).toEqual({
       archivedThreadKeys: ["one"],
       mutationFailure: failure,
-      followupFailures: [],
-    });
-  });
-
-  it("continues after a post-archive failure", async () => {
-    const archive = vi.fn(async (entry: (typeof entries)[number], onArchived: () => void) => {
-      onArchived();
-      return entry.threadKey === "two" ? failure : success;
-    });
-    const outcome = await archiveSelectedThreadEntries({ entries, archive });
-
-    expect(archive).toHaveBeenCalledTimes(3);
-    expect(outcome).toEqual({
-      archivedThreadKeys: ["one", "two", "three"],
-      mutationFailure: null,
-      followupFailures: [failure],
     });
   });
 });

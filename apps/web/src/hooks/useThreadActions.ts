@@ -1,7 +1,6 @@
 import {
   parseScopedThreadKey,
   scopeProjectRef,
-  scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -10,15 +9,13 @@ import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contract
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useRouter } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 
-import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import { pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { terminalEnvironment } from "../state/terminal";
 import { threadEnvironment } from "../state/threads";
 import { vcsEnvironment } from "../state/vcs";
-import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
 import { readLocalApi } from "../localApi";
 import {
@@ -33,7 +30,6 @@ import {
 } from "../state/entities";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useUiStateStore } from "../uiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
@@ -135,15 +131,6 @@ export class ThreadPinReorderUnsupportedError extends Schema.TaggedErrorClass<Th
   }
 }
 
-/** Decides whether archive should replace the current route with a draft.
- * Tab-owned flows preserve the route until their own view transition runs. */
-export function shouldNavigateAfterArchive(
-  navigation: "new-draft" | "preserve" | undefined,
-  isCurrentRoute: boolean,
-): boolean {
-  return navigation !== "preserve" && isCurrentRoute;
-}
-
 export function useThreadActions() {
   const closeTerminal = useAtomCommand(terminalEnvironment.close);
   const archiveThreadMutation = useAtomCommand(threadEnvironment.archive, {
@@ -183,7 +170,6 @@ export function useThreadActions() {
   const refreshVcsStatus = useAtomCommand(vcsEnvironment.refreshStatus, {
     reportFailure: false,
   });
-  const sidebarThreadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);
   const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
   const clearProjectDraftThreadById = useComposerDraftStore(
@@ -191,15 +177,6 @@ export function useThreadActions() {
   );
   const clearTerminalUiState = useTerminalUiStateStore((state) => state.clearTerminalUiState);
   const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
-  const router = useRouter();
-  const handleNewThread = useNewThreadHandler();
-  // Keep a ref so archiveThread can call handleNewThread without appearing in
-  // its dependency array — handleNewThread is inherently unstable (depends on
-  // the projects list) and would otherwise cascade new references into every
-  // sidebar row via archiveThread → attemptArchiveThread.
-  const handleNewThreadRef = useRef(handleNewThread);
-  handleNewThreadRef.current = handleNewThread;
-
   const resolveThreadTarget = useCallback((target: ScopedThreadRef) => {
     const thread = readThreadShell(target);
     if (!thread) {
@@ -210,21 +187,8 @@ export function useThreadActions() {
       threadRef: target,
     };
   }, []);
-  const getCurrentRouteThreadRef = useCallback(() => {
-    const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
-    return resolveThreadRouteRef(currentRouteParams);
-  }, [router]);
-
   const archiveThread = useCallback(
-    async (
-      target: ScopedThreadRef,
-      opts: {
-        onArchived?: () => void;
-        /** Preserve the current route when another view model owns the
-         * post-archive navigation, such as the top tab strip. */
-        navigation?: "new-draft" | "preserve";
-      } = {},
-    ) => {
+    async (target: ScopedThreadRef) => {
       const resolved = resolveThreadTarget(target);
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
@@ -239,12 +203,6 @@ export function useThreadActions() {
         );
       }
 
-      const currentRouteThreadRef = getCurrentRouteThreadRef();
-      const shouldNavigateToDraft = shouldNavigateAfterArchive(
-        opts.navigation,
-        currentRouteThreadRef?.threadId === threadRef.threadId &&
-          currentRouteThreadRef.environmentId === threadRef.environmentId,
-      );
       const archiveResult = await archiveThreadMutation({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId },
@@ -257,21 +215,9 @@ export function useThreadActions() {
         markThreadVisited(scopedThreadKey(threadRef), wokeAt);
       }
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
-      opts.onArchived?.();
-
-      if (shouldNavigateToDraft) {
-        const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
-        );
-        if (navigationResult._tag === "Failure") {
-          return navigationResult;
-        }
-        return archiveResult;
-      }
-
       return archiveResult;
     },
-    [archiveThreadMutation, getCurrentRouteThreadRef, markThreadVisited, resolveThreadTarget],
+    [archiveThreadMutation, markThreadVisited, resolveThreadTarget],
   );
 
   const unarchiveThread = useCallback(
@@ -289,7 +235,10 @@ export function useThreadActions() {
   );
 
   const deleteThread = useCallback(
-    async (target: ScopedThreadRef, opts: { deletedThreadKeys?: ReadonlySet<string> } = {}) => {
+    async (
+      target: ScopedThreadRef,
+      opts: { deletedThreadKeys?: ReadonlySet<string> | undefined } = {},
+    ) => {
       const resolved = resolveThreadTarget(target);
       if (!resolved) {
         // Thread not in main store (e.g. archived thread) — dispatch delete directly.
@@ -364,17 +313,6 @@ export function useThreadActions() {
         input: { threadId: threadRef.threadId, deleteHistory: true },
       });
 
-      const deletedThreadIds = deletedIds ?? new Set<ThreadId>();
-      const currentRouteThreadRef = getCurrentRouteThreadRef();
-      const shouldNavigateToFallback =
-        currentRouteThreadRef?.threadId === threadRef.threadId &&
-        currentRouteThreadRef.environmentId === threadRef.environmentId;
-      const fallbackThreadId = getFallbackThreadIdAfterDelete({
-        threads,
-        deletedThreadId: threadRef.threadId,
-        deletedThreadIds,
-        sortOrder: sidebarThreadSortOrder,
-      });
       const deleteResult = await deleteThreadMutation({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId },
@@ -389,42 +327,6 @@ export function useThreadActions() {
         threadRef,
       );
       clearTerminalUiState(threadRef);
-
-      if (shouldNavigateToFallback) {
-        if (fallbackThreadId) {
-          const fallbackThread = readThreadShell(
-            scopeThreadRef(threadRef.environmentId, fallbackThreadId),
-          );
-          if (fallbackThread) {
-            const navigationResult = await settlePromise(() =>
-              router.navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(
-                  scopeThreadRef(fallbackThread.environmentId, fallbackThread.id),
-                ),
-                replace: true,
-              }),
-            );
-            if (navigationResult._tag === "Failure") {
-              return navigationResult;
-            }
-          } else {
-            const navigationResult = await settlePromise(() =>
-              router.navigate({ to: "/", replace: true }),
-            );
-            if (navigationResult._tag === "Failure") {
-              return navigationResult;
-            }
-          }
-        } else {
-          const navigationResult = await settlePromise(() =>
-            router.navigate({ to: "/", replace: true }),
-          );
-          if (navigationResult._tag === "Failure") {
-            return navigationResult;
-          }
-        }
-      }
 
       if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
         return deleteResult;
@@ -467,7 +369,7 @@ export function useThreadActions() {
             description: `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`,
           }),
         );
-        return cleanupFailure;
+        return deleteResult;
       }
       return deleteResult;
     },
@@ -477,12 +379,9 @@ export function useThreadActions() {
       clearTerminalUiState,
       closeTerminal,
       deleteThreadMutation,
-      getCurrentRouteThreadRef,
       refreshVcsStatus,
       removeWorktree,
-      router,
       resolveThreadTarget,
-      sidebarThreadSortOrder,
       stopThreadSession,
     ],
   );

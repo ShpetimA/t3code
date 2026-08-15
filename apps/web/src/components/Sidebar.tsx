@@ -97,6 +97,7 @@ import {
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
+import { useThreadRemovalNavigation } from "../hooks/useThreadRemovalNavigation";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -1613,8 +1614,30 @@ export default function Sidebar() {
     pinThread,
     unpinThread,
     reorderPinnedThread,
-    deleteThread,
+    deleteThread: mutateDeleteThread,
   } = useThreadActions();
+  const planThreadRemovalNavigation = useThreadRemovalNavigation();
+  const deleteThread = useCallback(
+    async (
+      threadRef: ScopedThreadRef,
+      options: {
+        readonly deletedThreadKeys?: ReadonlySet<string> | undefined;
+        readonly removingThreadKeys?: ReadonlySet<string> | undefined;
+      } = {},
+    ) => {
+      const navigateAfterDelete = planThreadRemovalNavigation({
+        _tag: "Delete",
+        threadRef,
+        removingThreadKeys: options.removingThreadKeys,
+      });
+      const result = await mutateDeleteThread(threadRef, {
+        deletedThreadKeys: options.deletedThreadKeys,
+      });
+      if (result._tag === "Success") await navigateAfterDelete?.();
+      return result;
+    },
+    [mutateDeleteThread, planThreadRemovalNavigation],
+  );
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -2885,11 +2908,13 @@ export default function Sidebar() {
       // really gone, or the first delete would treat still-alive batch mates
       // as deleted and remove a worktree they still point at.
       const deletedThreadKeys = new Set<string>();
+      const removingThreadKeys = new Set(threadKeys);
       for (const threadKey of threadKeys) {
         const thread = threadByKeyRef.current.get(threadKey);
         if (!thread) continue;
         const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id), {
           deletedThreadKeys,
+          removingThreadKeys,
         });
         if (result._tag === "Failure") {
           if (!isAtomCommandInterrupted(result)) {

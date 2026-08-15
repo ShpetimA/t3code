@@ -40,6 +40,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
+import { useThreadRemovalNavigation } from "./useThreadRemovalNavigation";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -186,6 +187,7 @@ export function useThreadActionMenu(input: {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const planThreadRemovalNavigation = useThreadRemovalNavigation();
   const handleNewThread = useNewThreadHandler();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
@@ -348,15 +350,14 @@ export function useThreadActionMenu(input: {
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
             }
+            const navigateAfterDelete = planThreadRemovalNavigation({
+              _tag: "Delete",
+              threadRef,
+            });
             const deleted = await deleteThread(threadRef);
-            if (
-              deleted._tag === "Failure" &&
-              !isAtomCommandInterrupted(deleted) &&
-              // A failure with the thread already gone is worktree cleanup
-              // failing after a successful delete — deleteThread has toasted
-              // that itself, and "Failed to delete thread" would be a lie.
-              readThreadShell(threadRef) !== null
-            ) {
+            if (deleted._tag === "Success") {
+              await navigateAfterDelete?.();
+            } else if (!isAtomCommandInterrupted(deleted)) {
               failureToast("Failed to delete thread", squashAtomCommandFailure(deleted));
             }
             return;
@@ -379,6 +380,7 @@ export function useThreadActionMenu(input: {
       markThreadUnread,
       onStartRename,
       pinThread,
+      planThreadRemovalNavigation,
       projectCwd,
       settleThread,
       snoozeThread,
@@ -467,7 +469,7 @@ export function useThreadTabLifecycleMenu(input: {
               }
               return lifecycleCommandSucceeded(
                 "Failed to archive thread",
-                await archiveThread(threadRef, { navigation: "preserve" }),
+                await archiveThread(threadRef),
               );
             }
             return runThreadLifecycleMenuAction({

@@ -110,6 +110,7 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
 
 import { useThreadActions } from "../hooks/useThreadActions";
+import { useThreadRemovalNavigation } from "../hooks/useThreadRemovalNavigation";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
@@ -1819,19 +1820,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const archiveOutcome = await archiveSelectedThreadEntries({
           entries: selectedThreadEntries,
-          archive: ({ threadRef }, onArchived) => archiveThread(threadRef, { onArchived }),
+          archive: ({ threadRef }) => archiveThread(threadRef),
         });
-        for (const failure of archiveOutcome.followupFailures) {
-          if (isAtomCommandInterrupted(failure)) continue;
-          const error = squashAtomCommandFailure(failure);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Thread archived, but navigation failed",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-        }
         if (archiveOutcome.mutationFailure) {
           removeFromSelection(archiveOutcome.archivedThreadKeys);
           if (!isAtomCommandInterrupted(archiveOutcome.mutationFailure)) {
@@ -3037,7 +3027,37 @@ export default function LegacySidebar() {
   const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
   const updateSettings = useUpdateClientSettings();
   const handleNewThread = useNewThreadHandler();
-  const { archiveThread, deleteThread } = useThreadActions();
+  const { archiveThread: mutateArchiveThread, deleteThread: mutateDeleteThread } =
+    useThreadActions();
+  const planThreadRemovalNavigation = useThreadRemovalNavigation();
+  const archiveThread = useCallback(
+    async (threadRef: ScopedThreadRef) => {
+      const navigateAfterArchive = planThreadRemovalNavigation({
+        _tag: "Archive",
+        threadRef,
+      });
+      const result = await mutateArchiveThread(threadRef);
+      if (result._tag === "Success") await navigateAfterArchive?.();
+      return result;
+    },
+    [mutateArchiveThread, planThreadRemovalNavigation],
+  );
+  const deleteThread = useCallback(
+    async (
+      threadRef: ScopedThreadRef,
+      options: { readonly deletedThreadKeys?: ReadonlySet<string> | undefined } = {},
+    ) => {
+      const navigateAfterDelete = planThreadRemovalNavigation({
+        _tag: "Delete",
+        threadRef,
+        removingThreadKeys: options.deletedThreadKeys,
+      });
+      const result = await mutateDeleteThread(threadRef, options);
+      if (result._tag === "Success") await navigateAfterDelete?.();
+      return result;
+    },
+    [mutateDeleteThread, planThreadRemovalNavigation],
+  );
   const { isMobile, setOpenMobile } = useSidebar();
   const routeTarget = useParams({
     strict: false,
