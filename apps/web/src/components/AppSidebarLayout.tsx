@@ -2,12 +2,13 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
@@ -40,6 +41,12 @@ import {
   useSidebarVisibility,
 } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { resolveGlobalRouteTab } from "../globalTabRoutes";
+import type { GlobalTab } from "../globalTabs";
+import { resolveThreadRouteTarget } from "../threadRoutes";
+import { GlobalTabs } from "./GlobalTabs";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 
@@ -139,10 +146,35 @@ function ProjectProjectionRetention() {
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const legacySidebarEnabled = useLegacySidebarEnabled();
-  // Settings routes show the settings nav in place of whichever thread
-  // sidebar is active.
+  const globalThreadTabsEnabled = useGlobalThreadTabsEnabled();
   const pathname = useLocation({ select: (location) => location.pathname });
+  const routeTarget = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteTarget(params),
+  });
+  const routeDraftSession = useComposerDraftStore((store) =>
+    routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
+  );
+  const activeGlobalTab = useMemo<GlobalTab | null>(() => {
+    if (routeTarget?.kind === "server") {
+      return { _tag: "ServerThread", threadRef: routeTarget.threadRef };
+    }
+    if (routeTarget?.kind === "draft" && routeDraftSession !== null) {
+      return {
+        _tag: "DraftThread",
+        draftId: routeTarget.draftId,
+        threadRef: {
+          environmentId: routeDraftSession.environmentId,
+          threadId: routeDraftSession.threadId,
+        },
+      };
+    }
+    return resolveGlobalRouteTab({ pathname });
+  }, [pathname, routeDraftSession, routeTarget]);
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const settingsSidebarBelowTabs = globalThreadTabsEnabled && isOnSettings;
+  const showSidebar = settingsSidebarBelowTabs || !globalThreadTabsEnabled;
+  const showGlobalTabs = globalThreadTabsEnabled && (activeGlobalTab !== null || pathname === "/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -208,38 +240,62 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     };
   }, [navigate, pathname]);
 
+  const sidebar = showSidebar ? (
+    <Sidebar
+      side="left"
+      collapsible="offcanvas"
+      data-app-sidebar=""
+      className={cn(
+        "border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        settingsSidebarBelowTabs && "top-[var(--workspace-topbar-height)]! bottom-0! h-auto!",
+      )}
+      resizable={{
+        maxWidth: sidebarMaximumWidth,
+        minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+        shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+          nextWidth <= currentWidth ||
+          wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+        storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+        onResize: setSidebarWidth,
+      }}
+    >
+      {isOnSettings ? (
+        <>
+          {settingsSidebarBelowTabs ? null : <SidebarChromeHeader isElectron={isElectron} />}
+          <SettingsSidebarNav pathname={pathname} />
+        </>
+      ) : legacySidebarEnabled ? (
+        <LegacyThreadSidebar />
+      ) : (
+        <ThreadSidebar />
+      )}
+      <SidebarRail onDoubleClick={resetSidebarWidth} />
+    </Sidebar>
+  ) : null;
+
   return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
+    <SidebarProvider
+      className={cn("h-dvh! min-h-0!", showGlobalTabs && "flex-col")}
+      defaultOpen
+      style={sidebarProviderStyle}
+      {...(settingsSidebarBelowTabs ? { open: true } : {})}
+    >
       <ProjectProjectionRetention />
-      <Sidebar
-        side="left"
-        collapsible="offcanvas"
-        data-app-sidebar=""
-        className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-        resizable={{
-          maxWidth: sidebarMaximumWidth,
-          minWidth: THREAD_SIDEBAR_MIN_WIDTH,
-          shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-            nextWidth <= currentWidth ||
-            wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-          onResize: setSidebarWidth,
-        }}
-      >
-        {isOnSettings ? (
-          <>
-            <SidebarChromeHeader isElectron={isElectron} />
-            <SettingsSidebarNav pathname={pathname} />
-          </>
-        ) : legacySidebarEnabled ? (
-          <LegacyThreadSidebar />
-        ) : (
-          <ThreadSidebar />
-        )}
-        <SidebarRail onDoubleClick={resetSidebarWidth} />
-      </Sidebar>
-      {children}
-      <SidebarControl />
+      {showGlobalTabs ? (
+        <>
+          <GlobalTabs activeTab={activeGlobalTab} />
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            {sidebar}
+            {children}
+          </div>
+        </>
+      ) : (
+        <>
+          {sidebar}
+          {children}
+        </>
+      )}
+      {showSidebar && !settingsSidebarBelowTabs ? <SidebarControl /> : null}
     </SidebarProvider>
   );
 }

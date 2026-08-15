@@ -2,7 +2,9 @@ import type { DesktopPreviewFavicon, PreviewSessionSnapshot } from "@t3tools/con
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { RightPanelTabs } from "./RightPanelTabs";
+import { RightPanelTabBar, RightPanelTabs } from "./RightPanelTabs";
+
+const NOOP = () => undefined;
 
 const previewSurface = {
   id: "browser:tab-1" as const,
@@ -53,10 +55,27 @@ function overlay(icon: DesktopPreviewFavicon | null) {
   };
 }
 
-function renderTabs(first: DesktopPreviewFavicon | null, second?: DesktopPreviewFavicon) {
+function renderTabs(
+  first: DesktopPreviewFavicon | null,
+  second?: DesktopPreviewFavicon,
+  options: {
+    readonly maximized?: true;
+    readonly threadActive?: boolean;
+  } = {},
+) {
   return renderToStaticMarkup(
     <RightPanelTabs
       mode="inline"
+      {...(options.maximized ? { maximized: true } : {})}
+      {...(options.threadActive !== undefined
+        ? {
+            threadTab: {
+              title: "New thread",
+              active: options.threadActive,
+              onActivate: NOOP,
+            },
+          }
+        : {})}
       surfaces={second ? [previewSurface, secondSurface] : [previewSurface]}
       activeSurfaceId={previewSurface.id}
       pendingSurfaceIds={new Set()}
@@ -111,5 +130,60 @@ describe("RightPanelTabs preview favicon", () => {
   it("hides a capture while the server session still describes another origin", () => {
     const html = renderTabs(favicon("data:image/png;base64,AAAA", "https://example.com/"));
     expect(html).not.toContain("data:image/png;base64,AAAA");
+  });
+});
+
+describe("RightPanelTabBar", () => {
+  it("renders the current thread as a pinned active tab while a surface is maximized", () => {
+    const markup = renderToStaticMarkup(
+      <RightPanelTabBar
+        mode="inline"
+        maximized
+        threadTab={{
+          title: "New thread",
+          active: true,
+          onActivate: NOOP,
+        }}
+        surfaces={[]}
+        activeSurfaceId={null}
+        pendingSurfaceIds={new Set()}
+        previewSessions={{}}
+        desktopByTabId={{}}
+        terminalLabelsById={new Map()}
+        onActivate={NOOP}
+        onCloseSurface={NOOP}
+        onCloseOtherSurfaces={NOOP}
+        onCloseSurfacesToRight={NOOP}
+        onCloseAllSurfaces={NOOP}
+        onCopyFilePath={NOOP}
+        onAddBrowser={NOOP}
+        onAddTerminal={NOOP}
+        onAddDiff={NOOP}
+        onAddFiles={NOOP}
+        onAddPullRequest={NOOP}
+        onAddAgents={NOOP}
+        browserAvailable
+        terminalAvailable
+        diffAvailable
+        filesAvailable
+        pullRequestAvailable
+        agentsAvailable
+        liveAgentCount={0}
+      />,
+    );
+
+    expect(markup).toContain('aria-current="page"');
+    expect(markup).toContain("New thread");
+    expect(markup).toContain('aria-label="Add panel surface"');
+    expect(markup).not.toContain('aria-label="Close New thread"');
+  });
+
+  it("keeps one maximized tab shell while the thread content is active", () => {
+    const markup = renderTabs(null, undefined, { maximized: true, threadActive: true });
+
+    expect(markup.match(/data-right-panel-tabbar/g)).toHaveLength(1);
+    expect(markup).toContain('data-preview-panel-maximized="true"');
+    expect(markup).toContain('data-right-panel-surface-content="true" hidden=""');
+    expect(markup).not.toContain("border-l");
   });
 });

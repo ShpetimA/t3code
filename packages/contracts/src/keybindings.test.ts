@@ -84,6 +84,18 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedLocal.command, "chat.newLocal");
 
+    const parsedNewTab = yield* decode(KeybindingRule, {
+      key: "mod+t",
+      command: "tab.new",
+    });
+    assert.strictEqual(parsedNewTab.command, "tab.new");
+
+    const parsedTabPeek = yield* decode(KeybindingRule, {
+      key: "mod+e",
+      command: "tab.peek",
+    });
+    assert.strictEqual(parsedTabPeek.command, "tab.peek");
+
     const parsedModelPickerToggle = yield* decode(KeybindingRule, {
       key: "mod+shift+m",
       command: "modelPicker.toggle",
@@ -95,6 +107,12 @@ it.effect("parses keybinding rules", () =>
       command: "modelPicker.jump.1",
     });
     assert.strictEqual(parsedModelPickerJump.command, "modelPicker.jump.1");
+
+    const parsedTabJump = yield* decode(KeybindingRule, {
+      key: "mod+alt+1",
+      command: "tab.jump.1",
+    });
+    assert.strictEqual(parsedTabJump.command, "tab.jump.1");
 
     const parsedThreadPrevious = yield* decode(KeybindingRule, {
       key: "mod+shift+[",

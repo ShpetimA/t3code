@@ -7,6 +7,7 @@ import type { DailyTotals, HourlyTotals } from "@t3tools/shared/usageMerge";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useGlobalThreadTabsEnabled } from "../../threadNavigationMode";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -34,6 +35,7 @@ const WINDOW_OPTIONS = [
 ] as const;
 
 export function UsagePage() {
+  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: 30,
     window: makeWindow(30),
@@ -101,9 +103,14 @@ export function UsagePage() {
   };
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset
+      className={cn(
+        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate",
+        globalTabsEnabled ? "h-full" : "h-dvh",
+      )}
+    >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        {!isElectron && (
+        {(!isElectron || globalTabsEnabled) && (
           <header
             className={cn(
               "workspace-topbar px-3 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none sm:px-5",
@@ -116,7 +123,7 @@ export function UsagePage() {
           </header>
         )}
 
-        {isElectron && (
+        {isElectron && !globalTabsEnabled && (
           <div
             className={cn(
               "drag-region flex h-[52px] shrink-0 items-center px-5 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]",

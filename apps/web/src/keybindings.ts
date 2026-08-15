@@ -3,7 +3,9 @@ import {
   type KeybindingShortcut,
   type KeybindingWhenNode,
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
+  TAB_JUMP_KEYBINDING_COMMANDS,
   type ResolvedKeybindingsConfig,
+  type TabJumpKeybindingCommand,
   THREAD_JUMP_KEYBINDING_COMMANDS,
   type ModelPickerJumpKeybindingCommand,
   type ThreadJumpKeybindingCommand,
@@ -265,8 +267,49 @@ export function shortcutLabelForCommand(
   return shortcut ? formatShortcutLabel(shortcut, platform) : null;
 }
 
+/** Returns the non-modifier key to press when the held modifiers match a command shortcut. */
+export function shortcutKeyLabelForCommandMatchingModifiers(
+  modifiers: ShortcutModifierStateLike,
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+  options?: ShortcutMatchOptions,
+): string | null {
+  const platform = resolvePlatform(options);
+  const shortcut = findEffectiveShortcutForCommand(keybindings, command, options);
+  if (!shortcut || !matchesShortcutModifiers(modifiers, shortcut, platform)) return null;
+  return formatShortcutKeyLabel(shortcut.key);
+}
+
 export function threadJumpCommandForIndex(index: number): ThreadJumpKeybindingCommand | null {
   return THREAD_JUMP_KEYBINDING_COMMANDS[index] ?? null;
+}
+
+/** Resolves a visible global-tab index to its configurable positional command. */
+export function tabJumpCommandForIndex(index: number): TabJumpKeybindingCommand | null {
+  return TAB_JUMP_KEYBINDING_COMMANDS[index] ?? null;
+}
+
+/** Resolves a global-tab positional command to its zero-based visible index. */
+export function tabJumpIndexFromCommand(command: string): number | null {
+  const index = TAB_JUMP_KEYBINDING_COMMANDS.indexOf(command as TabJumpKeybindingCommand);
+  return index === -1 ? null : index;
+}
+
+/** Returns whether the held modifiers exactly match an effective global-tab jump binding. */
+export function shouldShowTabJumpHintsForModifiers(
+  modifiers: ShortcutModifierStateLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): boolean {
+  const platform = resolvePlatform(options);
+
+  for (const command of TAB_JUMP_KEYBINDING_COMMANDS) {
+    const shortcut = findEffectiveShortcutForCommand(keybindings, command, options);
+    if (!shortcut) continue;
+    if (matchesShortcutModifiers(modifiers, shortcut, platform)) return true;
+  }
+
+  return false;
 }
 
 export function threadJumpIndexFromCommand(command: string): number | null {

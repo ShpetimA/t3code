@@ -21,9 +21,13 @@ import {
   isTerminalSplitVerticalShortcut,
   isTerminalToggleShortcut,
   resolveShortcutCommand,
+  shouldShowTabJumpHintsForModifiers,
   shouldShowModelPickerJumpHints,
   shouldShowThreadJumpHints,
+  shortcutKeyLabelForCommandMatchingModifiers,
   shortcutLabelForCommand,
+  tabJumpCommandForIndex,
+  tabJumpIndexFromCommand,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
   threadJumpCommandForIndex,
@@ -139,6 +143,8 @@ const DEFAULT_BINDINGS = compile([
   },
   { shortcut: modShortcut("o", { shiftKey: true }), command: "chat.new" },
   { shortcut: modShortcut("n", { shiftKey: true }), command: "chat.newLocal" },
+  { shortcut: modShortcut("t"), command: "tab.new" },
+  { shortcut: modShortcut("e"), command: "tab.peek" },
   { shortcut: modShortcut("o"), command: "editor.openFavorite" },
   { shortcut: modShortcut("[", { shiftKey: true }), command: "thread.previous" },
   { shortcut: modShortcut("]", { shiftKey: true }), command: "thread.next" },
@@ -332,6 +338,8 @@ describe("shortcutLabelForCommand", () => {
       "⌘B",
     );
     assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "chat.new", "MacIntel"), "⇧⌘O");
+    assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "tab.new", "MacIntel"), "⌘T");
+    assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "tab.peek", "MacIntel"), "⌘E");
     assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "diff.toggle", "Linux"), "Ctrl+D");
     assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_BINDINGS, "rightPanel.toggle", "MacIntel"),
@@ -357,6 +365,7 @@ describe("shortcutLabelForCommand", () => {
       shortcutLabelForCommand(DEFAULT_BINDINGS, "editor.openFavorite", "Linux"),
       "Ctrl+O",
     );
+    assert.isNull(shortcutLabelForCommand(DEFAULT_BINDINGS, "tab.jump.3", "MacIntel"));
     assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_BINDINGS, "thread.jump.3", "MacIntel"),
       "⌘3",
@@ -382,6 +391,26 @@ describe("shortcutLabelForCommand", () => {
 
     assert.isNull(shortcutLabelForCommand(bindings, "thread.jump.1", "MacIntel"));
     assert.strictEqual(shortcutLabelForCommand(bindings, "thread.jump.7", "MacIntel"), "⇧⌘1");
+  });
+
+  it("returns only the next key when held modifiers match a shortcut", () => {
+    assert.strictEqual(
+      shortcutKeyLabelForCommandMatchingModifiers(
+        event({ metaKey: true }),
+        DEFAULT_BINDINGS,
+        "thread.jump.3",
+        { platform: "MacIntel" },
+      ),
+      "3",
+    );
+    assert.isNull(
+      shortcutKeyLabelForCommandMatchingModifiers(
+        event({ metaKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        "thread.jump.3",
+        { platform: "MacIntel" },
+      ),
+    );
   });
 
   it("respects when-context while resolving labels", () => {
@@ -453,6 +482,25 @@ describe("thread navigation helpers", () => {
   });
 });
 
+describe("global tab navigation helpers", () => {
+  it("maps jump commands to visible tab indices", () => {
+    assert.strictEqual(tabJumpCommandForIndex(0), "tab.jump.1");
+    assert.strictEqual(tabJumpCommandForIndex(2), "tab.jump.3");
+    assert.isNull(tabJumpCommandForIndex(9));
+    assert.strictEqual(tabJumpIndexFromCommand("tab.jump.1"), 0);
+    assert.strictEqual(tabJumpIndexFromCommand("tab.jump.3"), 2);
+    assert.isNull(tabJumpIndexFromCommand("thread.jump.1"));
+  });
+
+  it("leaves direct tab jumps unbound by default", () => {
+    assert.isFalse(
+      shouldShowTabJumpHintsForModifiers(event({ metaKey: true, altKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
+    );
+  });
+});
+
 describe("model picker navigation helpers", () => {
   it("maps jump commands to visible model indices", () => {
     assert.strictEqual(modelPickerJumpCommandForIndex(0), "modelPicker.jump.1");
@@ -480,6 +528,21 @@ describe("model picker navigation helpers", () => {
 });
 
 describe("chat/editor shortcuts", () => {
+  it("resolves the new-tab shortcut", () => {
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: "t", metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+      }),
+      "tab.new",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: "t", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+      }),
+      "tab.new",
+    );
+  });
+
   it("matches chat.new shortcut", () => {
     assert.isTrue(
       isChatNewShortcut(event({ key: "o", metaKey: true, shiftKey: true }), DEFAULT_BINDINGS, {

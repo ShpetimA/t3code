@@ -37,6 +37,12 @@ Examples: `mod+j`, `mod+shift+d`, `ctrl+l`, `cmd+k`.
 Commands are IDs like `terminal.toggle`, `commandPalette.toggle`, `preview.refresh`, and
 `chat.new`. Project scripts are addressable as `script.{id}.run`, for example `script.test.run`.
 
+With **Top tabs** enabled, `tab.new` opens the new-tab page and defaults to `mod+t`.
+`tab.peek` shows thread quick-look cards while held and defaults to `mod+e`.
+`mod+1` through `mod+9` activate tabs by visible position when Top tabs is enabled. The
+`tab.jump.1` through `tab.jump.9` commands remain available for custom direct shortcuts, but are
+unbound by default.
+
 `filePicker.toggle` opens file search for the active project and defaults to `mod+p`.
 `projectSearch.toggle` searches inside the active project's files and defaults to `mod+shift+f`.
 Repeating either shortcut closes that search, and switching shortcuts replaces the open search.

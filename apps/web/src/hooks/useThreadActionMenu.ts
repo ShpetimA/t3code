@@ -12,12 +12,17 @@ import {
   type ChangeRequestStateLike,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useCallback } from "react";
 
 import { resolveSnoozePresets, snoozeWakeDescription } from "../components/Sidebar.snooze";
 import {
   buildThreadActionMenuItems,
+  buildThreadTabLifecycleMenuItems,
+  dispatchThreadTabLifecycleAction,
   type ThreadActionMenuId,
+  type ThreadLifecycleMenuId,
+  type ThreadTabLifecycleMenuId,
 } from "../components/threadActionMenu.logic";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
@@ -44,6 +49,110 @@ function failureToast(title: string, error: unknown) {
       description: error instanceof Error ? error.message : "An error occurred.",
     }),
   );
+}
+
+function lifecycleCommandSucceeded(
+  title: string,
+  result: AtomCommandResult<unknown, unknown>,
+): boolean {
+  if (result._tag === "Success") return true;
+  if (!isAtomCommandInterrupted(result)) {
+    failureToast(title, squashAtomCommandFailure(result));
+  }
+  return false;
+}
+
+type ThreadLifecycleActions = Pick<
+  ReturnType<typeof useThreadActions>,
+  | "settleThread"
+  | "unsettleThread"
+  | "snoozeThread"
+  | "unsnoozeThread"
+  | "pinThread"
+  | "unpinThread"
+>;
+
+function isThreadLifecycleMenuAction(action: ThreadActionMenuId): action is ThreadLifecycleMenuId {
+  return (
+    action === "pin" ||
+    action === "unpin" ||
+    action === "settle" ||
+    action === "unsettle" ||
+    action === "snooze" ||
+    action === "unsnooze" ||
+    action.startsWith("snooze:")
+  );
+}
+
+function isSnoozePresetMenuAction(action: ThreadLifecycleMenuId): action is `snooze:${string}` {
+  return action.startsWith("snooze:");
+}
+
+async function runThreadLifecycleMenuAction(input: {
+  readonly action: ThreadLifecycleMenuId;
+  readonly threadRef: ScopedThreadRef;
+  readonly snoozePresets: ReturnType<typeof resolveSnoozePresets>;
+  readonly timestampFormat: TimestampFormat;
+  readonly actions: ThreadLifecycleActions;
+}): Promise<boolean> {
+  if (input.action === "snooze") return false;
+  if (isSnoozePresetMenuAction(input.action)) {
+    const preset = input.snoozePresets.find(
+      (candidate) => `snooze:${candidate.id}` === input.action,
+    );
+    if (!preset) return false;
+    const succeeded = lifecycleCommandSucceeded(
+      "Failed to snooze thread",
+      await input.actions.snoozeThread(input.threadRef, preset.snoozedUntil),
+    );
+    if (!succeeded) return false;
+    toastManager.add(
+      stackedThreadToast({
+        type: "success",
+        title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), input.timestampFormat)}`,
+        timeout: 5_000,
+        actionProps: {
+          children: "Undo",
+          onClick: () => {
+            void input.actions.unsnoozeThread(input.threadRef).then((undone) => {
+              if (undone._tag === "Failure" && !isAtomCommandInterrupted(undone)) {
+                failureToast("Failed to wake thread", squashAtomCommandFailure(undone));
+              }
+            });
+          },
+        },
+      }),
+    );
+    return true;
+  }
+
+  switch (input.action) {
+    case "settle":
+      return lifecycleCommandSucceeded(
+        "Failed to settle thread",
+        await input.actions.settleThread(input.threadRef),
+      );
+    case "unsettle":
+      return lifecycleCommandSucceeded(
+        "Failed to un-settle thread",
+        await input.actions.unsettleThread(input.threadRef),
+      );
+    case "unsnooze":
+      return lifecycleCommandSucceeded(
+        "Failed to wake thread",
+        await input.actions.unsnoozeThread(input.threadRef),
+      );
+    case "pin":
+      return lifecycleCommandSucceeded(
+        "Failed to pin thread",
+        await input.actions.pinThread(input.threadRef),
+      );
+    case "unpin":
+      return lifecycleCommandSucceeded(
+        "Failed to unpin thread",
+        await input.actions.unpinThread(input.threadRef),
+      );
+  }
 }
 
 /**
@@ -145,33 +254,21 @@ export function useThreadActionMenu(input: {
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
-        if (action.startsWith("snooze:")) {
-          const preset = snoozePresets.find((candidate) => `snooze:${candidate.id}` === action);
-          if (!preset) return;
-          const result = await snoozeThread(threadRef, preset.snoozedUntil);
-          if (result._tag === "Failure") {
-            if (!isAtomCommandInterrupted(result)) {
-              failureToast("Failed to snooze thread", squashAtomCommandFailure(result));
-            }
-            return;
-          }
-          toastManager.add(
-            stackedThreadToast({
-              type: "success",
-              title: `Snoozed until ${snoozeWakeDescription(preset.snoozedUntil, new Date(), timestampFormat)}`,
-              timeout: 5_000,
-              actionProps: {
-                children: "Undo",
-                onClick: () => {
-                  void unsnoozeThread(threadRef).then((undone) => {
-                    if (undone._tag === "Failure" && !isAtomCommandInterrupted(undone)) {
-                      failureToast("Failed to wake thread", squashAtomCommandFailure(undone));
-                    }
-                  });
-                },
-              },
-            }),
-          );
+        if (isThreadLifecycleMenuAction(action)) {
+          await runThreadLifecycleMenuAction({
+            action,
+            threadRef,
+            snoozePresets,
+            timestampFormat,
+            actions: {
+              settleThread,
+              unsettleThread,
+              snoozeThread,
+              unsnoozeThread,
+              pinThread,
+              unpinThread,
+            },
+          });
           return;
         }
         const reportFailure = async (
@@ -200,21 +297,6 @@ export function useThreadActionMenu(input: {
             }
             return;
           }
-          case "settle":
-            await reportFailure("Failed to settle thread", () => settleThread(threadRef));
-            return;
-          case "unsettle":
-            await reportFailure("Failed to un-settle thread", () => unsettleThread(threadRef));
-            return;
-          case "unsnooze":
-            await reportFailure("Failed to wake thread", () => unsnoozeThread(threadRef));
-            return;
-          case "pin":
-            await reportFailure("Failed to pin thread", () => pinThread(threadRef));
-            return;
-          case "unpin":
-            await reportFailure("Failed to unpin thread", () => unpinThread(threadRef));
-            return;
           case "rename":
             onStartRename();
             return;
@@ -310,4 +392,123 @@ export function useThreadActionMenu(input: {
   );
 
   return { openMenu };
+}
+
+/** Opens the lightweight lifecycle menu used by top server-thread tabs. The
+ * tab strip supplies view closure so successful lifecycle commands and tab
+ * selection remain ordered. */
+export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: string) => void }) {
+  const { closeTab } = input;
+  const {
+    archiveThread,
+    settleThread,
+    unsettleThread,
+    snoozeThread,
+    unsnoozeThread,
+    pinThread,
+    unpinThread,
+  } = useThreadActions();
+  const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
+  const timestampFormat = useClientSettings((s) => s.timestampFormat);
+
+  const openMenu = useCallback(
+    (
+      threadRef: ScopedThreadRef,
+      tabKey: string,
+      position: { x: number; y: number },
+      lifecycle: {
+        readonly isSettled: boolean;
+        readonly closePolicy: "direct" | "settle-first";
+      },
+    ) => {
+      void (async () => {
+        const api = readLocalApi();
+        if (!api) return;
+        const thread = readThreadShell(threadRef);
+        if (!thread) return;
+        const now = new Date();
+        const supports = {
+          settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
+          snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
+          pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
+          titleRegeneration: false,
+        };
+        const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+        const items = buildThreadTabLifecycleMenuItems({
+          branch: thread.branch ?? null,
+          isPinned: thread.pinnedAt != null,
+          isSettled: supports.settlement && lifecycle.isSettled,
+          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
+          canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+          canArchiveNow: !(
+            thread.session?.status === "running" && thread.session.activeTurnId != null
+          ),
+          isRegeneratingTitle: false,
+          supports,
+          snoozePresets,
+          closePolicy: lifecycle.closePolicy,
+        });
+        const clicked = await settlePromise(() => api.contextMenu.show(items, position));
+        if (clicked._tag === "Failure" || clicked.value === null) return;
+        const action: ThreadTabLifecycleMenuId = clicked.value;
+        await dispatchThreadTabLifecycleAction({
+          action,
+          closeTab: () => closeTab(tabKey),
+          run: async (selectedAction) => {
+            if (selectedAction === "archive") {
+              if (confirmThreadArchive) {
+                const confirmed = await settlePromise(() =>
+                  api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+                );
+                if (confirmed._tag === "Failure" || !confirmed.value) return false;
+              }
+              return lifecycleCommandSucceeded(
+                "Failed to archive thread",
+                await archiveThread(threadRef, { navigation: "preserve" }),
+              );
+            }
+            return runThreadLifecycleMenuAction({
+              action: selectedAction,
+              threadRef,
+              snoozePresets,
+              timestampFormat,
+              actions: {
+                settleThread,
+                unsettleThread,
+                snoozeThread,
+                unsnoozeThread,
+                pinThread,
+                unpinThread,
+              },
+            });
+          },
+        });
+      })();
+    },
+    [
+      archiveThread,
+      closeTab,
+      confirmThreadArchive,
+      pinThread,
+      settleThread,
+      snoozeThread,
+      timestampFormat,
+      unpinThread,
+      unsettleThread,
+      unsnoozeThread,
+    ],
+  );
+
+  const settleAndClose = useCallback(
+    async (threadRef: ScopedThreadRef, tabKey: string): Promise<void> => {
+      const succeeded = lifecycleCommandSucceeded(
+        "Failed to settle thread",
+        await settleThread(threadRef),
+      );
+      if (succeeded) closeTab(tabKey);
+    },
+    [closeTab, settleThread],
+  );
+
+  return { openMenu, settleAndClose };
 }

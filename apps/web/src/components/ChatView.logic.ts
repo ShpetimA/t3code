@@ -29,6 +29,44 @@ export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
+/** Local presentation state for the existing right panel's maximize mode. */
+export type MaximizedRightPanelView =
+  | { readonly _tag: "Split" }
+  | {
+      readonly _tag: "Maximized";
+      readonly threadKey: string;
+      readonly activeContent: "thread" | "surface";
+    };
+
+export type MaximizedRightPanelViewAction =
+  | { readonly _tag: "Maximize"; readonly threadKey: string; readonly hasActiveSurface: boolean }
+  | { readonly _tag: "ActivateThread" }
+  | { readonly _tag: "ActivateSurface" }
+  | { readonly _tag: "Restore" };
+
+export const INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW: MaximizedRightPanelView = { _tag: "Split" };
+
+/** Switches the maximized panel between its pinned chat and tool-surface tabs. */
+export function reduceMaximizedRightPanelView(
+  state: MaximizedRightPanelView,
+  action: MaximizedRightPanelViewAction,
+): MaximizedRightPanelView {
+  switch (action._tag) {
+    case "Maximize":
+      return {
+        _tag: "Maximized",
+        threadKey: action.threadKey,
+        activeContent: action.hasActiveSurface ? "surface" : "thread",
+      };
+    case "ActivateThread":
+      return state._tag === "Maximized" ? { ...state, activeContent: "thread" } : state;
+    case "ActivateSurface":
+      return state._tag === "Maximized" ? { ...state, activeContent: "surface" } : state;
+    case "Restore":
+      return INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW;
+  }
+}
+
 export function scheduleEnvironmentReconnectWarning(showWarning: () => void): () => void {
   const timeoutId = globalThis.setTimeout(showWarning, ENVIRONMENT_RECONNECT_WARNING_GRACE_MS);
   return () => globalThis.clearTimeout(timeoutId);

@@ -38,7 +38,8 @@ T3 Code works with the platforms your team already uses:
 **Stay on top of open reviews**
 
 - See if your current branch already has an open PR/MR
-- Open several reviews from the **Pull requests** page as tabs in the right panel
+- With **Top tabs** enabled, keep the pull request list open as an application tab
+- Open several reviews from that list as compact right-panel tabs
 - While working in a thread, open linked reviews in the same compact right-panel tabs without
   leaving the conversation
 - Open the review directly in your browser with one click

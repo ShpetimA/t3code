@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   areShortcutModifierStatesEqual,
+  captureHeldShortcut,
+  shouldReleaseHeldShortcut,
   shortcutModifierStateAfterKeyboardEvent,
   type ShortcutModifierState,
 } from "./shortcutModifierState";
@@ -109,5 +111,30 @@ describe("shortcutModifierState", () => {
       altKey: false,
       shiftKey: false,
     });
+  });
+
+  it("keeps a held shortcut active until its key or a required modifier is released", () => {
+    const held = captureHeldShortcut(
+      keyboardEventLike("keydown", { code: "KeyE", key: "e", metaKey: true }),
+    );
+
+    expect(
+      shouldReleaseHeldShortcut(
+        held,
+        keyboardEventLike("keyup", { code: "ShiftLeft", key: "Shift" }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldReleaseHeldShortcut(
+        held,
+        keyboardEventLike("keyup", { code: "MetaLeft", key: "Meta" }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldReleaseHeldShortcut(
+        held,
+        keyboardEventLike("keyup", { code: "KeyE", key: "e", metaKey: true }),
+      ),
+    ).toBe(true);
   });
 });
