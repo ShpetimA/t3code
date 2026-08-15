@@ -516,5 +516,11 @@ export function useThreadTabLifecycleMenu(input: {
     [closeThreadTab, settleThread],
   );
 
-  return { openMenu, settleAndClose };
+  const wakeThread = useCallback(
+    async (threadRef: ScopedThreadRef): Promise<boolean> =>
+      lifecycleCommandSucceeded("Failed to wake thread", await unsnoozeThread(threadRef)),
+    [unsnoozeThread],
+  );
+
+  return { openMenu, settleAndClose, wakeThread };
 }

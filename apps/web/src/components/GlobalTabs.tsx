@@ -9,6 +9,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlarmClockIcon,
+  AlarmClockOffIcon,
   BotIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
@@ -307,9 +308,18 @@ function SnoozedThreadsIndicator(props: {
   readonly environmentLabelById: ReadonlyMap<EnvironmentThreadShell["environmentId"], string>;
   readonly now: string;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
+  readonly onWakeAndOpenThread: (threadRef: ScopedThreadRef) => Promise<void>;
   readonly timestampFormat: TimestampFormat;
 }) {
-  const { environmentLabelById, now, onOpenThread, projectByKey, threads, timestampFormat } = props;
+  const {
+    environmentLabelById,
+    now,
+    onOpenThread,
+    onWakeAndOpenThread,
+    projectByKey,
+    threads,
+    timestampFormat,
+  } = props;
   const count = threads.length;
   const visible = count > 0;
   const displayedCount = count > 99 ? "99+" : String(count);
@@ -371,11 +381,11 @@ function SnoozedThreadsIndicator(props: {
                   ? "now"
                   : snoozeWakeDescription(snoozedUntil, nowDate, timestampFormat);
               return (
-                <li key={scopedThreadKey(threadRef)}>
+                <li key={scopedThreadKey(threadRef)} className="group/snoozed-thread flex min-h-10">
                   <button
                     type="button"
                     onClick={() => onOpenThread(threadRef)}
-                    className="flex min-h-10 w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent/70 focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-1 pl-3 text-left outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent/70 focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     {project ? (
                       <ProjectFavicon
@@ -404,6 +414,15 @@ function SnoozedThreadsIndicator(props: {
                         {wakeDescription}
                       </span>
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Wake and open ${thread.title}`}
+                    title="Wake and open"
+                    onClick={() => void onWakeAndOpenThread(threadRef)}
+                    className="flex w-10 shrink-0 items-center justify-center self-stretch text-amber-700 outline-none transition-[background-color,color] duration-150 ease-out hover:bg-amber-500/10 focus-visible:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500/60 dark:text-amber-300"
+                  >
+                    <AlarmClockOffIcon className="size-3.5 scale-[0.25] opacity-0 blur-[4px] transition-[scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] group-hover/snoozed-thread:scale-100 group-hover/snoozed-thread:opacity-100 group-hover/snoozed-thread:blur-0 group-focus-within/snoozed-thread:scale-100 group-focus-within/snoozed-thread:opacity-100 group-focus-within/snoozed-thread:blur-0 motion-reduce:transition-none" />
                   </button>
                 </li>
               );
@@ -636,8 +655,18 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     },
     [closeTab],
   );
-  const { openMenu: openThreadTabLifecycleMenu, settleAndClose: settleAndCloseThreadTab } =
-    useThreadTabLifecycleMenu({ closeThreadTab });
+  const {
+    openMenu: openThreadTabLifecycleMenu,
+    settleAndClose: settleAndCloseThreadTab,
+    wakeThread,
+  } = useThreadTabLifecycleMenu({ closeThreadTab });
+  const wakeAndOpenThread = useCallback(
+    async (threadRef: ScopedThreadRef): Promise<void> => {
+      if (!(await wakeThread(threadRef))) return;
+      await navigateToGlobalTab(navigate, { _tag: "ServerThread", threadRef });
+    },
+    [navigate, wakeThread],
+  );
   const requestCloseTab = useCallback(
     (tab: GlobalTab) => {
       const tabKey = globalTabKey(tab);
@@ -1133,6 +1162,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           onOpenThread={(threadRef) =>
             void navigateToGlobalTab(navigate, { _tag: "ServerThread", threadRef })
           }
+          onWakeAndOpenThread={wakeAndOpenThread}
           timestampFormat={timestampFormat}
         />
         <Tooltip>
