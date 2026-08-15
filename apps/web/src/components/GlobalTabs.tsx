@@ -738,19 +738,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         onContextMenu={(event) => {
                           if (tab._tag !== "ServerThread") return;
                           event.preventDefault();
-                          openThreadTabLifecycleMenu(
-                            tab.threadRef,
-                            tabKey,
-                            {
-                              x: event.clientX,
-                              y: event.clientY,
-                            },
-                            {
-                              isRequired: threadLifecycle?.isRequired ?? false,
-                              isSettled: threadLifecycle?.isSettled ?? false,
-                              closePolicy: threadLifecycle?.closePolicy ?? "direct",
-                            },
-                          );
+                          openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
                         }}
                       >
                         <button
@@ -800,19 +791,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             onClick={(event) => {
                               event.stopPropagation();
                               const bounds = event.currentTarget.getBoundingClientRect();
-                              openThreadTabLifecycleMenu(
-                                tab.threadRef,
-                                tabKey,
-                                {
-                                  x: bounds.left,
-                                  y: bounds.bottom,
-                                },
-                                {
-                                  isRequired: threadLifecycle?.isRequired ?? false,
-                                  isSettled: threadLifecycle?.isSettled ?? false,
-                                  closePolicy: threadLifecycle?.closePolicy ?? "direct",
-                                },
-                              );
+                              openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
+                                x: bounds.left,
+                                y: bounds.bottom,
+                              });
                             }}
                           >
                             <MoreHorizontalIcon className="size-3.5" />

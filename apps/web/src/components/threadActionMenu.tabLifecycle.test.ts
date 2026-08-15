@@ -8,15 +8,13 @@ import {
 } from "./threadActionMenu.logic";
 
 const baseState: ThreadTabLifecycleMenuState = {
-  branch: null,
   isPinned: false,
   isSettled: false,
   isSnoozed: false,
   canSnoozeNow: true,
   canArchiveNow: true,
   closePolicy: "settle-first",
-  isRegeneratingTitle: false,
-  supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: false },
+  supports: { settlement: true, snooze: true, pinning: true },
   snoozePresets: [
     {
       id: "hour",
@@ -50,7 +48,6 @@ describe("thread tab lifecycle menu", () => {
           settlement: false,
           snooze: false,
           pinning: false,
-          titleRegeneration: false,
         },
         closePolicy: "direct",
       }),

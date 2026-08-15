@@ -29,24 +29,30 @@ export type ThreadActionMenuId =
 /** Actions available from a server thread's top-tab lifecycle menu. */
 export type ThreadTabLifecycleMenuId = ThreadLifecycleMenuId | "archive" | "close-tab";
 
-export interface ThreadActionMenuState {
-  readonly branch: string | null;
+interface ThreadLifecycleMenuState {
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
-  readonly isRegeneratingTitle: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly snooze: boolean;
     readonly pinning: boolean;
-    readonly titleRegeneration: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
 }
 
-/** Additional availability state needed by the top-tab lifecycle menu. */
-export interface ThreadTabLifecycleMenuState extends ThreadActionMenuState {
+/** State used by the full thread action menu. */
+export interface ThreadActionMenuState extends ThreadLifecycleMenuState {
+  readonly branch: string | null;
+  readonly isRegeneratingTitle: boolean;
+  readonly supports: ThreadLifecycleMenuState["supports"] & {
+    readonly titleRegeneration: boolean;
+  };
+}
+
+/** Availability state used only by the top-tab lifecycle menu. */
+export interface ThreadTabLifecycleMenuState extends ThreadLifecycleMenuState {
   readonly canArchiveNow: boolean;
   /** Unsettled inbox tabs must complete settlement before the view can close. */
   readonly closePolicy: "direct" | "settle-first";
@@ -92,7 +98,7 @@ export function buildThreadActionMenuItems(
 }
 
 function buildThreadLifecycleMenuItems(
-  state: ThreadActionMenuState,
+  state: ThreadLifecycleMenuState,
   labels: { readonly settle: string; readonly snooze: string },
 ): ReadonlyArray<ContextMenuItem<ThreadLifecycleMenuId>> {
   return [

@@ -35,6 +35,7 @@ import {
   readThreadShell,
 } from "../state/entities";
 import { readLocalApi } from "../localApi";
+import { resolveGlobalThreadTabLifecycle } from "../globalTabs";
 import { useUiStateStore } from "../uiStateStore";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
@@ -413,42 +414,38 @@ export function useThreadTabLifecycleMenu(input: {
     unpinThread,
   } = useThreadActions();
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
+  const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
 
   const openMenu = useCallback(
-    (
-      threadRef: ScopedThreadRef,
-      tabKey: string,
-      position: { x: number; y: number },
-      lifecycle: {
-        readonly isRequired: boolean;
-        readonly isSettled: boolean;
-        readonly closePolicy: "direct" | "settle-first";
-      },
-    ) => {
+    (threadRef: ScopedThreadRef, tabKey: string, position: { x: number; y: number }) => {
       void (async () => {
         const api = readLocalApi();
         if (!api) return;
         const thread = readThreadShell(threadRef);
         if (!thread) return;
         const now = new Date();
+        const nowIso = now.toISOString();
         const supports = {
           settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
           snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
           pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
-          titleRegeneration: false,
         };
+        const lifecycle = resolveGlobalThreadTabLifecycle(thread, {
+          now: nowIso,
+          autoSettleAfterDays,
+          supportsSettlement: supports.settlement,
+          supportsSnooze: supports.snooze,
+        });
         const snoozePresets = resolveSnoozePresets(now, timestampFormat);
         const items = buildThreadTabLifecycleMenuItems({
-          branch: thread.branch ?? null,
           isPinned: thread.pinnedAt != null,
-          isSettled: supports.settlement && lifecycle.isSettled,
-          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
-          canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+          isSettled: lifecycle.isSettled,
+          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: nowIso }),
+          canSnoozeNow: canSnooze(thread, { now: nowIso }),
           canArchiveNow: !(
             thread.session?.status === "running" && thread.session.activeTurnId != null
           ),
-          isRegeneratingTitle: false,
           supports,
           snoozePresets,
           closePolicy: lifecycle.closePolicy,
@@ -492,6 +489,7 @@ export function useThreadTabLifecycleMenu(input: {
     },
     [
       archiveThread,
+      autoSettleAfterDays,
       closeTab,
       confirmThreadArchive,
       pinThread,
