@@ -1401,7 +1401,7 @@ export function PullRequestCodeTab({
             {reviewOverlay}
           </div>
           {fileTreeOpen ? (
-            <aside className="flex min-h-0 w-[min(22rem,46%)] min-w-64 shrink-0 border-l border-border/60 bg-background">
+            <aside className="flex min-h-0 w-[min(22rem,46%)] min-w-0 shrink-0 border-l border-border/60 bg-background">
               <PullRequestDiffFileTree
                 key={scopeKey}
                 files={files}

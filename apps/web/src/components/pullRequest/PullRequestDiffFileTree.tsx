@@ -198,7 +198,7 @@ export function PullRequestDiffFileTree({
             size="xs"
             variant="outline"
             aria-busy={isLoadingMore}
-            className="relative h-10 w-full overflow-hidden bg-transparent tabular-nums dark:bg-transparent"
+            className="relative w-full overflow-hidden bg-transparent tabular-nums dark:bg-transparent"
             disabled={isLoadingMore}
             onClick={() => {
               setHasRequestedMore(true);
@@ -221,7 +221,7 @@ export function PullRequestDiffFileTree({
       ) : hasRequestedMore ? (
         <div
           role="status"
-          className="flex h-10 shrink-0 items-center justify-center border-t border-border/60 px-3 text-xs text-muted-foreground tabular-nums"
+          className="flex h-11 shrink-0 items-center justify-center border-t border-border/60 px-3 text-xs text-muted-foreground tabular-nums sm:h-10"
         >
           All {loadedFileCount} {files.length === 1 ? "file" : "files"} loaded
         </div>
