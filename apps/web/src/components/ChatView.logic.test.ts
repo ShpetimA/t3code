@@ -25,6 +25,7 @@ import {
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   isBranchMismatchDismissedForSession,
+  parkedThreadBannerDescription,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   reduceMaximizedRightPanelView,
@@ -40,6 +41,38 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
+
+describe("parked thread banner copy", () => {
+  it("names the sidebar when sidebar navigation is visible", () => {
+    expect(
+      parkedThreadBannerDescription({
+        lifecycleState: "snoozed",
+        navigationSurface: "sidebar",
+      }),
+    ).toBe("Sending a message wakes it and moves it back to Active in the sidebar.");
+    expect(
+      parkedThreadBannerDescription({
+        lifecycleState: "settled",
+        navigationSurface: "sidebar",
+      }),
+    ).toBe("Sending a message moves it back to Active in the sidebar.");
+  });
+
+  it("names the current tab when tab navigation is visible", () => {
+    expect(
+      parkedThreadBannerDescription({
+        lifecycleState: "snoozed",
+        navigationSurface: "tab",
+      }),
+    ).toBe("Sending a message wakes it and keeps it active in this tab.");
+    expect(
+      parkedThreadBannerDescription({
+        lifecycleState: "settled",
+        navigationSurface: "tab",
+      }),
+    ).toBe("Sending a message keeps it active in this tab.");
+  });
+});
 
 describe("maximized right panel view", () => {
   it("opens on the active surface and can switch to the pinned thread tab", () => {

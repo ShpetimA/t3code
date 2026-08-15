@@ -124,6 +124,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
+import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import {
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
@@ -302,6 +303,7 @@ import {
   scheduleEnvironmentReconnectWarning,
   hasServerAcknowledgedLocalDispatch,
   isBranchMismatchDismissedForSession,
+  parkedThreadBannerDescription,
   shouldShowBranchMismatchBanner,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -1203,6 +1205,7 @@ function ChatViewContent(props: ChatViewProps) {
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
+  const globalThreadTabsEnabled = useGlobalThreadTabsEnabled();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -4534,9 +4537,10 @@ function ChatViewContent(props: ChatViewProps) {
       variant: "info",
       icon: isSnoozed ? <AlarmClockIcon /> : <CheckCircle2Icon />,
       title: `This thread is ${isSnoozed ? "snoozed" : "settled"}`,
-      description: isSnoozed
-        ? "Sending a message wakes it and moves it back to Active in the sidebar."
-        : "Sending a message moves it back to Active in the sidebar.",
+      description: parkedThreadBannerDescription({
+        lifecycleState: isSnoozed ? "snoozed" : "settled",
+        navigationSurface: globalThreadTabsEnabled ? "tab" : "sidebar",
+      }),
       actions: (
         <Button
           size="xs"
@@ -4560,6 +4564,7 @@ function ChatViewContent(props: ChatViewProps) {
     activeThread?.id,
     activeThreadSettled,
     activeThreadSnoozed,
+    globalThreadTabsEnabled,
     handleUnsnoozeActiveThread,
     handleUnsettleActiveThread,
     isUnsnoozing,

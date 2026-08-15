@@ -29,6 +29,20 @@ export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
+/** Copy explaining where a parked thread becomes active after the next message. */
+export function parkedThreadBannerDescription(input: {
+  readonly lifecycleState: "snoozed" | "settled";
+  readonly navigationSurface: "sidebar" | "tab";
+}): string {
+  const destination =
+    input.navigationSurface === "sidebar"
+      ? "moves it back to Active in the sidebar"
+      : "keeps it active in this tab";
+  return input.lifecycleState === "snoozed"
+    ? `Sending a message wakes it and ${destination}.`
+    : `Sending a message ${destination}.`;
+}
+
 /** Local presentation state for the existing right panel's maximize mode. */
 export type MaximizedRightPanelView =
   | { readonly _tag: "Split" }
