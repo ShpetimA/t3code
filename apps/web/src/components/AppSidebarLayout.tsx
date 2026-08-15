@@ -276,6 +276,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider
       className={cn("h-dvh! min-h-0!", showGlobalTabs && "flex-col")}
+      data-global-tabs-layout={showGlobalTabs ? "" : undefined}
       defaultOpen
       style={sidebarProviderStyle}
       {...(settingsSidebarBelowTabs ? { open: true } : {})}

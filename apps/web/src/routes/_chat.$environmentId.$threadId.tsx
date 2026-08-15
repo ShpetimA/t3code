@@ -15,12 +15,9 @@ import {
 } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
-import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
-import { cn } from "~/lib/utils";
 
 function ChatThreadRouteView() {
   const navigate = useNavigate();
-  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const threadRef = Route.useParams({
     select: (params) => resolveThreadRouteRef(params),
   });
@@ -83,10 +80,8 @@ function ChatThreadRouteView() {
 
   return (
     <SidebarInset
-      className={cn(
-        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground",
-        globalTabsEnabled ? "h-full" : "h-svh md:h-dvh",
-      )}
+      className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh"
+      data-workspace-route-inset=""
     >
       {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
         <ChatView

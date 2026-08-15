@@ -321,6 +321,25 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @layer components {
+  /* Route components declare their standalone viewport behavior with utility
+     classes. Parent-owned tab chrome replaces that height and Electron inset. */
+  [data-global-tabs-layout] [data-workspace-route-inset] {
+    height: 100% !important;
+  }
+
+  [data-global-tabs-layout] [data-workspace-page-header][data-electron] {
+    padding-right: calc(var(--spacing) * 3) !important;
+    padding-left: calc(var(--spacing) * 3) !important;
+    -webkit-app-region: no-drag;
+  }
+
+  @media (min-width: 40rem) {
+    [data-global-tabs-layout] [data-workspace-page-header][data-electron] {
+      padding-right: calc(var(--spacing) * 5) !important;
+      padding-left: calc(var(--spacing) * 5) !important;
+    }
+  }
+
   [data-global-tab] {
     container-name: global-tab;
     container-type: inline-size;

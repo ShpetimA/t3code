@@ -11,12 +11,9 @@ import { SidebarInset } from "../components/ui/sidebar";
 import { waitForDraftHeroTransition } from "../components/chat/draftHeroTransition";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useThread, useThreadRefs } from "../state/entities";
-import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
-import { cn } from "~/lib/utils";
 
 function DraftChatThreadRouteView() {
   const navigate = useNavigate();
-  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const { draftId: rawDraftId } = Route.useParams();
   const draftId = DraftId.make(rawDraftId);
   const draftSession = useComposerDraftStore((store) => store.getDraftSession(draftId));
@@ -75,10 +72,8 @@ function DraftChatThreadRouteView() {
 
   return (
     <SidebarInset
-      className={cn(
-        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground",
-        globalTabsEnabled ? "h-full" : "h-svh md:h-dvh",
-      )}
+      className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh"
+      data-workspace-route-inset=""
     >
       <ChatView
         draftId={draftId}

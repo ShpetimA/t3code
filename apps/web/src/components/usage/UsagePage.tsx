@@ -4,10 +4,8 @@ import { useMemo, useState } from "react";
 
 import type { DailyTotals, HourlyTotals } from "@t3tools/shared/usageMerge";
 
-import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
-import { useGlobalThreadTabsEnabled } from "../../threadNavigationMode";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -23,7 +21,7 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { UsageChartLegend, UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
 import { PROVIDER_COLOR, PROVIDER_LABEL, PROVIDER_MARK, PROVIDER_ORDER } from "./usageProviders";
 
@@ -35,7 +33,6 @@ const WINDOW_OPTIONS = [
 ] as const;
 
 export function UsagePage() {
-  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: 30,
     window: makeWindow(30),
@@ -104,37 +101,15 @@ export function UsagePage() {
 
   return (
     <SidebarInset
-      className={cn(
-        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate",
-        globalTabsEnabled ? "h-full" : "h-dvh",
-      )}
+      className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate"
+      data-workspace-route-inset=""
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        {(!isElectron || globalTabsEnabled) && (
-          <header
-            className={cn(
-              "workspace-topbar px-3 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none sm:px-5",
-              COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-            )}
-          >
-            <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb">
-              <WorkspaceBreadcrumbItem current>Usage</WorkspaceBreadcrumbItem>
-            </WorkspaceBreadcrumb>
-          </header>
-        )}
-
-        {isElectron && !globalTabsEnabled && (
-          <div
-            className={cn(
-              "drag-region flex h-[52px] shrink-0 items-center px-5 transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]",
-              COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-            )}
-          >
-            <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb">
-              <WorkspaceBreadcrumbItem current>Usage</WorkspaceBreadcrumbItem>
-            </WorkspaceBreadcrumb>
-          </div>
-        )}
+        <WorkspacePageHeader>
+          <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb">
+            <WorkspaceBreadcrumbItem current>Usage</WorkspaceBreadcrumbItem>
+          </WorkspaceBreadcrumb>
+        </WorkspacePageHeader>
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-6">

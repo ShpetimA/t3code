@@ -79,7 +79,6 @@ import { Button } from "../components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
 import { SidebarInset } from "../components/ui/sidebar";
 import { useLiveRefresh } from "../hooks/useLiveRefresh";
-import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import {
   selectActiveRightPanelSurface,
   selectSelectedRightPanelSurface,
@@ -221,7 +220,6 @@ export const Route = createFileRoute("/_chat/pull-requests")({
 function PullRequestsRouteView() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const globalTabsEnabled = useGlobalThreadTabsEnabled();
   const { environments } = useEnvironments();
   // Every connected environment that has said it can list pull requests. Sorted, so the query
   // keys, the scope key and the stored snapshot all read the same whichever order the
@@ -1539,10 +1537,8 @@ function PullRequestsRouteView() {
 
   return (
     <SidebarInset
-      className={cn(
-        "min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground",
-        globalTabsEnabled ? "h-full" : "h-dvh",
-      )}
+      className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground"
+      data-workspace-route-inset=""
     >
       <div className="relative flex min-h-0 flex-1">
         {pullRequestsSupported ? openPanelControls : null}
