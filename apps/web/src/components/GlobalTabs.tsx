@@ -14,6 +14,7 @@ import {
   PlusIcon,
   ServerIcon,
   Settings2Icon,
+  SquarePenIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -29,7 +30,7 @@ import {
 } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
-import { DraftId, useComposerDraftStore } from "../composerDraftStore";
+import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import {
   globalTabKey,
   isGlobalTabCloseShortcut,
@@ -264,6 +265,33 @@ function AnimatedThreadTabStatusMark({
           <CircleCheckIcon className="size-3" />
         </span>
       </span>
+    </span>
+  );
+}
+
+function AnimatedComposerDraftTabMark({ target }: { readonly target: DraftId | ScopedThreadRef }) {
+  const hasDraft = useComposerDraftStore((state) =>
+    composerDraftHasUserContent(state.getComposerDraft(target)),
+  );
+  return (
+    <span
+      aria-hidden={hasDraft ? undefined : true}
+      aria-label={hasDraft ? "Draft message" : undefined}
+      data-thread-tab-draft-slot=""
+      data-visible={hasDraft}
+      role={hasDraft ? "img" : undefined}
+      className={cn(
+        "pointer-events-none inline-flex h-3 shrink-0 items-center justify-center transition-[width,margin-right] duration-150 motion-reduce:transition-none",
+        hasDraft ? "mr-1.5 w-3 ease-out" : "mr-0 w-0 ease-in",
+      )}
+    >
+      <SquarePenIcon
+        aria-hidden
+        className={cn(
+          "size-3 shrink-0 text-amber-600 transition-[scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none dark:text-amber-300/80",
+          hasDraft ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]",
+        )}
+      />
     </span>
   );
 }
@@ -784,7 +812,16 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             <GitPullRequestIcon className="mr-1.5 size-3.5 shrink-0" />
                           ) : null}
                           {threadTab ? (
-                            <AnimatedThreadTabStatusMark status={status} isSettled={isSettled} />
+                            <>
+                              <AnimatedThreadTabStatusMark status={status} isSettled={isSettled} />
+                              <AnimatedComposerDraftTabMark
+                                target={
+                                  threadTab._tag === "DraftThread"
+                                    ? threadTab.draftId
+                                    : threadTab.threadRef
+                                }
+                              />
+                            </>
                           ) : null}
                           <span className="truncate">{title}</span>
                         </button>
