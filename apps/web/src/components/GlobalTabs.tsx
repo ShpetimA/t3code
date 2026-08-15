@@ -335,13 +335,13 @@ function SnoozedThreadsIndicator(props: {
             />
           }
         >
-          <span aria-hidden className="relative inline-flex size-5 items-center justify-center">
-            <AlarmClockIcon className="absolute inset-0 size-5 stroke-[1.6]" />
-            <span className="absolute inset-[5px] rounded-full bg-background/95" />
+          <span aria-hidden className="relative inline-flex size-4 items-center justify-center">
+            <AlarmClockIcon className="absolute inset-0 size-4 stroke-[1.6]" />
+            <span className="absolute inset-1 rounded-full bg-background/95" />
             <span
               className={cn(
                 "relative pt-px leading-none font-bold tabular-nums",
-                displayedCount.length > 1 ? "text-[6px]" : "text-[8px]",
+                displayedCount.length > 1 ? "text-[5px]" : "text-[7px]",
               )}
             >
               {displayedCount}
@@ -355,15 +355,6 @@ function SnoozedThreadsIndicator(props: {
           variant="glass"
           className="pointer-events-auto w-80 max-w-[calc(100vw-1rem)] text-left whitespace-normal transition-[width,height,scale,opacity,translate,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-y-1 data-starting-style:-translate-y-1 data-ending-style:blur-[4px] data-starting-style:blur-[4px] data-instant:duration-200 motion-reduce:transition-none [&_[data-slot=tooltip-viewport]]:p-0"
         >
-          <div className="flex items-center gap-2 border-border/60 border-b px-3 py-2.5">
-            <AlarmClockIcon className="size-3.5 shrink-0 text-amber-600 dark:text-amber-300/90" />
-            <span className="min-w-0 flex-1 text-xs font-medium text-foreground">
-              Snoozed sessions
-            </span>
-            <span className="text-[10px] font-medium text-amber-700 tabular-nums dark:text-amber-300">
-              {count}
-            </span>
-          </div>
           <ul className="max-h-80 divide-y divide-border/50 overflow-y-auto overscroll-contain">
             {threads.map((thread) => {
               const threadRef = scopeThreadRef(thread.environmentId, thread.id);
@@ -819,7 +810,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       <TooltipProvider delay={60} closeDelay={0} timeout={300}>
         <div className="min-w-0 flex-1 overflow-hidden">
           <div
-            className="flex h-full min-w-0 items-center gap-0.5"
+            className="flex h-full min-w-0 items-center gap-px"
             onDragLeave={handleTabDragLeave}
             onDragOver={handleTabBarDragOver}
             onDrop={handleTabBarDrop}
@@ -827,9 +818,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
             {tabs.map((tab, index) => {
               const tabKey = globalTabKey(tab);
               const active = tabKey === activeTabKey;
-              const previousTab = tabs[index - 1];
-              const bordersActiveTab =
-                active || (previousTab !== undefined && globalTabKey(previousTab) === activeTabKey);
               const threadTab = isGlobalThreadTab(tab) ? tab : null;
               const threadKey = threadTab ? scopedThreadKey(threadTab.threadRef) : null;
               const shell = threadKey ? threadShellByKey.get(threadKey) : undefined;
@@ -948,10 +936,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           <span
                             aria-hidden
                             data-global-tab-divider=""
-                            className={cn(
-                              "pointer-events-none absolute top-1/2 -left-px h-3 w-px -translate-y-1/2 rounded-full bg-border/70 transition-opacity duration-150 ease-out",
-                              bordersActiveTab ? "opacity-0" : "opacity-100",
-                            )}
+                            className="pointer-events-none absolute top-1/2 -left-px h-4 w-px -translate-y-1/2 rounded-full bg-black/20 dark:bg-white/20"
                           />
                         ) : null}
                         <button
