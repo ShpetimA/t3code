@@ -15,6 +15,7 @@ import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   Columns2Icon,
+  FolderTreeIcon,
   MessageSquareIcon,
   MessageSquareOffIcon,
   Rows3Icon,
@@ -73,7 +74,6 @@ import { PendingReviewCommentCard, ReviewThreadCard } from "./PullRequestReviewA
 import { PullRequestDiffFileTree } from "./PullRequestDiffFileTree";
 import { PullRequestReviewBar } from "./PullRequestReviewBar";
 import {
-  getPullRequestFileLoadState,
   isFileDiffCollapsed,
   isLineInFileDiff,
   type DiffFoldOverride,
@@ -1019,11 +1019,6 @@ export function PullRequestCodeTab({
     }
   }, [commit, onSelectedCommitChange, selectedCommit]);
   const scopeLabel = selectedCommit ? selectedCommit.messageHeadline : "All commits";
-  const fileLoadState = getPullRequestFileLoadState(
-    files.length,
-    commit === null ? detail.changedFiles : null,
-    nextCursor !== null,
-  );
   /**
    * The same controls the thread diff panel carries, in the same order, minus the
    * ignore-whitespace toggle: that is `git diff -w` on the server, and no host's pull request
@@ -1081,18 +1076,6 @@ export function PullRequestCodeTab({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          aria-pressed={fileTreeOpen}
-          data-pressed={fileTreeOpen ? "" : undefined}
-          className="tabular-nums"
-          onClick={() => setFileTreeOpen((open) => !open)}
-        >
-          Files {fileLoadState.displayedFileCount.toLocaleString()}
-          {fileLoadState.displayedCountIsLowerBound ? "+" : ""}
-        </Button>
         {/* Caveats stay compact: spelling them out in this strip makes every control truncate. */}
         {withheldContent || (commit !== null && review.inlineComment) ? (
           <PullRequestMetaLine>
@@ -1192,6 +1175,24 @@ export function PullRequestCodeTab({
           </TooltipTrigger>
           <TooltipPopup side="top">
             {wordWrap ? "Disable line wrapping" : "Enable line wrapping"}
+          </TooltipPopup>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                aria-label={fileTreeOpen ? "Hide file explorer" : "Show file explorer"}
+                variant="ghost"
+                size="sm"
+                pressed={fileTreeOpen}
+                onPressedChange={(pressed) => setFileTreeOpen(Boolean(pressed))}
+              />
+            }
+          >
+            <FolderTreeIcon className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">
+            {fileTreeOpen ? "Hide file explorer" : "Show file explorer"}
           </TooltipPopup>
         </Tooltip>
       </div>
