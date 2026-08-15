@@ -217,24 +217,29 @@ function applyTabNavigation(
 
 function AnimatedThreadTabStatusMark({
   status,
-  isSettled,
+  parkedState,
 }: {
   readonly status: ThreadStatusPill | null;
-  readonly isSettled: boolean;
+  readonly parkedState: "snoozed" | "settled" | null;
 }) {
   const [lastStatus, setLastStatus] = useState(status);
   useEffect(() => {
     if (status !== null) setLastStatus(status);
   }, [status]);
 
-  const resolvedStatusVisible = status !== null;
-  const settledStatusVisible = status === null && isSettled;
-  const visible = resolvedStatusVisible || settledStatusVisible;
+  const snoozedStatusVisible = parkedState === "snoozed";
+  const resolvedStatusVisible = status !== null && !snoozedStatusVisible;
+  const settledStatusVisible = status === null && parkedState === "settled";
+  const visible = resolvedStatusVisible || snoozedStatusVisible || settledStatusVisible;
   const displayedStatus = status ?? lastStatus;
   return (
     <span
       aria-hidden={visible ? undefined : true}
-      aria-label={status?.label ?? (settledStatusVisible ? "Settled" : undefined)}
+      aria-label={
+        snoozedStatusVisible
+          ? "Snoozed"
+          : (status?.label ?? (settledStatusVisible ? "Settled" : undefined))
+      }
       data-thread-tab-status-slot=""
       data-visible={visible}
       role={visible ? "img" : undefined}
@@ -259,6 +264,16 @@ function AnimatedThreadTabStatusMark({
               animatePulse={resolvedStatusVisible}
             />
           ) : null}
+        </span>
+        <span
+          className={cn(
+            "absolute inset-0 inline-flex items-center justify-center text-amber-600 transition-[scale,opacity,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none dark:text-amber-300/90",
+            snoozedStatusVisible
+              ? "scale-100 opacity-100 blur-0"
+              : "scale-[0.25] opacity-0 blur-[4px]",
+          )}
+        >
+          <AlarmClockIcon className="size-3" />
         </span>
         <span
           className={cn(
@@ -860,6 +875,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                     })
                   : null;
               const isSettled = threadLifecycle?.isSettled ?? false;
+              const isSnoozed = threadLifecycle?.isSnoozed ?? false;
               const settlesBeforeClose = threadLifecycle?.closePolicy === "settle-first";
               const draftSession = tab._tag === "DraftThread" ? draftSessions[tab.draftId] : null;
               const projectId = shell?.projectId ?? draftSession?.projectId;
@@ -910,6 +926,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 branch !== null ||
                 modelLabel !== null ||
                 status !== null ||
+                isSnoozed ||
                 isSettled;
               return (
                 <GlobalTabDetailsTooltip
@@ -989,7 +1006,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           ) : null}
                           {threadTab ? (
                             <>
-                              <AnimatedThreadTabStatusMark status={status} isSettled={isSettled} />
+                              <AnimatedThreadTabStatusMark
+                                status={status}
+                                parkedState={isSnoozed ? "snoozed" : isSettled ? "settled" : null}
+                              />
                               <AnimatedComposerDraftTabMark
                                 target={
                                   threadTab._tag === "DraftThread"
@@ -1123,7 +1143,12 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             <div className="min-w-0 truncate text-foreground/75">{modelLabel}</div>
                           </div>
                         ) : null}
-                        {status ? (
+                        {isSnoozed ? (
+                          <div className="flex min-w-0 items-center gap-2 text-amber-700 dark:text-amber-300">
+                            <AlarmClockIcon className="size-3 shrink-0" />
+                            <div className="min-w-0 truncate">Snoozed</div>
+                          </div>
+                        ) : status ? (
                           <div className="flex min-w-0 items-center gap-2">
                             <ThreadStatusMark status={status} decorative />
                             <div className={cn("min-w-0 truncate", status.colorClass)}>
