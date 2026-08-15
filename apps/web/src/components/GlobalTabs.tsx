@@ -839,7 +839,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       <TooltipProvider delay={60} closeDelay={0} timeout={300}>
         <div className="min-w-0 flex-1 overflow-hidden">
           <div
-            className="flex h-full min-w-0 items-center gap-px"
+            className="flex h-full min-w-0 items-center gap-0.5"
             onDragLeave={handleTabDragLeave}
             onDragOver={handleTabBarDragOver}
             onDrop={handleTabBarDrop}
@@ -961,13 +961,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           });
                         }}
                       >
-                        {index > 0 ? (
-                          <span
-                            aria-hidden
-                            data-global-tab-divider=""
-                            className="pointer-events-none absolute top-1/2 -left-px h-4 w-px -translate-y-1/2 rounded-full bg-black/20 dark:bg-white/20"
-                          />
-                        ) : null}
                         <button
                           type="button"
                           className={cn(
