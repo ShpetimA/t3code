@@ -173,48 +173,44 @@ function GlobalTabDetailsTooltip(props: {
   );
 }
 
-function navigateToGlobalTab(navigate: ReturnType<typeof useNavigate>, tab: GlobalTab): void {
+function navigateToGlobalTab(
+  navigate: ReturnType<typeof useNavigate>,
+  tab: GlobalTab,
+): Promise<void> {
   switch (tab._tag) {
     case "ServerThread":
-      void navigate({
+      return navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(tab.threadRef),
       });
-      return;
     case "DraftThread":
-      void navigate({
+      return navigate({
         to: "/draft/$draftId",
         params: buildDraftThreadRouteParams(tab.draftId),
       });
-      return;
     case "Settings":
-      void navigate({ to: `/settings/${tab.section}` });
-      return;
+      return navigate({ to: `/settings/${tab.section}` });
     case "Usage":
-      void navigate({ to: "/usage" });
-      return;
+      return navigate({ to: "/usage" });
     case "PullRequests":
-      void navigate({
+      return navigate({
         to: "/pull-requests",
         search: { involvement: "all", state: "open" },
       });
-      return;
   }
 }
 
 function applyTabNavigation(
   navigate: ReturnType<typeof useNavigate>,
   navigation: GlobalTabNavigation,
-): void {
+): Promise<void> | null {
   switch (navigation._tag) {
     case "KeepCurrent":
-      return;
+      return null;
     case "Activate":
-      navigateToGlobalTab(navigate, navigation.tab);
-      return;
+      return navigateToGlobalTab(navigate, navigation.tab);
     case "OpenLanding":
-      void navigate({ to: "/" });
-      return;
+      return navigate({ to: "/" });
   }
 }
 
@@ -434,6 +430,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const tabs = useGlobalTabsStore((state) => state.tabs);
   const lastActiveTab = useGlobalTabsStore(resolveLastActiveGlobalTab);
   const transitionTabs = useGlobalTabsStore((state) => state.transition);
+  const clearDraftThread = useComposerDraftStore((state) => state.clearDraftThread);
   const activeTabKey = activeTab === null ? null : globalTabKey(activeTab);
   const activeTabKeyRef = useRef(activeTabKey);
   activeTabKeyRef.current = activeTabKey;
@@ -599,11 +596,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       startupRestoreAttemptedRef.current = true;
       if (activeTabKey === null) {
         const restoreTab = resolveLastActiveGlobalTab(result.state);
-        if (restoreTab !== null) navigateToGlobalTab(navigate, restoreTab);
+        if (restoreTab !== null) void navigateToGlobalTab(navigate, restoreTab);
         return;
       }
     }
-    applyTabNavigation(navigate, result.navigation);
+    void applyTabNavigation(navigate, result.navigation);
   }, [
     activeTabKey,
     allShellsBootstrapped,
@@ -615,31 +612,50 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   ]);
 
   const closeTab = useCallback(
-    (tabKey: string, requiredTabDisposition: "forget" | "dismiss") => {
+    (tab: GlobalTab, requiredTabDisposition: "forget" | "dismiss") => {
       const result = transitionTabs({
         _tag: "Close",
-        tabKey,
+        tabKey: globalTabKey(tab),
         requiredTabDisposition,
         // Lifecycle commands can finish after the user switches tabs. Read
         // the latest visible route so that navigation made during the await
         // wins over the close that follows it.
         routeActiveTabKey: activeTabKeyRef.current,
       });
-      applyTabNavigation(navigate, result.navigation);
+      const navigation = applyTabNavigation(navigate, result.navigation);
+      const draftTarget =
+        tab._tag === "ServerThread"
+          ? tab.threadRef
+          : tab._tag === "DraftThread"
+            ? tab.draftId
+            : null;
+      if (draftTarget === null) return;
+      if (navigation === null) {
+        clearDraftThread(draftTarget);
+        return;
+      }
+      const clearClosedTabDraft = () => clearDraftThread(draftTarget);
+      void navigation.then(clearClosedTabDraft, clearClosedTabDraft);
     },
-    [navigate, transitionTabs],
+    [clearDraftThread, navigate, transitionTabs],
+  );
+  const closeThreadTab = useCallback(
+    (threadRef: ScopedThreadRef, requiredTabDisposition: "forget" | "dismiss") => {
+      closeTab({ _tag: "ServerThread", threadRef }, requiredTabDisposition);
+    },
+    [closeTab],
   );
   const { openMenu: openThreadTabLifecycleMenu, settleAndClose: settleAndCloseThreadTab } =
-    useThreadTabLifecycleMenu({ closeTab });
+    useThreadTabLifecycleMenu({ closeThreadTab });
   const requestCloseTab = useCallback(
     (tab: GlobalTab) => {
       const tabKey = globalTabKey(tab);
       const lifecycle = threadLifecycleByTabKey.get(tabKey);
       if (tab._tag === "ServerThread" && lifecycle?.closePolicy === "settle-first") {
-        void settleAndCloseThreadTab(tab.threadRef, tabKey);
+        void settleAndCloseThreadTab(tab.threadRef);
         return;
       }
-      closeTab(tabKey, lifecycle?.isRequired === true ? "dismiss" : "forget");
+      closeTab(tab, lifecycle?.isRequired === true ? "dismiss" : "forget");
     },
     [closeTab, settleAndCloseThreadTab, threadLifecycleByTabKey],
   );
@@ -675,7 +691,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           const activeStoredTab = tabs.find((tab) => globalTabKey(tab) === activeTabKey);
           if (activeStoredTab !== undefined) requestCloseTab(activeStoredTab);
         } else if (lastActiveTab !== null) {
-          navigateToGlobalTab(navigate, lastActiveTab);
+          void navigateToGlobalTab(navigate, lastActiveTab);
         }
         return;
       }
@@ -698,7 +714,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       if (!target) return;
       event.preventDefault();
       event.stopPropagation();
-      navigateToGlobalTab(navigate, target);
+      void navigateToGlobalTab(navigate, target);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -922,7 +938,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         onContextMenu={(event) => {
                           if (tab._tag !== "ServerThread") return;
                           event.preventDefault();
-                          openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
+                          openThreadTabLifecycleMenu(tab.threadRef, {
                             x: event.clientX,
                             y: event.clientY,
                           });
@@ -947,7 +963,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           data-global-tab-content=""
                           data-server-thread={tab._tag === "ServerThread" ? "" : undefined}
                           aria-current={active ? "page" : undefined}
-                          onClick={() => navigateToGlobalTab(navigate, tab)}
+                          onClick={() => void navigateToGlobalTab(navigate, tab)}
                         >
                           {project ? (
                             <ProjectFavicon
@@ -994,7 +1010,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             onClick={(event) => {
                               event.stopPropagation();
                               const bounds = event.currentTarget.getBoundingClientRect();
-                              openThreadTabLifecycleMenu(tab.threadRef, tabKey, {
+                              openThreadTabLifecycleMenu(tab.threadRef, {
                                 x: bounds.left,
                                 y: bounds.bottom,
                               });
@@ -1130,7 +1146,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           environmentLabelById={environmentLabelById}
           now={lifecycleNow}
           onOpenThread={(threadRef) =>
-            navigateToGlobalTab(navigate, { _tag: "ServerThread", threadRef })
+            void navigateToGlobalTab(navigate, { _tag: "ServerThread", threadRef })
           }
           timestampFormat={timestampFormat}
         />

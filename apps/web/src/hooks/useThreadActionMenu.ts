@@ -401,9 +401,12 @@ export function useThreadActionMenu(input: {
  * tab strip supplies view closure so successful lifecycle commands and tab
  * selection remain ordered. */
 export function useThreadTabLifecycleMenu(input: {
-  readonly closeTab: (tabKey: string, requiredTabDisposition: "forget" | "dismiss") => void;
+  readonly closeThreadTab: (
+    threadRef: ScopedThreadRef,
+    requiredTabDisposition: "forget" | "dismiss",
+  ) => void;
 }) {
-  const { closeTab } = input;
+  const { closeThreadTab } = input;
   const {
     archiveThread,
     settleThread,
@@ -418,7 +421,7 @@ export function useThreadTabLifecycleMenu(input: {
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
 
   const openMenu = useCallback(
-    (threadRef: ScopedThreadRef, tabKey: string, position: { x: number; y: number }) => {
+    (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       void (async () => {
         const api = readLocalApi();
         if (!api) return;
@@ -455,7 +458,7 @@ export function useThreadTabLifecycleMenu(input: {
         const action: ThreadTabLifecycleMenuId = clicked.value;
         await dispatchThreadTabLifecycleAction({
           action,
-          closeTab: () => closeTab(tabKey, lifecycle.isRequired ? "dismiss" : "forget"),
+          closeTab: () => closeThreadTab(threadRef, lifecycle.isRequired ? "dismiss" : "forget"),
           run: async (selectedAction) => {
             if (selectedAction === "archive") {
               if (confirmThreadArchive) {
@@ -490,7 +493,7 @@ export function useThreadTabLifecycleMenu(input: {
     [
       archiveThread,
       autoSettleAfterDays,
-      closeTab,
+      closeThreadTab,
       confirmThreadArchive,
       pinThread,
       settleThread,
@@ -503,14 +506,14 @@ export function useThreadTabLifecycleMenu(input: {
   );
 
   const settleAndClose = useCallback(
-    async (threadRef: ScopedThreadRef, tabKey: string): Promise<void> => {
+    async (threadRef: ScopedThreadRef): Promise<void> => {
       const succeeded = lifecycleCommandSucceeded(
         "Failed to settle thread",
         await settleThread(threadRef),
       );
-      if (succeeded) closeTab(tabKey, "dismiss");
+      if (succeeded) closeThreadTab(threadRef, "dismiss");
     },
-    [closeTab, settleThread],
+    [closeThreadTab, settleThread],
   );
 
   return { openMenu, settleAndClose };

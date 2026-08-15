@@ -963,6 +963,35 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(draftByKey(draftId)).toBeUndefined();
   });
 
+  it("removes a server-thread draft from persisted composer state", () => {
+    const store = useComposerDraftStore.getState();
+    const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+    const threadKey = scopedThreadKey(threadRef);
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => {
+          draftsByThreadKey: Record<string, unknown>;
+        };
+      };
+    };
+    store.setPrompt(threadRef, "remove me");
+
+    expect(
+      persistApi.getOptions().partialize(useComposerDraftStore.getState()).draftsByThreadKey[
+        threadKey
+      ],
+    ).toBeDefined();
+
+    store.clearDraftThread(threadRef);
+
+    expect(store.getComposerDraft(threadRef)).toBeNull();
+    expect(
+      persistApi.getOptions().partialize(useComposerDraftStore.getState()).draftsByThreadKey[
+        threadKey
+      ],
+    ).toBeUndefined();
+  });
+
   it("marks a promoted draft by thread id without deleting composer state", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });
