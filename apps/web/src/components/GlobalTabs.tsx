@@ -310,9 +310,10 @@ function SnoozedThreadsIndicator(props: {
   readonly projectByKey: ReadonlyMap<string, EnvironmentProject>;
   readonly environmentLabelById: ReadonlyMap<EnvironmentThreadShell["environmentId"], string>;
   readonly now: string;
+  readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
   readonly timestampFormat: TimestampFormat;
 }) {
-  const { environmentLabelById, now, projectByKey, threads, timestampFormat } = props;
+  const { environmentLabelById, now, onOpenThread, projectByKey, threads, timestampFormat } = props;
   const count = threads.length;
   const visible = count > 0;
   const displayedCount = count > 99 ? "99+" : String(count);
@@ -369,6 +370,7 @@ function SnoozedThreadsIndicator(props: {
           </div>
           <ul className="max-h-80 divide-y divide-border/50 overflow-y-auto overscroll-contain">
             {threads.map((thread) => {
+              const threadRef = scopeThreadRef(thread.environmentId, thread.id);
               const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
               const environmentLabel = environmentLabelById.get(thread.environmentId) ?? null;
               const projectLabel = project?.title ?? "Unknown project";
@@ -382,37 +384,40 @@ function SnoozedThreadsIndicator(props: {
                   ? "now"
                   : snoozeWakeDescription(snoozedUntil, nowDate, timestampFormat);
               return (
-                <li
-                  key={scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))}
-                  className="flex min-w-0 items-center gap-2.5 px-3 py-2"
-                >
-                  {project ? (
-                    <ProjectFavicon
-                      environmentId={project.environmentId}
-                      cwd={project.workspaceRoot}
-                      projectName={project.title}
-                      faviconPath={project.faviconPath}
-                      className="size-4 shrink-0"
-                    />
-                  ) : (
-                    <AlarmClockIcon className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground/90">
-                      {thread.title}
+                <li key={scopedThreadKey(threadRef)}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenThread(threadRef)}
+                    className="flex min-h-10 w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent/70 focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    {project ? (
+                      <ProjectFavicon
+                        environmentId={project.environmentId}
+                        cwd={project.workspaceRoot}
+                        projectName={project.title}
+                        faviconPath={project.faviconPath}
+                        className="size-4 shrink-0"
+                      />
+                    ) : (
+                      <AlarmClockIcon className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-foreground/90">
+                        {thread.title}
+                      </span>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {contextLabel}
+                      </span>
                     </span>
-                    <span className="block truncate text-[10px] text-muted-foreground">
-                      {contextLabel}
+                    <span className="shrink-0 text-right tabular-nums">
+                      <span className="block text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                        in {wakeLabel}
+                      </span>
+                      <span className="block text-[9px] text-muted-foreground">
+                        {wakeDescription}
+                      </span>
                     </span>
-                  </span>
-                  <span className="shrink-0 text-right tabular-nums">
-                    <span className="block text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                      in {wakeLabel}
-                    </span>
-                    <span className="block text-[9px] text-muted-foreground">
-                      {wakeDescription}
-                    </span>
-                  </span>
+                  </button>
                 </li>
               );
             })}
@@ -1124,6 +1129,9 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
           projectByKey={projectByKey}
           environmentLabelById={environmentLabelById}
           now={lifecycleNow}
+          onOpenThread={(threadRef) =>
+            navigateToGlobalTab(navigate, { _tag: "ServerThread", threadRef })
+          }
           timestampFormat={timestampFormat}
         />
         <Tooltip>
