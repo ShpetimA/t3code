@@ -44,6 +44,7 @@ import {
   resolveGlobalTabDropTargetIndex,
   resolveLastActiveGlobalTab,
   resolveGlobalThreadTabLifecycle,
+  sameGlobalTab,
   type GlobalTab,
   type GlobalTabDropPosition,
   type GlobalTabNavigation,
@@ -431,6 +432,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const activeTabKey = activeTab === null ? null : globalTabKey(activeTab);
   const activeTabKeyRef = useRef(activeTabKey);
   activeTabKeyRef.current = activeTabKey;
+  const lastSyncedRouteTabRef = useRef<GlobalTab | null>(null);
   const threadShells = useThreadShells();
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const serverConfigs = useServerConfigs();
@@ -549,7 +551,16 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     [environments],
   );
   useLayoutEffect(() => {
-    if (activeTab !== null) transitionTabs({ _tag: "Open", tab: activeTab });
+    if (activeTab === null) {
+      lastSyncedRouteTabRef.current = null;
+      return;
+    }
+    const lastSyncedRouteTab = lastSyncedRouteTabRef.current;
+    if (lastSyncedRouteTab !== null && sameGlobalTab(lastSyncedRouteTab, activeTab)) {
+      return;
+    }
+    lastSyncedRouteTabRef.current = activeTab;
+    transitionTabs({ _tag: "Open", tab: activeTab });
   }, [activeTab, transitionTabs]);
 
   useEffect(() => {

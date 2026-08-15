@@ -18,6 +18,7 @@ import {
   resolveGlobalTabDropTargetIndex,
   resolveLastActiveGlobalTab,
   resolveGlobalThreadTabLifecycle,
+  sameGlobalTab,
   transitionGlobalTabs,
   type GlobalTab,
   type GlobalTabsState,
@@ -108,6 +109,21 @@ function open(state: GlobalTabsState, tab: GlobalTab): GlobalTabsState {
 }
 
 describe("global tabs", () => {
+  it("compares semantic route identity instead of object identity", () => {
+    const server = serverTab("one");
+    const draft = draftTab("one");
+
+    expect(sameGlobalTab(server, serverTab("one"))).toBe(true);
+    expect(sameGlobalTab(server, draft)).toBe(false);
+    expect(sameGlobalTab(draft, { ...draft, draftId: DraftId.make("draft-other") })).toBe(false);
+    expect(
+      sameGlobalTab(
+        { _tag: "Settings", section: "general" },
+        { _tag: "Settings", section: "appearance" },
+      ),
+    ).toBe(false);
+  });
+
   it("requires unsettled threads and settles them before close", () => {
     expect(
       resolveGlobalThreadTabLifecycle(threadShell({ activityAt: "2026-08-13T11:00:00.000Z" }), {

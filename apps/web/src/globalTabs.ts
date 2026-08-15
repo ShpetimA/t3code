@@ -211,7 +211,8 @@ export function isGlobalThreadTab(
   return tab._tag === "ServerThread" || tab._tag === "DraftThread";
 }
 
-function sameTab(left: GlobalTab, right: GlobalTab): boolean {
+/** Whether two route snapshots describe the same complete tab destination. */
+export function sameGlobalTab(left: GlobalTab, right: GlobalTab): boolean {
   if (left._tag !== right._tag || globalTabKey(left) !== globalTabKey(right)) {
     return false;
   }
@@ -256,7 +257,7 @@ export function transitionGlobalTabs(
         };
       }
       const existing = current.tabs[existingIndex];
-      if (existing === undefined || sameTab(existing, input.tab)) {
+      if (existing === undefined || sameGlobalTab(existing, input.tab)) {
         return {
           state:
             current.lastActiveTabKey === tabKey &&
@@ -355,7 +356,7 @@ export function transitionGlobalTabs(
           continue;
         }
         const existing = tabs[existingIndex];
-        if (existing !== undefined && !sameTab(existing, requiredTab)) {
+        if (existing !== undefined && !sameGlobalTab(existing, requiredTab)) {
           tabs[existingIndex] = requiredTab;
           changed = true;
         }
