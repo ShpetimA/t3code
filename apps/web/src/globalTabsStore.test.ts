@@ -3,7 +3,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { globalTabKey, type GlobalTab } from "./globalTabs";
-import { transitionGlobalTabsStore, useGlobalTabsStore } from "./globalTabsStore";
+import { useGlobalTabsStore } from "./globalTabsStore";
 
 const tab: GlobalTab = {
   _tag: "ServerThread",
@@ -13,19 +13,19 @@ const tab: GlobalTab = {
 afterEach(() => {
   useGlobalTabsStore.setState({
     tabs: [],
-    activeTabKey: null,
+    lastActiveTabKey: null,
     historyTabKeys: [],
     dismissedRequiredThreadTabKeys: [],
   });
 });
 
 describe("global tabs store", () => {
-  it("writes the selected tab computed by a transition", () => {
-    transitionGlobalTabsStore({ _tag: "Open", tab });
+  it("writes the restoration target computed by a transition", () => {
+    useGlobalTabsStore.getState().transition({ _tag: "Open", tab });
 
     expect(useGlobalTabsStore.getState()).toMatchObject({
       tabs: [tab],
-      activeTabKey: globalTabKey(tab),
+      lastActiveTabKey: globalTabKey(tab),
       historyTabKeys: [globalTabKey(tab)],
       dismissedRequiredThreadTabKeys: [],
     });

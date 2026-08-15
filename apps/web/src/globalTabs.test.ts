@@ -16,7 +16,7 @@ import {
   parsePersistedGlobalTabsState,
   projectGlobalTabsState,
   resolveGlobalTabDropTargetIndex,
-  resolveGlobalTabRouteOpen,
+  resolveLastActiveGlobalTab,
   resolveGlobalThreadTabLifecycle,
   transitionGlobalTabs,
   type GlobalTab,
@@ -97,7 +97,7 @@ function globalTabsState(
 ): GlobalTabsState {
   return {
     tabs,
-    activeTabKey: activeTab === null ? null : globalTabKey(activeTab),
+    lastActiveTabKey: activeTab === null ? null : globalTabKey(activeTab),
     historyTabKeys: historyTabs.map(globalTabKey),
     dismissedRequiredThreadTabKeys: dismissedRequiredTabs.map(globalTabKey),
   };
@@ -191,7 +191,7 @@ describe("global tabs", () => {
     const first = serverTab("one");
     const state = open(open(globalTabsState(), first), first);
     expect(state.tabs).toEqual([first]);
-    expect(state.activeTabKey).toBe(globalTabKey(first));
+    expect(state.lastActiveTabKey).toBe(globalTabKey(first));
   });
 
   it("replaces a promoted draft in place using its reserved thread ref", () => {
@@ -200,7 +200,7 @@ describe("global tabs", () => {
     const promoted = serverTab("one");
     const state = open(open(open(globalTabsState(), draft), sibling), promoted);
     expect(state.tabs).toEqual([promoted, sibling]);
-    expect(state.activeTabKey).toBe(globalTabKey(promoted));
+    expect(state.lastActiveTabKey).toBe(globalTabKey(promoted));
   });
 
   it("selects an existing tab without moving it", () => {
@@ -209,7 +209,7 @@ describe("global tabs", () => {
     const state = open(globalTabsState([first, second], first), second);
 
     expect(state.tabs).toEqual([first, second]);
-    expect(state.activeTabKey).toBe(globalTabKey(second));
+    expect(state.lastActiveTabKey).toBe(globalTabKey(second));
   });
 
   it("closes the active tab to the right, then to the left", () => {
@@ -225,7 +225,7 @@ describe("global tabs", () => {
       requiredTabDisposition: "forget",
     });
     expect(closeMiddle.navigation).toEqual({ _tag: "Activate", tab: third });
-    expect(closeMiddle.state.activeTabKey).toBe(globalTabKey(third));
+    expect(closeMiddle.state.lastActiveTabKey).toBe(globalTabKey(third));
 
     const closeLast = transitionGlobalTabs(closeMiddle.state, {
       _tag: "Close",
@@ -234,7 +234,7 @@ describe("global tabs", () => {
       requiredTabDisposition: "forget",
     });
     expect(closeLast.navigation).toEqual({ _tag: "Activate", tab: first });
-    expect(closeLast.state.activeTabKey).toBe(globalTabKey(first));
+    expect(closeLast.state.lastActiveTabKey).toBe(globalTabKey(first));
   });
 
   it("clears the persisted selection when closing the final tab", () => {
@@ -250,32 +250,6 @@ describe("global tabs", () => {
     expect(result.navigation).toEqual({ _tag: "OpenLanding" });
   });
 
-  it("does not reopen a closed active tab while its fallback route is pending", () => {
-    const first = serverTab("one");
-    const second = serverTab("two");
-    const observedSecond = resolveGlobalTabRouteOpen(null, second);
-    const closedSecond = transitionGlobalTabs(globalTabsState([first, second], second), {
-      _tag: "Close",
-      tabKey: globalTabKey(second),
-      routeActiveTabKey: globalTabKey(second),
-      requiredTabDisposition: "forget",
-    });
-
-    const pendingOldRoute = resolveGlobalTabRouteOpen(observedSecond.routeSignature, second);
-    const afterPendingRender =
-      pendingOldRoute.transition === null
-        ? closedSecond.state
-        : transitionGlobalTabs(closedSecond.state, pendingOldRoute.transition).state;
-    const committedFallback = resolveGlobalTabRouteOpen(pendingOldRoute.routeSignature, first);
-    const finalState =
-      committedFallback.transition === null
-        ? afterPendingRender
-        : transitionGlobalTabs(afterPendingRender, committedFallback.transition).state;
-
-    expect(finalState.tabs).toEqual([first]);
-    expect(closedSecond.navigation).toEqual({ _tag: "Activate", tab: first });
-  });
-
   it("keeps navigation in place when closing a background tab", () => {
     const first = serverTab("one");
     const second = serverTab("two");
@@ -287,7 +261,7 @@ describe("global tabs", () => {
     });
     expect(result.navigation).toEqual({ _tag: "KeepCurrent" });
     expect(result.state.tabs).toEqual([second]);
-    expect(result.state.activeTabKey).toBe(globalTabKey(second));
+    expect(result.state.lastActiveTabKey).toBe(globalTabKey(second));
   });
 
   it("uses the visible route when persisted selection is briefly stale", () => {
@@ -302,7 +276,7 @@ describe("global tabs", () => {
     });
 
     expect(result.state.tabs).toEqual([first, third]);
-    expect(result.state.activeTabKey).toBe(globalTabKey(third));
+    expect(result.state.lastActiveTabKey).toBe(globalTabKey(third));
     expect(result.navigation).toEqual({ _tag: "Activate", tab: third });
   });
 
@@ -314,13 +288,14 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(first), globalTabKey(third)],
       requiredThreadTabs: [],
+      routeActiveTabKey: globalTabKey(second),
     });
     expect(result.state.tabs).toEqual([first, third]);
-    expect(result.state.activeTabKey).toBe(globalTabKey(third));
+    expect(result.state.lastActiveTabKey).toBe(globalTabKey(third));
     expect(result.navigation).toEqual({ _tag: "Activate", tab: third });
   });
 
-  it("parses persisted tabs and their active destination", () => {
+  it("parses persisted tabs and their restoration destination", () => {
     const tab = serverTab("one");
     expect(
       parsePersistedGlobalTabsState({
@@ -331,7 +306,7 @@ describe("global tabs", () => {
             threadId: ThreadId.make("one"),
           },
         ],
-        activeTabKey: globalTabKey(tab),
+        lastActiveTabKey: globalTabKey(tab),
       }),
     ).toEqual(globalTabsState([tab], tab));
   });
@@ -344,21 +319,21 @@ describe("global tabs", () => {
     };
     expect(parsePersistedGlobalTabsState({ tabs: [persistedTab] })).toEqual({
       tabs: [serverTab("one")],
-      activeTabKey: null,
+      lastActiveTabKey: null,
       historyTabKeys: [globalTabKey(serverTab("one"))],
       dismissedRequiredThreadTabKeys: [],
     });
     expect(
-      parsePersistedGlobalTabsState({ tabs: [persistedTab], activeTabKey: "thread:missing" }),
+      parsePersistedGlobalTabsState({ tabs: [persistedTab], lastActiveTabKey: "thread:missing" }),
     ).toEqual({
       tabs: [serverTab("one")],
-      activeTabKey: null,
+      lastActiveTabKey: null,
       historyTabKeys: [globalTabKey(serverTab("one"))],
       dismissedRequiredThreadTabKeys: [],
     });
     expect(parsePersistedGlobalTabsState({ tabs: [{ _tag: "Unknown" }] })).toEqual({
       tabs: [],
-      activeTabKey: null,
+      lastActiveTabKey: null,
       historyTabKeys: [],
       dismissedRequiredThreadTabKeys: [],
     });
@@ -376,10 +351,9 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(first)],
       requiredThreadTabs: [],
+      routeActiveTabKey: null,
     });
-    const restored = transitionGlobalTabs(reconciled.state, { _tag: "RestoreActive" });
-
-    expect(restored.navigation).toEqual({ _tag: "Activate", tab: settings });
+    expect(resolveLastActiveGlobalTab(reconciled.state)).toEqual(settings);
   });
 
   it("keeps singleton tabs in place while their route state changes", () => {
@@ -389,7 +363,7 @@ describe("global tabs", () => {
     const state = open(open(open(globalTabsState(), thread), general), appearance);
 
     expect(state.tabs).toEqual([thread, appearance]);
-    expect(state.activeTabKey).toBe(globalTabKey(appearance));
+    expect(state.lastActiveTabKey).toBe(globalTabKey(appearance));
   });
 
   it("reconciles missing threads without pruning application destinations", () => {
@@ -399,7 +373,12 @@ describe("global tabs", () => {
     const pullRequests: GlobalTab = { _tag: "PullRequests" };
     const result = transitionGlobalTabs(
       globalTabsState([thread, settings, usage, pullRequests], settings),
-      { _tag: "Reconcile", validThreadTabKeys: [], requiredThreadTabs: [] },
+      {
+        _tag: "Reconcile",
+        validThreadTabKeys: [],
+        requiredThreadTabs: [],
+        routeActiveTabKey: globalTabKey(settings),
+      },
     );
 
     expect(result.state.tabs).toEqual([settings, usage, pullRequests]);
@@ -414,6 +393,7 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(opened), globalTabKey(required)],
       requiredThreadTabs: [required],
+      routeActiveTabKey: globalTabKey(settings),
     });
 
     expect(result.state).toEqual(
@@ -428,6 +408,7 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(opened), globalTabKey(required)],
       requiredThreadTabs: [],
+      routeActiveTabKey: globalTabKey(settings),
     });
     expect(afterRequiredThreadSettles.state).toEqual(globalTabsState([opened, settings], settings));
   });
@@ -445,6 +426,7 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(required)],
       requiredThreadTabs: [required],
+      routeActiveTabKey: globalTabKey(settings),
     });
 
     expect(stillRequired.state).toEqual(
@@ -458,11 +440,13 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(required)],
       requiredThreadTabs: [],
+      routeActiveTabKey: globalTabKey(settings),
     });
     const requiredAgain = transitionGlobalTabs(noLongerRequired.state, {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(required)],
       requiredThreadTabs: [required],
+      routeActiveTabKey: globalTabKey(settings),
     });
 
     expect(noLongerRequired.state.dismissedRequiredThreadTabKeys).toEqual([]);
@@ -479,10 +463,11 @@ describe("global tabs", () => {
       _tag: "Reconcile",
       validThreadTabKeys: [globalTabKey(promoted), globalTabKey(sibling)],
       requiredThreadTabs: [promoted],
+      routeActiveTabKey: globalTabKey(sibling),
     });
 
     expect(result.state.tabs).toEqual([promoted, sibling]);
-    expect(result.state.activeTabKey).toBe(globalTabKey(sibling));
+    expect(result.state.lastActiveTabKey).toBe(globalTabKey(sibling));
   });
 
   it("persists usage as one singleton tab", () => {

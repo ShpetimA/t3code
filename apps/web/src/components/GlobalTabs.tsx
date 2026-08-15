@@ -35,14 +35,14 @@ import {
   isGlobalTabCloseShortcut,
   isGlobalThreadTab,
   resolveGlobalTabDropTargetIndex,
-  resolveGlobalTabRouteOpen,
+  resolveLastActiveGlobalTab,
   resolveGlobalThreadTabLifecycle,
   type GlobalTab,
   type GlobalTabDropPosition,
   type GlobalTabNavigation,
   type GlobalThreadTabLifecycle,
 } from "../globalTabs";
-import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStore";
+import { useGlobalTabsStore } from "../globalTabsStore";
 import {
   resolveShortcutCommand,
   shortcutKeyLabelForCommandMatchingModifiers,
@@ -272,7 +272,8 @@ function AnimatedThreadTabStatusMark({
 export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const navigate = useNavigate();
   const tabs = useGlobalTabsStore((state) => state.tabs);
-  const storedActiveTabKey = useGlobalTabsStore((state) => state.activeTabKey);
+  const lastActiveTab = useGlobalTabsStore(resolveLastActiveGlobalTab);
+  const transitionTabs = useGlobalTabsStore((state) => state.transition);
   const activeTabKey = activeTab === null ? null : globalTabKey(activeTab);
   const activeTabKeyRef = useRef(activeTabKey);
   activeTabKeyRef.current = activeTabKey;
@@ -293,7 +294,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     readonly position: GlobalTabDropPosition | "end";
   } | null>(null);
   const startupRestoreAttemptedRef = useRef(false);
-  const observedRouteSignatureRef = useRef<string | null>(null);
   const activeThreadRef: ScopedThreadRef | null =
     activeTab !== null && isGlobalThreadTab(activeTab) ? activeTab.threadRef : null;
   const routeTerminalOpen = useTerminalUiStateStore((state) =>
@@ -385,12 +385,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     [environments],
   );
   useLayoutEffect(() => {
-    const routeOpen = resolveGlobalTabRouteOpen(observedRouteSignatureRef.current, activeTab);
-    observedRouteSignatureRef.current = routeOpen.routeSignature;
-    if (routeOpen.transition !== null) {
-      transitionGlobalTabsStore(routeOpen.transition);
-    }
-  });
+    if (activeTab !== null) transitionTabs({ _tag: "Open", tab: activeTab });
+  }, [activeTab, transitionTabs]);
 
   useEffect(() => {
     if (!allShellsBootstrapped) return;
@@ -413,16 +409,17 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         }),
       ),
     ];
-    const result = transitionGlobalTabsStore({
+    const result = transitionTabs({
       _tag: "Reconcile",
       validThreadTabKeys: validTabKeys,
       requiredThreadTabs,
+      routeActiveTabKey: activeTabKey,
     });
     if (!startupRestoreAttemptedRef.current) {
       startupRestoreAttemptedRef.current = true;
       if (activeTabKey === null) {
-        const restoreResult = transitionGlobalTabsStore({ _tag: "RestoreActive" });
-        applyTabNavigation(navigate, restoreResult.navigation);
+        const restoreTab = resolveLastActiveGlobalTab(result.state);
+        if (restoreTab !== null) navigateToGlobalTab(navigate, restoreTab);
         return;
       }
     }
@@ -434,11 +431,12 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     navigate,
     requiredThreadTabs,
     threadShells,
+    transitionTabs,
   ]);
 
   const closeTab = useCallback(
     (tabKey: string, requiredTabDisposition: "forget" | "dismiss") => {
-      const result = transitionGlobalTabsStore({
+      const result = transitionTabs({
         _tag: "Close",
         tabKey,
         requiredTabDisposition,
@@ -449,7 +447,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       });
       applyTabNavigation(navigate, result.navigation);
     },
-    [navigate],
+    [navigate, transitionTabs],
   );
   const { openMenu: openThreadTabLifecycleMenu, settleAndClose: settleAndCloseThreadTab } =
     useThreadTabLifecycleMenu({ closeTab });
@@ -470,7 +468,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const closeShortcut =
-        (activeTabKey !== null || storedActiveTabKey !== null) &&
+        (activeTabKey !== null || lastActiveTab !== null) &&
         isGlobalTabCloseShortcut(event, navigator.platform);
       if (event.repeat) {
         if (closeShortcut) event.preventDefault();
@@ -496,9 +494,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         if (activeTabKey !== null) {
           const activeStoredTab = tabs.find((tab) => globalTabKey(tab) === activeTabKey);
           if (activeStoredTab !== undefined) requestCloseTab(activeStoredTab);
-        } else {
-          const result = transitionGlobalTabsStore({ _tag: "RestoreActive" });
-          applyTabNavigation(navigate, result.navigation);
+        } else if (lastActiveTab !== null) {
+          navigateToGlobalTab(navigate, lastActiveTab);
         }
         return;
       }
@@ -528,10 +525,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   }, [
     activeTabKey,
     keybindings,
+    lastActiveTab,
     navigate,
     requestCloseTab,
     routeTerminalOpen,
-    storedActiveTabKey,
     tabs,
   ]);
 
@@ -542,13 +539,13 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       if (tabKey === null) return;
       const sourceIndex = tabs.findIndex((tab) => globalTabKey(tab) === tabKey);
       if (sourceIndex < 0) return;
-      transitionGlobalTabsStore({
+      transitionTabs({
         _tag: "Reorder",
         tabKey,
         targetIndex: resolveGlobalTabDropTargetIndex(sourceIndex, hoveredIndex, position),
       });
     },
-    [tabs],
+    [tabs, transitionTabs],
   );
   const handleTabDragEnd = useCallback(() => {
     draggedTabKeyRef.current = null;
