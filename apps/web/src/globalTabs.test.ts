@@ -93,11 +93,13 @@ function globalTabsState(
   tabs: readonly GlobalTab[] = [],
   activeTab: GlobalTab | null = tabs.at(-1) ?? null,
   historyTabs: readonly GlobalTab[] = tabs,
+  dismissedRequiredTabs: readonly GlobalTab[] = [],
 ): GlobalTabsState {
   return {
     tabs,
     activeTabKey: activeTab === null ? null : globalTabKey(activeTab),
     historyTabKeys: historyTabs.map(globalTabKey),
+    dismissedRequiredThreadTabKeys: dismissedRequiredTabs.map(globalTabKey),
   };
 }
 
@@ -220,6 +222,7 @@ describe("global tabs", () => {
       _tag: "Close",
       tabKey: globalTabKey(second),
       routeActiveTabKey: globalTabKey(second),
+      requiredTabDisposition: "forget",
     });
     expect(closeMiddle.navigation).toEqual({ _tag: "Activate", tab: third });
     expect(closeMiddle.state.activeTabKey).toBe(globalTabKey(third));
@@ -228,6 +231,7 @@ describe("global tabs", () => {
       _tag: "Close",
       tabKey: globalTabKey(third),
       routeActiveTabKey: globalTabKey(third),
+      requiredTabDisposition: "forget",
     });
     expect(closeLast.navigation).toEqual({ _tag: "Activate", tab: first });
     expect(closeLast.state.activeTabKey).toBe(globalTabKey(first));
@@ -239,6 +243,7 @@ describe("global tabs", () => {
       _tag: "Close",
       tabKey: globalTabKey(only),
       routeActiveTabKey: globalTabKey(only),
+      requiredTabDisposition: "forget",
     });
 
     expect(result.state).toEqual(globalTabsState());
@@ -253,6 +258,7 @@ describe("global tabs", () => {
       _tag: "Close",
       tabKey: globalTabKey(second),
       routeActiveTabKey: globalTabKey(second),
+      requiredTabDisposition: "forget",
     });
 
     const pendingOldRoute = resolveGlobalTabRouteOpen(observedSecond.routeSignature, second);
@@ -277,6 +283,7 @@ describe("global tabs", () => {
       _tag: "Close",
       tabKey: globalTabKey(first),
       routeActiveTabKey: globalTabKey(second),
+      requiredTabDisposition: "forget",
     });
     expect(result.navigation).toEqual({ _tag: "KeepCurrent" });
     expect(result.state.tabs).toEqual([second]);
@@ -291,6 +298,7 @@ describe("global tabs", () => {
       _tag: "Close",
       tabKey: globalTabKey(second),
       routeActiveTabKey: globalTabKey(second),
+      requiredTabDisposition: "forget",
     });
 
     expect(result.state.tabs).toEqual([first, third]);
@@ -338,6 +346,7 @@ describe("global tabs", () => {
       tabs: [serverTab("one")],
       activeTabKey: null,
       historyTabKeys: [globalTabKey(serverTab("one"))],
+      dismissedRequiredThreadTabKeys: [],
     });
     expect(
       parsePersistedGlobalTabsState({ tabs: [persistedTab], activeTabKey: "thread:missing" }),
@@ -345,11 +354,13 @@ describe("global tabs", () => {
       tabs: [serverTab("one")],
       activeTabKey: null,
       historyTabKeys: [globalTabKey(serverTab("one"))],
+      dismissedRequiredThreadTabKeys: [],
     });
     expect(parsePersistedGlobalTabsState({ tabs: [{ _tag: "Unknown" }] })).toEqual({
       tabs: [],
       activeTabKey: null,
       historyTabKeys: [],
+      dismissedRequiredThreadTabKeys: [],
     });
   });
 
@@ -419,6 +430,45 @@ describe("global tabs", () => {
       requiredThreadTabs: [],
     });
     expect(afterRequiredThreadSettles.state).toEqual(globalTabsState([opened, settings], settings));
+  });
+
+  it("keeps a dismissed required thread closed until its lifecycle no longer requires it", () => {
+    const required = serverTab("required");
+    const settings: GlobalTab = { _tag: "Settings", section: "general" };
+    const closed = transitionGlobalTabs(globalTabsState([required, settings], settings), {
+      _tag: "Close",
+      tabKey: globalTabKey(required),
+      routeActiveTabKey: globalTabKey(settings),
+      requiredTabDisposition: "dismiss",
+    });
+    const stillRequired = transitionGlobalTabs(closed.state, {
+      _tag: "Reconcile",
+      validThreadTabKeys: [globalTabKey(required)],
+      requiredThreadTabs: [required],
+    });
+
+    expect(stillRequired.state).toEqual(
+      globalTabsState([settings], settings, [settings], [required]),
+    );
+    expect(parsePersistedGlobalTabsState(projectGlobalTabsState(stillRequired.state))).toEqual(
+      stillRequired.state,
+    );
+
+    const noLongerRequired = transitionGlobalTabs(stillRequired.state, {
+      _tag: "Reconcile",
+      validThreadTabKeys: [globalTabKey(required)],
+      requiredThreadTabs: [],
+    });
+    const requiredAgain = transitionGlobalTabs(noLongerRequired.state, {
+      _tag: "Reconcile",
+      validThreadTabKeys: [globalTabKey(required)],
+      requiredThreadTabs: [required],
+    });
+
+    expect(noLongerRequired.state.dismissedRequiredThreadTabKeys).toEqual([]);
+    expect(requiredAgain.state).toEqual(
+      globalTabsState([settings, required], settings, [settings]),
+    );
   });
 
   it("promotes a required server thread in the draft tab's existing position", () => {

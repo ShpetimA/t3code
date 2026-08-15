@@ -397,7 +397,9 @@ export function useThreadActionMenu(input: {
 /** Opens the lightweight lifecycle menu used by top server-thread tabs. The
  * tab strip supplies view closure so successful lifecycle commands and tab
  * selection remain ordered. */
-export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: string) => void }) {
+export function useThreadTabLifecycleMenu(input: {
+  readonly closeTab: (tabKey: string, requiredTabDisposition: "forget" | "dismiss") => void;
+}) {
   const { closeTab } = input;
   const {
     archiveThread,
@@ -417,6 +419,7 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
       tabKey: string,
       position: { x: number; y: number },
       lifecycle: {
+        readonly isRequired: boolean;
         readonly isSettled: boolean;
         readonly closePolicy: "direct" | "settle-first";
       },
@@ -453,7 +456,7 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
         const action: ThreadTabLifecycleMenuId = clicked.value;
         await dispatchThreadTabLifecycleAction({
           action,
-          closeTab: () => closeTab(tabKey),
+          closeTab: () => closeTab(tabKey, lifecycle.isRequired ? "dismiss" : "forget"),
           run: async (selectedAction) => {
             if (selectedAction === "archive") {
               if (confirmThreadArchive) {
@@ -505,7 +508,7 @@ export function useThreadTabLifecycleMenu(input: { readonly closeTab: (tabKey: s
         "Failed to settle thread",
         await settleThread(threadRef),
       );
-      if (succeeded) closeTab(tabKey);
+      if (succeeded) closeTab(tabKey, "dismiss");
     },
     [closeTab, settleThread],
   );

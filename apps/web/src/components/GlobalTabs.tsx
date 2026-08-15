@@ -40,6 +40,7 @@ import {
   type GlobalTab,
   type GlobalTabDropPosition,
   type GlobalTabNavigation,
+  type GlobalThreadTabLifecycle,
 } from "../globalTabs";
 import { transitionGlobalTabsStore, useGlobalTabsStore } from "../globalTabsStore";
 import {
@@ -340,10 +341,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const { requiredThreadTabs, threadLifecycleByTabKey } = useMemo(() => {
     const pinnedThreads: Array<(typeof threadShells)[number]> = [];
     const activeThreads: Array<(typeof threadShells)[number]> = [];
-    const lifecycleByTabKey = new Map<
-      string,
-      { readonly isSettled: boolean; readonly closePolicy: "direct" | "settle-first" }
-    >();
+    const lifecycleByTabKey = new Map<string, GlobalThreadTabLifecycle>();
     const now = `${nowMinute}:00.000Z`;
 
     for (const thread of threadShells) {
@@ -439,10 +437,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   ]);
 
   const closeTab = useCallback(
-    (tabKey: string) => {
+    (tabKey: string, requiredTabDisposition: "forget" | "dismiss") => {
       const result = transitionGlobalTabsStore({
         _tag: "Close",
         tabKey,
+        requiredTabDisposition,
         // Lifecycle commands can finish after the user switches tabs. Read
         // the latest visible route so that navigation made during the await
         // wins over the close that follows it.
@@ -462,7 +461,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         void settleAndCloseThreadTab(tab.threadRef, tabKey);
         return;
       }
-      closeTab(tabKey);
+      closeTab(tabKey, lifecycle?.isRequired === true ? "dismiss" : "forget");
     },
     [closeTab, settleAndCloseThreadTab, threadLifecycleByTabKey],
   );
@@ -641,6 +640,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
               const threadLifecycle =
                 tab._tag === "ServerThread"
                   ? (threadLifecycleByTabKey.get(tabKey) ?? {
+                      isRequired: false,
                       isSettled: false,
                       closePolicy: "direct" as const,
                     })
@@ -749,6 +749,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                               y: event.clientY,
                             },
                             {
+                              isRequired: threadLifecycle?.isRequired ?? false,
                               isSettled: threadLifecycle?.isSettled ?? false,
                               closePolicy: threadLifecycle?.closePolicy ?? "direct",
                             },
@@ -810,6 +811,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                                   y: bounds.bottom,
                                 },
                                 {
+                                  isRequired: threadLifecycle?.isRequired ?? false,
                                   isSettled: threadLifecycle?.isSettled ?? false,
                                   closePolicy: threadLifecycle?.closePolicy ?? "direct",
                                 },

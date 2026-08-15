@@ -11,7 +11,12 @@ const tab: GlobalTab = {
 };
 
 afterEach(() => {
-  useGlobalTabsStore.setState({ tabs: [], activeTabKey: null, historyTabKeys: [] });
+  useGlobalTabsStore.setState({
+    tabs: [],
+    activeTabKey: null,
+    historyTabKeys: [],
+    dismissedRequiredThreadTabKeys: [],
+  });
 });
 
 describe("global tabs store", () => {
@@ -22,6 +27,7 @@ describe("global tabs store", () => {
       tabs: [tab],
       activeTabKey: globalTabKey(tab),
       historyTabKeys: [globalTabKey(tab)],
+      dismissedRequiredThreadTabKeys: [],
     });
   });
 });
