@@ -146,7 +146,10 @@ export function PullRequestDiffFileTree({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="surface-subheader gap-2 px-3 text-xs text-muted-foreground">
+      <div
+        className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 text-xs text-muted-foreground"
+        data-surface-subheader
+      >
         <span className="font-medium text-foreground">Files</span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {directoryPaths.length > 0 ? (
