@@ -401,10 +401,7 @@ export function useThreadActionMenu(input: {
  * tab strip supplies view closure so successful lifecycle commands and tab
  * selection remain ordered. */
 export function useThreadTabLifecycleMenu(input: {
-  readonly closeThreadTab: (
-    threadRef: ScopedThreadRef,
-    requiredTabDisposition: "forget" | "dismiss",
-  ) => void;
+  readonly closeThreadTab: (threadRef: ScopedThreadRef) => void;
 }) {
   const { closeThreadTab } = input;
   const {
@@ -458,7 +455,7 @@ export function useThreadTabLifecycleMenu(input: {
         const action: ThreadTabLifecycleMenuId = clicked.value;
         await dispatchThreadTabLifecycleAction({
           action,
-          closeTab: () => closeThreadTab(threadRef, lifecycle.isRequired ? "dismiss" : "forget"),
+          closeTab: () => closeThreadTab(threadRef),
           run: async (selectedAction) => {
             if (selectedAction === "archive") {
               if (confirmThreadArchive) {
@@ -511,7 +508,7 @@ export function useThreadTabLifecycleMenu(input: {
         "Failed to settle thread",
         await settleThread(threadRef),
       );
-      if (succeeded) closeThreadTab(threadRef, "dismiss");
+      if (succeeded) closeThreadTab(threadRef);
     },
     [closeThreadTab, settleThread],
   );

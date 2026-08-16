@@ -639,11 +639,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   ]);
 
   const closeTab = useCallback(
-    (tab: GlobalTab, requiredTabDisposition: "forget" | "dismiss") => {
+    (tab: GlobalTab) => {
       const result = transitionTabs({
         _tag: "Close",
         tabKey: globalTabKey(tab),
-        requiredTabDisposition,
         // Lifecycle commands can finish after the user switches tabs. Read
         // the latest visible route so that navigation made during the await
         // wins over the close that follows it.
@@ -667,8 +666,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     [clearDraftThread, navigate, transitionTabs],
   );
   const closeThreadTab = useCallback(
-    (threadRef: ScopedThreadRef, requiredTabDisposition: "forget" | "dismiss") => {
-      closeTab({ _tag: "ServerThread", threadRef }, requiredTabDisposition);
+    (threadRef: ScopedThreadRef) => {
+      closeTab({ _tag: "ServerThread", threadRef });
     },
     [closeTab],
   );
@@ -692,7 +691,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
         void settleAndCloseThreadTab(tab.threadRef);
         return;
       }
-      closeTab(tab, lifecycle?.isRequired === true ? "dismiss" : "forget");
+      closeTab(tab);
     },
     [closeTab, settleAndCloseThreadTab, threadLifecycleByTabKey],
   );

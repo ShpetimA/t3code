@@ -25,7 +25,6 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
       tabs: [],
       lastActiveTabKey: null,
       historyTabKeys: [],
-      dismissedRequiredThreadTabKeys: [],
       transition: (input: GlobalTabsTransition) => {
         const current = get();
         const result = transitionGlobalTabs(current, input);
@@ -34,7 +33,6 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
             tabs: result.state.tabs,
             lastActiveTabKey: result.state.lastActiveTabKey,
             historyTabKeys: result.state.historyTabKeys,
-            dismissedRequiredThreadTabKeys: result.state.dismissedRequiredThreadTabKeys,
           });
         }
         return result;

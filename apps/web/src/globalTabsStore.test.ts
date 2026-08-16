@@ -15,7 +15,6 @@ afterEach(() => {
     tabs: [],
     lastActiveTabKey: null,
     historyTabKeys: [],
-    dismissedRequiredThreadTabKeys: [],
   });
 });
 
@@ -27,7 +26,6 @@ describe("global tabs store", () => {
       tabs: [tab],
       lastActiveTabKey: globalTabKey(tab),
       historyTabKeys: [globalTabKey(tab)],
-      dismissedRequiredThreadTabKeys: [],
     });
   });
 });
