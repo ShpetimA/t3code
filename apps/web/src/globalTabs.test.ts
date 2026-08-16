@@ -102,7 +102,7 @@ function globalTabsState(
   return {
     tabs,
     lastActiveTabKey: activeTab === null ? null : globalTabKey(activeTab),
-    historyTabKeys: historyTabs.map(globalTabKey),
+    userOpenedTabKeys: historyTabs.map(globalTabKey),
   };
 }
 
@@ -367,19 +367,19 @@ describe("global tabs", () => {
     ).toEqual({
       tabs: [serverTab("one")],
       lastActiveTabKey: null,
-      historyTabKeys: [globalTabKey(serverTab("one"))],
+      userOpenedTabKeys: [globalTabKey(serverTab("one"))],
     });
     expect(
       parsePersistedGlobalTabsState({ tabs: [persistedTab], lastActiveTabKey: "thread:missing" }),
     ).toEqual({
       tabs: [serverTab("one")],
       lastActiveTabKey: null,
-      historyTabKeys: [globalTabKey(serverTab("one"))],
+      userOpenedTabKeys: [globalTabKey(serverTab("one"))],
     });
     expect(parsePersistedGlobalTabsState({ tabs: [{ _tag: "Unknown" }] })).toEqual({
       tabs: [],
       lastActiveTabKey: null,
-      historyTabKeys: [],
+      userOpenedTabKeys: [],
     });
   });
 

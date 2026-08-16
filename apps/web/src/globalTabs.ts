@@ -40,7 +40,7 @@ export interface GlobalTabsState {
   readonly tabs: readonly GlobalTab[];
   readonly lastActiveTabKey: string | null;
   /** Tabs explicitly visited by the user, retained independently of thread lifecycle. */
-  readonly historyTabKeys: readonly string[];
+  readonly userOpenedTabKeys: readonly string[];
 }
 
 /** Lifecycle-derived visibility and close behavior for one server-thread tab. */
@@ -239,57 +239,58 @@ export function transitionGlobalTabs(
   switch (input._tag) {
     case "Open": {
       const tabKey = globalTabKey(input.tab);
-      const newTabIndex =
+      const activeNewTabIndex =
         input.tab._tag !== "NewTab" && current.lastActiveTabKey === NEW_TAB_KEY
           ? current.tabs.findIndex((tab) => tab._tag === "NewTab")
           : -1;
-      const tabs =
-        newTabIndex < 0 ? current.tabs : current.tabs.filter((tab) => tab._tag !== "NewTab");
-      const historyWithoutReplacedTab =
-        newTabIndex < 0
-          ? current.historyTabKeys
-          : current.historyTabKeys.filter((historyTabKey) => historyTabKey !== NEW_TAB_KEY);
-      const historyTabKeys = historyWithoutReplacedTab.includes(tabKey)
-        ? historyWithoutReplacedTab
-        : [...historyWithoutReplacedTab, tabKey];
-      const existingIndex = tabs.findIndex((tab) => globalTabKey(tab) === tabKey);
-      if (existingIndex < 0) {
+      const replacingActiveNewTab = activeNewTabIndex >= 0;
+      const tabs = replacingActiveNewTab
+        ? current.tabs.filter((tab) => tab._tag !== "NewTab")
+        : current.tabs;
+      let userOpenedTabKeys = replacingActiveNewTab
+        ? current.userOpenedTabKeys.filter((key) => key !== NEW_TAB_KEY)
+        : current.userOpenedTabKeys;
+      if (!userOpenedTabKeys.includes(tabKey)) {
+        userOpenedTabKeys = [...userOpenedTabKeys, tabKey];
+      }
+      const existingTabIndex = tabs.findIndex((tab) => globalTabKey(tab) === tabKey);
+      if (existingTabIndex < 0) {
         const openedTabs = [...tabs];
-        if (newTabIndex < 0) openedTabs.push(input.tab);
-        else openedTabs.splice(Math.min(newTabIndex, openedTabs.length), 0, input.tab);
+        if (activeNewTabIndex < 0) openedTabs.push(input.tab);
+        else openedTabs.splice(Math.min(activeNewTabIndex, openedTabs.length), 0, input.tab);
         return {
           state: {
             tabs: openedTabs,
             lastActiveTabKey: tabKey,
-            historyTabKeys,
+            userOpenedTabKeys,
           },
           navigation: { _tag: "KeepCurrent" },
         };
       }
-      const existing = tabs[existingIndex];
+      const existing = tabs[existingTabIndex];
       if (existing === undefined || sameGlobalTab(existing, input.tab)) {
         return {
           state:
             tabs === current.tabs &&
             current.lastActiveTabKey === tabKey &&
-            historyTabKeys === current.historyTabKeys
+            userOpenedTabKeys === current.userOpenedTabKeys
               ? current
               : {
                   ...current,
                   tabs,
                   lastActiveTabKey: tabKey,
-                  historyTabKeys,
+                  userOpenedTabKeys,
                 },
           navigation: { _tag: "KeepCurrent" },
         };
       }
       const updatedTabs = [...tabs];
-      updatedTabs[existingIndex] = input.tab;
+      updatedTabs[existingTabIndex] = input.tab;
       return {
         state: {
           tabs: updatedTabs,
           lastActiveTabKey: tabKey,
-          historyTabKeys,
+          userOpenedTabKeys,
         },
         navigation: { _tag: "KeepCurrent" },
       };
@@ -300,7 +301,9 @@ export function transitionGlobalTabs(
         return { state: current, navigation: { _tag: "KeepCurrent" } };
       }
       const tabs = current.tabs.filter((tab) => globalTabKey(tab) !== input.tabKey);
-      const historyTabKeys = current.historyTabKeys.filter((tabKey) => tabKey !== input.tabKey);
+      const userOpenedTabKeys = current.userOpenedTabKeys.filter(
+        (tabKey) => tabKey !== input.tabKey,
+      );
       const fallback = tabs[closingIndex] ?? tabs[closingIndex - 1];
       const lastActiveTabKey =
         input.routeActiveTabKey === input.tabKey || current.lastActiveTabKey === input.tabKey
@@ -313,7 +316,7 @@ export function transitionGlobalTabs(
           state: {
             tabs,
             lastActiveTabKey,
-            historyTabKeys,
+            userOpenedTabKeys,
           },
           navigation: { _tag: "KeepCurrent" },
         };
@@ -322,7 +325,7 @@ export function transitionGlobalTabs(
         state: {
           tabs,
           lastActiveTabKey,
-          historyTabKeys,
+          userOpenedTabKeys,
         },
         navigation: fallback ? { _tag: "Activate", tab: fallback } : { _tag: "OpenLanding" },
       };
@@ -330,19 +333,15 @@ export function transitionGlobalTabs(
     case "Reconcile": {
       const validThreadTabKeys = new Set(input.validThreadTabKeys);
       const requiredThreadTabKeys = new Set(input.requiredThreadTabs.map(globalTabKey));
-      const historyTabKeys = new Set(current.historyTabKeys);
+      const userOpenedTabKeys = new Set(current.userOpenedTabKeys);
       const tabs = current.tabs.filter((tab) => {
         if (!isGlobalThreadTab(tab)) return true;
         const tabKey = globalTabKey(tab);
         // Opening a tab is an explicit user choice. Lifecycle reconciliation
         // may add and remove inbox tabs, but cannot evict that saved history.
-        if (historyTabKeys.has(tabKey)) return true;
+        if (userOpenedTabKeys.has(tabKey)) return true;
         if (!validThreadTabKeys.has(tabKey)) return false;
-        return (
-          tab._tag === "DraftThread" ||
-          historyTabKeys.has(tabKey) ||
-          requiredThreadTabKeys.has(tabKey)
-        );
+        return tab._tag === "DraftThread" || requiredThreadTabKeys.has(tabKey);
       });
       let changed = tabs.length !== current.tabs.length;
       for (const requiredTab of input.requiredThreadTabs) {
@@ -363,10 +362,10 @@ export function transitionGlobalTabs(
         }
       }
       const reconciledTabKeys = new Set(tabs.map(globalTabKey));
-      const reconciledHistoryTabKeys = current.historyTabKeys.filter((tabKey) =>
+      const reconciledUserOpenedTabKeys = current.userOpenedTabKeys.filter((tabKey) =>
         reconciledTabKeys.has(tabKey),
       );
-      if (reconciledHistoryTabKeys.length !== current.historyTabKeys.length) {
+      if (reconciledUserOpenedTabKeys.length !== current.userOpenedTabKeys.length) {
         changed = true;
       }
       if (!changed) {
@@ -394,7 +393,7 @@ export function transitionGlobalTabs(
           state: {
             tabs,
             lastActiveTabKey,
-            historyTabKeys: reconciledHistoryTabKeys,
+            userOpenedTabKeys: reconciledUserOpenedTabKeys,
           },
           navigation: { _tag: "KeepCurrent" },
         };
@@ -404,7 +403,7 @@ export function transitionGlobalTabs(
         state: {
           tabs,
           lastActiveTabKey: fallback ? globalTabKey(fallback) : null,
-          historyTabKeys: reconciledHistoryTabKeys,
+          userOpenedTabKeys: reconciledUserOpenedTabKeys,
         },
         navigation: fallback ? { _tag: "Activate", tab: fallback } : { _tag: "OpenLanding" },
       };
@@ -439,7 +438,7 @@ export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
     return {
       tabs: [],
       lastActiveTabKey: null,
-      historyTabKeys: [],
+      userOpenedTabKeys: [],
     };
   }
 
@@ -484,17 +483,17 @@ export function parsePersistedGlobalTabsState(input: unknown): GlobalTabsState {
       ? persistedLastActiveTabKey
       : null;
   const tabKeys = new Set(tabs.map(globalTabKey));
-  const historyTabKeys = [
+  const userOpenedTabKeys = [
     ...new Set(decoded.value.historyTabKeys ?? tabs.map(globalTabKey)),
   ].filter((tabKey) => tabKeys.has(tabKey));
-  return { tabs, lastActiveTabKey, historyTabKeys };
+  return { tabs, lastActiveTabKey, userOpenedTabKeys };
 }
 
 /** Projects global tabs into their stable local-storage representation. */
 export function projectGlobalTabsState(state: GlobalTabsState): PersistedGlobalTabsState {
   return {
     lastActiveTabKey: state.lastActiveTabKey,
-    historyTabKeys: state.historyTabKeys,
+    historyTabKeys: state.userOpenedTabKeys,
     tabs: state.tabs.map((tab) => {
       switch (tab._tag) {
         case "NewTab":

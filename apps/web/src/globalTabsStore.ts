@@ -24,7 +24,7 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
     (set, get) => ({
       tabs: [],
       lastActiveTabKey: null,
-      historyTabKeys: [],
+      userOpenedTabKeys: [],
       transition: (input: GlobalTabsTransition) => {
         const current = get();
         const result = transitionGlobalTabs(current, input);
@@ -32,7 +32,7 @@ export const useGlobalTabsStore = create<GlobalTabsStoreState>()(
           set({
             tabs: result.state.tabs,
             lastActiveTabKey: result.state.lastActiveTabKey,
-            historyTabKeys: result.state.historyTabKeys,
+            userOpenedTabKeys: result.state.userOpenedTabKeys,
           });
         }
         return result;
