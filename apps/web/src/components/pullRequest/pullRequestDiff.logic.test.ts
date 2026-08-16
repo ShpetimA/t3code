@@ -54,12 +54,7 @@ describe("isLineInFileDiff", () => {
 describe("isFileDiffCollapsed", () => {
   const NO_TOGGLES: ReadonlySet<string> = new Set();
 
-  it("opens every file before the reader has touched anything", () => {
-    expect(isFileDiffCollapsed("a.ts", null, NO_TOGGLES)).toBe(false);
-    expect(isFileDiffCollapsed("b.ts", null, NO_TOGGLES)).toBe(false);
-  });
-
-  it("opens every file once the toolbar has asked for it", () => {
+  it("opens every file when the preference is expanded", () => {
     // Pressing the toolbar clears the reader's own toggles, which is why the set is empty here.
     expect(isFileDiffCollapsed("a.ts", "expanded", NO_TOGGLES)).toBe(false);
     expect(isFileDiffCollapsed("b.ts", "expanded", NO_TOGGLES)).toBe(false);
@@ -74,8 +69,8 @@ describe("isFileDiffCollapsed", () => {
     // The file keys grow with every slice, so the answer for one already folded must not depend on
     // how many of them there are by then.
     const toggled = new Set(["b.ts"]);
-    expect(isFileDiffCollapsed("b.ts", null, toggled)).toBe(true);
-    expect(isFileDiffCollapsed("c.ts", null, toggled)).toBe(false);
+    expect(isFileDiffCollapsed("b.ts", "expanded", toggled)).toBe(true);
+    expect(isFileDiffCollapsed("c.ts", "expanded", toggled)).toBe(false);
   });
 
   it("still answers to a toggle after either toolbar press", () => {

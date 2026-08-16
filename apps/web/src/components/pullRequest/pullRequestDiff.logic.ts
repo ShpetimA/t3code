@@ -44,8 +44,8 @@ export function isLineInFileDiff(
   );
 }
 
-/** What the toolbar last asked of every file at once, null being the reader asking nothing yet. */
-export type DiffFoldOverride = "expanded" | "folded" | null;
+/** The current bulk expansion preference for pull request diffs. */
+export type DiffFoldPreference = "expanded" | "folded";
 
 /**
  * Whether a file is drawn folded.
@@ -58,9 +58,9 @@ export type DiffFoldOverride = "expanded" | "folded" | null;
  */
 export function isFileDiffCollapsed(
   fileKey: string,
-  foldOverride: DiffFoldOverride,
+  foldPreference: DiffFoldPreference,
   toggledFileKeys: ReadonlySet<string>,
 ): boolean {
-  const foldedByDefault = foldOverride === "folded";
+  const foldedByDefault = foldPreference === "folded";
   return toggledFileKeys.has(fileKey) ? !foldedByDefault : foldedByDefault;
 }

@@ -71,12 +71,15 @@ import { toastManager } from "../ui/toast";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PendingReviewCommentCard, ReviewThreadCard } from "./PullRequestReviewAnnotation";
-import { PullRequestDiffFileTree } from "./PullRequestDiffFileTree";
+import {
+  PullRequestDiffFileTree,
+  type PullRequestDiffFileTreeHandle,
+} from "./PullRequestDiffFileTree";
 import { PullRequestReviewBar } from "./PullRequestReviewBar";
 import {
   isFileDiffCollapsed,
   isLineInFileDiff,
-  type DiffFoldOverride,
+  type DiffFoldPreference,
 } from "./pullRequestDiff.logic";
 import { PullRequestDiffStat, PullRequestMetaLine } from "./pullRequestPresentation";
 import {
@@ -219,8 +222,7 @@ export function PullRequestCodeTab({
   // A change of any size can carry hundreds of commits, and a menu that long is a scroll rather
   // than a choice. The rest arrive ten at a time, on request.
   const [visibleCommitCount, setVisibleCommitCount] = useState(COMMIT_PAGE_SIZE);
-  /** Set once the reader has asked for every file at once, until they pick a file apart again. */
-  const [foldOverride, setFoldOverride] = useState<DiffFoldOverride>(null);
+  const [foldPreference, setFoldPreference] = useState<DiffFoldPreference>("expanded");
   const [diffRenderMode, setDiffRenderMode] = useState<"stacked" | "split">("stacked");
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
   const [fileTreeOpen, setFileTreeOpen] = useLocalStorage(
@@ -247,6 +249,7 @@ export function PullRequestCodeTab({
   }>({ key: "", cursor: null, slices: NO_SLICES });
   const parseCache = useRef(new Map<string, RenderablePatch>());
   const viewerRef = useRef<CodeViewHandle<ReviewAnnotationGroup> | null>(null);
+  const fileTreeRef = useRef<PullRequestDiffFileTreeHandle>(null);
 
   const referenceKey = pullRequestReviewKey(reference);
   const commit = selectedCommitOid;
@@ -259,7 +262,6 @@ export function PullRequestCodeTab({
     setDraft(null);
     setSelectedLines(null);
     setToggledFiles(new Set());
-    setFoldOverride(null);
     setVisibleCommitCount(COMMIT_PAGE_SIZE);
     setOrphansOpen(false);
     setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
@@ -478,7 +480,7 @@ export function PullRequestCodeTab({
           groupAt(anchor.side, anchor.line).draft = true;
         }
 
-        const collapsed = isFileDiffCollapsed(fileKey, foldOverride, toggledFiles);
+        const collapsed = isFileDiffCollapsed(fileKey, foldPreference, toggledFiles);
 
         const annotations: ReviewAnnotation[] = [...groups.values()].map((group) => ({
           side: toViewerSide(group.side),
@@ -528,7 +530,7 @@ export function PullRequestCodeTab({
       detail.reviewThreads,
       draft,
       files,
-      foldOverride,
+      foldPreference,
       pendingComments,
       placedThreadIds,
       toggledFiles,
@@ -630,12 +632,14 @@ export function PullRequestCodeTab({
     [items, toggleFile],
   );
 
-  const toggleAllFiles = () => {
+  const toggleAllFilesAndDirectories = () => {
+    const expand = allFilesCollapsed;
     // Held as an override of the default rather than as the file keys on screen: a diff that is
     // still paging would otherwise bring its next slice in folded, moments after the reader
     // asked for everything to be open.
-    setFoldOverride(areAllDiffFilesCollapsed(fileKeys, collapsedFileKeys) ? "expanded" : "folded");
+    setFoldPreference(expand ? "expanded" : "folded");
     setToggledFiles(new Set());
+    fileTreeRef.current?.setAllDirectoriesExpanded(expand);
   };
 
   // Newest first: the last commit is the one a reader coming back to a change is looking for.
@@ -1124,7 +1128,7 @@ export function PullRequestCodeTab({
                   size="icon-sm"
                   variant="ghost"
                   aria-label={allFilesCollapsed ? "Expand all files" : "Collapse all files"}
-                  onClick={toggleAllFiles}
+                  onClick={toggleAllFilesAndDirectories}
                 />
               }
             >
@@ -1403,12 +1407,14 @@ export function PullRequestCodeTab({
           {fileTreeOpen ? (
             <aside className="flex min-h-0 w-[min(22rem,46%)] min-w-0 shrink-0 border-l border-border/60 bg-background">
               <PullRequestDiffFileTree
+                ref={fileTreeRef}
                 key={scopeKey}
                 files={files}
                 totalFileCount={commit === null ? detail.changedFiles : null}
                 hasMore={nextCursor !== null}
                 isLoadingMore={diffQuery.isPending}
                 loadMoreFailed={diffQuery.error !== null}
+                initiallyExpanded={foldPreference === "expanded"}
                 onLoadMore={diffQuery.error === null ? loadNextDiffSlice : diffQuery.refresh}
                 onSelectFile={revealFile}
               />

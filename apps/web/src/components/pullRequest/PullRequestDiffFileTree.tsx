@@ -1,8 +1,15 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { GitStatusEntry } from "@pierre/trees";
-import { FileTree, useFileTree, useFileTreeSelector } from "@pierre/trees/react";
-import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { resolveFileDiffPath } from "~/lib/diffRendering";
@@ -10,8 +17,9 @@ import { T3_PIERRE_ICONS } from "~/pierre-icons";
 import { PIERRE_TREE_UNSAFE_CSS, pierreTreeStyle } from "~/pierre-tree-theme";
 
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { getPullRequestFileLoadState } from "./pullRequestDiff.logic";
+
+const NO_EXPANDED_DIRECTORIES: ReadonlyArray<string> = [];
 
 function toGitStatus(file: FileDiffMetadata): GitStatusEntry {
   const path = resolveFileDiffPath(file);
@@ -41,25 +49,40 @@ function collectDirectoryPaths(paths: ReadonlyArray<string>): ReadonlyArray<stri
   return [...directories];
 }
 
+/** The one bulk tree action coordinated by the pull request diff toolbar. */
+export interface PullRequestDiffFileTreeHandle {
+  /** Expands or collapses every directory currently loaded in the tree. */
+  readonly setAllDirectoriesExpanded: (expanded: boolean) => void;
+}
+
 /** A path-first Pierre tree for the portion of a pull-request diff loaded so far. */
-export function PullRequestDiffFileTree({
-  files,
-  totalFileCount,
-  hasMore,
-  isLoadingMore,
-  loadMoreFailed,
-  onLoadMore,
-  onSelectFile,
-}: {
-  readonly files: ReadonlyArray<FileDiffMetadata>;
-  /** Null when the selected host commit does not report its own aggregate file count. */
-  readonly totalFileCount: number | null;
-  readonly hasMore: boolean;
-  readonly isLoadingMore: boolean;
-  readonly loadMoreFailed: boolean;
-  readonly onLoadMore: () => void;
-  readonly onSelectFile: (path: string) => void;
-}) {
+export const PullRequestDiffFileTree = forwardRef<
+  PullRequestDiffFileTreeHandle,
+  {
+    readonly files: ReadonlyArray<FileDiffMetadata>;
+    /** Null when the selected host commit does not report its own aggregate file count. */
+    readonly totalFileCount: number | null;
+    readonly hasMore: boolean;
+    readonly isLoadingMore: boolean;
+    readonly loadMoreFailed: boolean;
+    /** The persisted expansion used when the sidebar mounts. */
+    readonly initiallyExpanded: boolean;
+    readonly onLoadMore: () => void;
+    readonly onSelectFile: (path: string) => void;
+  }
+>(function PullRequestDiffFileTree(
+  {
+    files,
+    totalFileCount,
+    hasMore,
+    isLoadingMore,
+    loadMoreFailed,
+    initiallyExpanded,
+    onLoadMore,
+    onSelectFile,
+  },
+  ref,
+) {
   const { resolvedTheme } = useTheme();
   const paths = useMemo(() => files.map(resolveFileDiffPath), [files]);
   const directoryPaths = useMemo(() => collectDirectoryPaths(paths), [paths]);
@@ -68,7 +91,7 @@ export function PullRequestDiffFileTree({
   const onSelectFileRef = useRef(onSelectFile);
   const previousPathsRef = useRef<ReadonlyArray<string>>(paths);
   const previousDirectoryPathsRef = useRef<ReadonlyArray<string>>(directoryPaths);
-  const newDirectoryExpansionRef = useRef<"open" | "closed">("open");
+  const newDirectoryExpansionRef = useRef<"open" | "closed">(initiallyExpanded ? "open" : "closed");
   const [hasRequestedMore, setHasRequestedMore] = useState(false);
   const fileLoadState = getPullRequestFileLoadState(files.length, totalFileCount, hasMore);
   const progressTotal = fileLoadState.knownTotalFileCount;
@@ -88,7 +111,7 @@ export function PullRequestDiffFileTree({
   const { model } = useFileTree({
     density: "compact",
     flattenEmptyDirectories: true,
-    initialExpandedPaths: directoryPaths,
+    initialExpandedPaths: initiallyExpanded ? directoryPaths : NO_EXPANDED_DIRECTORIES,
     initialExpansion: "closed",
     icons: T3_PIERRE_ICONS,
     onSelectionChange: (selectedPaths) => {
@@ -101,16 +124,6 @@ export function PullRequestDiffFileTree({
     search: false,
     unsafeCSS: PIERRE_TREE_UNSAFE_CSS,
   });
-
-  const selectAllDirectoriesExpanded = useCallback(
-    (currentModel: typeof model) =>
-      directoryPaths.every((path) => {
-        const item = currentModel.getItem(path);
-        return item !== null && "isExpanded" in item && item.isExpanded();
-      }),
-    [directoryPaths],
-  );
-  const allDirectoriesExpanded = useFileTreeSelector(model, selectAllDirectoriesExpanded);
 
   useEffect(() => {
     if (previousPathsRef.current === paths) return;
@@ -136,13 +149,17 @@ export function PullRequestDiffFileTree({
     model.setGitStatus(gitStatus);
   }, [gitStatus, model]);
 
-  const setAllDirectoriesExpanded = (expanded: boolean) => {
-    newDirectoryExpansionRef.current = expanded ? "open" : "closed";
-    model.resetPaths(paths, {
-      initialExpandedPaths: expanded ? directoryPaths : [],
-    });
-    model.setGitStatus(gitStatus);
-  };
+  const setAllDirectoriesExpanded = useCallback(
+    (expanded: boolean) => {
+      newDirectoryExpansionRef.current = expanded ? "open" : "closed";
+      model.resetPaths(paths, {
+        initialExpandedPaths: expanded ? directoryPaths : NO_EXPANDED_DIRECTORIES,
+      });
+      model.setGitStatus(gitStatus);
+    },
+    [directoryPaths, gitStatus, model, paths],
+  );
+  useImperativeHandle(ref, () => ({ setAllDirectoriesExpanded }), [setAllDirectoriesExpanded]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -151,42 +168,14 @@ export function PullRequestDiffFileTree({
         data-surface-subheader
       >
         <span className="font-medium text-foreground">Files</span>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          {directoryPaths.length > 0 ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={
-                      allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
-                    }
-                    onClick={() => setAllDirectoriesExpanded(!allDirectoriesExpanded)}
-                  />
-                }
-              >
-                {allDirectoriesExpanded ? (
-                  <ChevronsDownUpIcon className="size-3.5" />
-                ) : (
-                  <ChevronsUpDownIcon className="size-3.5" />
-                )}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">
-                {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
-              </TooltipPopup>
-            </Tooltip>
-          ) : null}
-          <span className="min-w-6 text-right tabular-nums">
-            {files.length}
-            {progressTotal !== null && progressTotal > files.length
-              ? ` of ${progressTotal}`
-              : fileLoadState.displayedCountIsLowerBound
-                ? "+"
-                : ""}
-          </span>
-        </div>
+        <span className="ml-auto min-w-6 shrink-0 text-right tabular-nums">
+          {files.length}
+          {progressTotal !== null && progressTotal > files.length
+            ? ` of ${progressTotal}`
+            : fileLoadState.displayedCountIsLowerBound
+              ? "+"
+              : ""}
+        </span>
       </div>
       <FileTree
         model={model}
@@ -231,4 +220,4 @@ export function PullRequestDiffFileTree({
       ) : null}
     </div>
   );
-}
+});

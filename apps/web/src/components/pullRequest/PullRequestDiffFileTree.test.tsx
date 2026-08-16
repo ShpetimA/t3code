@@ -14,6 +14,7 @@ describe("PullRequestDiffFileTree", () => {
       <PullRequestDiffFileTree
         files={[changedFile("src/a.ts"), changedFile("src/b.ts")]}
         totalFileCount={80}
+        initiallyExpanded
         hasMore
         isLoadingMore={false}
         loadMoreFailed={false}
@@ -25,7 +26,7 @@ describe("PullRequestDiffFileTree", () => {
     expect(markup).toContain("Load more · 2 of 80 loaded");
     expect(markup).toContain("width:2.5%");
     expect(markup).toContain('aria-busy="false"');
-    expect(markup).toContain('aria-label="Collapse all folders"');
+    expect(markup).not.toContain("all folders");
   });
 
   it("keeps the current progress visible while the next page loads", () => {
@@ -33,6 +34,7 @@ describe("PullRequestDiffFileTree", () => {
       <PullRequestDiffFileTree
         files={[changedFile("src/a.ts"), changedFile("src/b.ts")]}
         totalFileCount={80}
+        initiallyExpanded
         hasMore
         isLoadingMore
         loadMoreFailed={false}
@@ -50,6 +52,7 @@ describe("PullRequestDiffFileTree", () => {
       <PullRequestDiffFileTree
         files={[changedFile("src/a.ts"), changedFile("src/b.ts")]}
         totalFileCount={2}
+        initiallyExpanded
         hasMore
         isLoadingMore={false}
         loadMoreFailed={false}
