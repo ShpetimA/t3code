@@ -262,6 +262,8 @@ export function PullRequestCodeTab({
     setDraft(null);
     setSelectedLines(null);
     setToggledFiles(new Set());
+    setFoldPreference("expanded");
+    fileTreeRef.current?.setAllDirectoriesExpanded(true);
     setVisibleCommitCount(COMMIT_PAGE_SIZE);
     setOrphansOpen(false);
     setSliceState({ key: scopeKey, cursor: null, slices: NO_SLICES });
