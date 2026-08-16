@@ -834,7 +834,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   );
   return (
     <header
-      className="workspace-topbar drag-region relative z-[70] gap-0.5 border-b border-border/60 bg-background pl-[var(--workspace-controls-left)] pr-2 wco:pr-[var(--workspace-native-controls-inset)]"
+      className="drag-region relative z-[70] flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-0.5 border-b border-border/60 bg-background pl-[var(--workspace-controls-left)] pr-2 wco:pr-[var(--workspace-native-controls-inset)]"
       data-global-tabs=""
     >
       <Tooltip>

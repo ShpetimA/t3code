@@ -11,7 +11,7 @@ export function WorkspacePageHeader({ children }: { readonly children: ReactNode
       data-electron={isElectron ? "" : undefined}
       data-workspace-page-header=""
       className={cn(
-        "workspace-topbar transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none",
+        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none",
         isElectron
           ? "drag-region px-5 wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]"
           : "px-3 sm:px-5",

@@ -188,7 +188,7 @@ export function useThreadActions() {
     };
   }, []);
   const archiveThread = useCallback(
-    async (target: ScopedThreadRef) => {
+    async (target: ScopedThreadRef, opts: { readonly onArchived?: () => void } = {}) => {
       const resolved = resolveThreadTarget(target);
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
@@ -215,6 +215,7 @@ export function useThreadActions() {
         markThreadVisited(scopedThreadKey(threadRef), wokeAt);
       }
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+      opts.onArchived?.();
       return archiveResult;
     },
     [archiveThreadMutation, markThreadVisited, resolveThreadTarget],
