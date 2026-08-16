@@ -190,7 +190,7 @@ export const PullRequestDiffFileTree = forwardRef<
             size="xs"
             variant="outline"
             aria-busy={isLoadingMore}
-            className="relative w-full overflow-hidden bg-transparent tabular-nums dark:bg-transparent"
+            className="relative w-full overflow-hidden bg-transparent tabular-nums pointer-coarse:overflow-visible dark:bg-transparent"
             disabled={isLoadingMore}
             onClick={() => {
               setHasRequestedMore(true);
