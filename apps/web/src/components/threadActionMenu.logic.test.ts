@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./threadActionMenu.logic";
+import {
+  buildThreadActionMenuItems,
+  closesThreadTabAfterSuccessfulAction,
+  type ThreadActionMenuState,
+} from "./threadActionMenu.logic";
 
 const baseState: ThreadActionMenuState = {
   branch: null,
@@ -21,6 +25,14 @@ function ids(state: ThreadActionMenuState): string[] {
 }
 
 describe("buildThreadActionMenuItems", () => {
+  it("closes tabs only for successful actions that park or remove a thread", () => {
+    const closeCoupledActions = ["settle", "snooze:hour", "archive", "delete"] as const;
+    const viewPreservingActions = ["pin", "unpin", "unsettle", "unsnooze", "rename"] as const;
+
+    expect(closeCoupledActions.every(closesThreadTabAfterSuccessfulAction)).toBe(true);
+    expect(viewPreservingActions.some(closesThreadTabAfterSuccessfulAction)).toBe(false);
+  });
+
   it("hides lifecycle items when the environment lacks the capabilities", () => {
     expect(
       ids({

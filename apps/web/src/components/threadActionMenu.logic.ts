@@ -27,8 +27,15 @@ export type ThreadActionMenuId =
   | "archive"
   | "delete";
 
-/** Actions available from a server thread's top-tab lifecycle menu. */
-export type ThreadTabLifecycleMenuId = ThreadLifecycleMenuId | "archive" | "close-tab";
+/** Whether a successful full-menu action removes a server thread from its tab context. */
+export function closesThreadTabAfterSuccessfulAction(action: ThreadActionMenuId): boolean {
+  return (
+    action === "settle" ||
+    action === "archive" ||
+    action === "delete" ||
+    action.startsWith("snooze:")
+  );
+}
 
 interface ThreadLifecycleMenuState {
   readonly isPinned: boolean;
@@ -54,17 +61,9 @@ export interface ThreadActionMenuState extends ThreadLifecycleMenuState {
   };
 }
 
-/** Availability state used only by the top-tab lifecycle menu. */
-export interface ThreadTabLifecycleMenuState extends ThreadLifecycleMenuState {
-  readonly canArchiveNow: boolean;
-  /** Unsettled inbox tabs must complete settlement before the view can close. */
-  readonly closePolicy: "direct" | "settle-first";
-}
-
 /**
- * Single source for the per-thread action menu: the sidebar row's right-click
- * menu and the chat header menu both render exactly this list, so labels,
- * ordering, and capability gating cannot drift between the two surfaces.
+ * Single source for every single-thread action menu: Sidebar, chat header,
+ * and global tabs share labels, ordering, and capability gating.
  */
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
@@ -144,42 +143,4 @@ function buildThreadLifecycleMenuItems(
         ]
       : []),
   ];
-}
-
-/** Lifecycle-only menu for a server-thread tab. Parking or archiving a thread
- * also closes that view, while the ordinary tab close remains view-only. */
-export function buildThreadTabLifecycleMenuItems(
-  state: ThreadTabLifecycleMenuState,
-): ReadonlyArray<ContextMenuItem<ThreadTabLifecycleMenuId>> {
-  return [
-    ...buildThreadLifecycleMenuItems(state, {
-      settle: "Settle & close tab",
-      snooze: "Snooze & close tab",
-    }),
-    { id: "archive", label: "Archive & close tab", disabled: !state.canArchiveNow },
-    ...(state.closePolicy === "direct"
-      ? [{ id: "close-tab" as const, label: "Close tab (keep thread)" }]
-      : []),
-  ];
-}
-
-/** Runs one tab-menu action and applies the close policy only after a
- * close-coupled backend action succeeds. */
-export async function dispatchThreadTabLifecycleAction(input: {
-  readonly action: ThreadTabLifecycleMenuId;
-  readonly run: (action: Exclude<ThreadTabLifecycleMenuId, "close-tab">) => Promise<boolean>;
-  readonly closeTab: () => void;
-}): Promise<void> {
-  if (input.action === "close-tab") {
-    input.closeTab();
-    return;
-  }
-  if (input.action === "snooze") return;
-  const succeeded = await input.run(input.action);
-  if (
-    succeeded &&
-    (input.action === "settle" || input.action === "archive" || input.action.startsWith("snooze:"))
-  ) {
-    input.closeTab();
-  }
 }

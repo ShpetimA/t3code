@@ -1,5 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -22,6 +26,7 @@ import {
   ServerIcon,
   Settings2Icon,
   SquarePenIcon,
+  TerminalIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -64,7 +69,7 @@ import {
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
-import { useThreadTabLifecycleMenu } from "../hooks/useThreadActionMenu";
+import { useThreadActionMenu, useThreadTabLifecycleMenu } from "../hooks/useThreadActionMenu";
 import { useClientSettings } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -83,6 +88,9 @@ import {
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { primaryServerKeybindingsAtom } from "../state/server";
+import { useThreadRunningTerminalIds } from "../state/terminalSessions";
+import { threadEnvironment } from "../state/threads";
+import { useAtomCommand } from "../state/use-atom-command";
 import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../threadRoutes";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { cn } from "../lib/utils";
@@ -98,11 +106,21 @@ import {
 } from "./Sidebar.logic";
 import { snoozeWakeDescription, snoozeWakeLabel } from "./Sidebar.snooze";
 import { ThreadStatusMark } from "./ThreadStatusMark";
+import { closesThreadTabAfterSuccessfulAction } from "./threadActionMenu.logic";
+import { resolveRenameCommit } from "./threadRename";
 import { Kbd } from "./ui/kbd";
+import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
+import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 interface GlobalTabsProps {
   readonly activeTab: GlobalTab | null;
+}
+
+interface RenamingGlobalThreadTab {
+  readonly threadRef: ScopedThreadRef;
+  readonly originalTitle: string;
+  readonly title: string;
 }
 
 function useTabPeekShortcutHeld(
@@ -171,6 +189,24 @@ function GlobalTabDetailsTooltip(props: {
     >
       {props.children}
     </Tooltip>
+  );
+}
+
+function GlobalTabTerminalProcessStatus(props: { readonly threadRef: ScopedThreadRef | null }) {
+  const runningTerminalIds = useThreadRunningTerminalIds({
+    environmentId: props.threadRef?.environmentId ?? null,
+    threadId: props.threadRef?.threadId ?? null,
+  });
+  const terminalProcessCount = runningTerminalIds.length;
+  if (terminalProcessCount === 0) return null;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <TerminalIcon className="size-3 shrink-0 text-teal-600 dark:text-teal-300/90" />
+      <div className="min-w-0 truncate text-foreground/75">
+        {terminalProcessCount} terminal {terminalProcessCount === 1 ? "process" : "processes"}{" "}
+        running
+      </div>
+    </div>
   );
 }
 
@@ -351,8 +387,8 @@ function SnoozedThreadsIndicator(props: {
           : "pointer-events-none w-0 scale-[0.25] opacity-0 blur-[4px]",
       )}
     >
-      <Tooltip disabled={!visible}>
-        <TooltipTrigger
+      <Popover>
+        <PopoverTrigger
           render={
             <button
               type="button"
@@ -374,13 +410,13 @@ function SnoozedThreadsIndicator(props: {
               {displayedCount}
             </span>
           </span>
-        </TooltipTrigger>
-        <TooltipPopup
+        </PopoverTrigger>
+        <PopoverPopup
           side="bottom"
           align="end"
           sideOffset={2}
-          variant="glass"
-          className="pointer-events-auto w-80 max-w-[calc(100vw-1rem)] text-left whitespace-normal transition-[width,height,scale,opacity,translate,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-y-1 data-starting-style:-translate-y-1 data-ending-style:blur-[4px] data-starting-style:blur-[4px] data-instant:duration-200 motion-reduce:transition-none [&_[data-slot=tooltip-viewport]]:p-0"
+          className="w-80 max-w-[calc(100vw-1rem)] text-left whitespace-normal transition-[width,height,scale,opacity,translate,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-y-1 data-starting-style:-translate-y-1 data-ending-style:blur-[4px] data-starting-style:blur-[4px] data-instant:duration-200 motion-reduce:transition-none"
+          viewportClassName="p-0"
         >
           <ul className="max-h-80 divide-y divide-border/50 overflow-y-auto overscroll-contain">
             {threads.map((thread) => {
@@ -445,8 +481,8 @@ function SnoozedThreadsIndicator(props: {
               );
             })}
           </ul>
-        </TooltipPopup>
-      </Tooltip>
+        </PopoverPopup>
+      </Popover>
     </span>
   );
 }
@@ -480,6 +516,11 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     readonly key: string;
     readonly position: GlobalTabDropPosition | "end";
   } | null>(null);
+  const [renamingThreadTab, setRenamingThreadTab] = useState<RenamingGlobalThreadTab | null>(null);
+  const renameThreadTabCommittedRef = useRef(false);
+  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
   const startupRestoreAttemptedRef = useRef(false);
   const activeThreadRef: ScopedThreadRef | null =
     activeTab !== null && isGlobalThreadTab(activeTab) ? activeTab.threadRef : null;
@@ -514,6 +555,36 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     platform: navigator.platform,
     context: shortcutContext,
   });
+  const startThreadTabRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
+    renameThreadTabCommittedRef.current = false;
+    setRenamingThreadTab({ threadRef, originalTitle: title, title });
+  }, []);
+  const commitThreadTabRename = useCallback(
+    (rename: RenamingGlobalThreadTab, title: string) => {
+      renameThreadTabCommittedRef.current = true;
+      setRenamingThreadTab(null);
+      const resolution = resolveRenameCommit({ title, originalTitle: rename.originalTitle });
+      if (resolution.action === "reject-empty") {
+        toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+        return;
+      }
+      if (resolution.action === "noop") return;
+      void updateThreadMetadata({
+        environmentId: rename.threadRef.environmentId,
+        input: { threadId: rename.threadRef.threadId, title: resolution.title },
+      }).then((result) => {
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          toastManager.add({
+            type: "error",
+            title: "Failed to rename thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
+      });
+    },
+    [updateThreadMetadata],
+  );
 
   const threadShellByKey = useMemo(
     () =>
@@ -671,11 +742,10 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     },
     [closeTab],
   );
-  const {
-    openMenu: openThreadTabLifecycleMenu,
-    settleAndClose: settleAndCloseThreadTab,
-    wakeThread,
-  } = useThreadTabLifecycleMenu({ closeThreadTab });
+  const { settleAndClose: settleAndCloseThreadTab, wakeThread } = useThreadTabLifecycleMenu({
+    closeThreadTab,
+  });
+  const { openMenu: openThreadActionMenu } = useThreadActionMenu();
   const wakeAndOpenThread = useCallback(
     async (threadRef: ScopedThreadRef): Promise<void> => {
       if (!(await wakeThread(threadRef))) return;
@@ -923,6 +993,12 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 : null;
               const showJumpHint = jumpKeyLabel !== null;
               const quickLookOpen = tabPeekShortcutHeld && threadTab !== null;
+              const renamingTab =
+                threadKey !== null &&
+                renamingThreadTab !== null &&
+                scopedThreadKey(renamingThreadTab.threadRef) === threadKey
+                  ? renamingThreadTab
+                  : null;
               const hasTooltipDetails =
                 project !== undefined ||
                 environmentLabel !== null ||
@@ -931,6 +1007,21 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 status !== null ||
                 isSnoozed ||
                 isSettled;
+              const openThreadActionMenuForTab = (position: { x: number; y: number }) => {
+                if (tab._tag !== "ServerThread") return;
+                openThreadActionMenu({
+                  threadRef: tab.threadRef,
+                  projectCwd: project?.workspaceRoot ?? null,
+                  changeRequestState: null,
+                  onStartRename: startThreadTabRename,
+                  onActionSucceeded: (action) => {
+                    if (closesThreadTabAfterSuccessfulAction(action)) {
+                      closeThreadTab(tab.threadRef);
+                    }
+                  },
+                  position,
+                });
+              };
               return (
                 <GlobalTabDetailsTooltip
                   key={tabKey}
@@ -973,59 +1064,92 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           requestCloseTab(tab);
                         }}
                         onContextMenu={(event) => {
-                          if (tab._tag !== "ServerThread") return;
+                          if (tab._tag !== "ServerThread" || renamingTab !== null) return;
                           event.preventDefault();
-                          openThreadTabLifecycleMenu(tab.threadRef, {
+                          openThreadActionMenuForTab({
                             x: event.clientX,
                             y: event.clientY,
                           });
                         }}
                       >
-                        <button
-                          type="button"
-                          className={cn(
-                            "flex h-full min-w-0 flex-1 items-center overflow-hidden",
-                            tab._tag === "ServerThread" ? "pr-12" : "pr-6",
-                          )}
-                          data-global-tab-content=""
-                          data-server-thread={tab._tag === "ServerThread" ? "" : undefined}
-                          aria-current={active ? "page" : undefined}
-                          onClick={() => void navigateToGlobalTab(navigate, tab)}
-                        >
-                          {project ? (
-                            <ProjectFavicon
-                              environmentId={project.environmentId}
-                              cwd={project.workspaceRoot}
-                              projectName={project.title}
-                              faviconPath={project.faviconPath}
-                              className="mr-1.5 size-4"
-                            />
-                          ) : tab._tag === "NewTab" ? (
-                            <PlusIcon className="mr-1.5 size-3.5 shrink-0" />
-                          ) : tab._tag === "Settings" ? (
-                            <Settings2Icon className="mr-1.5 size-3.5 shrink-0" />
-                          ) : tab._tag === "Usage" ? (
-                            <ChartNoAxesColumnIcon className="mr-1.5 size-3.5 shrink-0" />
-                          ) : tab._tag === "PullRequests" ? (
-                            <GitPullRequestIcon className="mr-1.5 size-3.5 shrink-0" />
-                          ) : null}
-                          {threadTab ? (
-                            <>
-                              <AnimatedThreadTabStatusMark
-                                status={status}
-                                parkedState={isSnoozed ? "snoozed" : isSettled ? "settled" : null}
+                        {renamingTab ? (
+                          <input
+                            autoFocus
+                            value={renamingTab.title}
+                            data-global-tab-content=""
+                            aria-label={`Rename ${renamingTab.originalTitle}`}
+                            onChange={(event) => {
+                              setRenamingThreadTab((current) =>
+                                current === null ? null : { ...current, title: event.target.value },
+                              );
+                            }}
+                            onBlur={(event) => {
+                              if (!renameThreadTabCommittedRef.current) {
+                                commitThreadTabRename(renamingTab, event.target.value);
+                              }
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitThreadTabRename(renamingTab, event.currentTarget.value);
+                              } else if (event.key === "Escape") {
+                                event.preventDefault();
+                                renameThreadTabCommittedRef.current = true;
+                                setRenamingThreadTab(null);
+                              }
+                            }}
+                            className="h-full min-w-0 flex-1 bg-transparent pr-12 text-xs text-foreground outline-none"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className={cn(
+                              "flex h-full min-w-0 flex-1 items-center overflow-hidden",
+                              tab._tag === "ServerThread" ? "pr-12" : "pr-6",
+                            )}
+                            data-global-tab-content=""
+                            data-server-thread={tab._tag === "ServerThread" ? "" : undefined}
+                            aria-current={active ? "page" : undefined}
+                            onClick={() => void navigateToGlobalTab(navigate, tab)}
+                          >
+                            {project ? (
+                              <ProjectFavicon
+                                environmentId={project.environmentId}
+                                cwd={project.workspaceRoot}
+                                projectName={project.title}
+                                faviconPath={project.faviconPath}
+                                className="mr-1.5 size-4"
                               />
-                              <AnimatedComposerDraftTabMark
-                                target={
-                                  threadTab._tag === "DraftThread"
-                                    ? threadTab.draftId
-                                    : threadTab.threadRef
-                                }
-                              />
-                            </>
-                          ) : null}
-                          <span className="truncate">{title}</span>
-                        </button>
+                            ) : tab._tag === "NewTab" ? (
+                              <PlusIcon className="mr-1.5 size-3.5 shrink-0" />
+                            ) : tab._tag === "Settings" ? (
+                              <Settings2Icon className="mr-1.5 size-3.5 shrink-0" />
+                            ) : tab._tag === "Usage" ? (
+                              <ChartNoAxesColumnIcon className="mr-1.5 size-3.5 shrink-0" />
+                            ) : tab._tag === "PullRequests" ? (
+                              <GitPullRequestIcon className="mr-1.5 size-3.5 shrink-0" />
+                            ) : null}
+                            {threadTab ? (
+                              <>
+                                <AnimatedThreadTabStatusMark
+                                  status={status}
+                                  parkedState={isSnoozed ? "snoozed" : isSettled ? "settled" : null}
+                                />
+                                <AnimatedComposerDraftTabMark
+                                  target={
+                                    threadTab._tag === "DraftThread"
+                                      ? threadTab.draftId
+                                      : threadTab.threadRef
+                                  }
+                                />
+                              </>
+                            ) : null}
+                            <span className="truncate">{title}</span>
+                          </button>
+                        )}
                         {tab._tag === "ServerThread" ? (
                           <button
                             type="button"
@@ -1042,7 +1166,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             onClick={(event) => {
                               event.stopPropagation();
                               const bounds = event.currentTarget.getBoundingClientRect();
-                              openThreadTabLifecycleMenu(tab.threadRef, {
+                              openThreadActionMenuForTab({
                                 x: bounds.left,
                                 y: bounds.bottom,
                               });
@@ -1148,6 +1272,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             <div className="min-w-0 truncate text-foreground/75">{modelLabel}</div>
                           </div>
                         ) : null}
+                        <GlobalTabTerminalProcessStatus threadRef={threadTab?.threadRef ?? null} />
                         {isSnoozed ? (
                           <div className="flex min-w-0 items-center gap-2 text-amber-700 dark:text-amber-300">
                             <AlarmClockIcon className="size-3 shrink-0" />

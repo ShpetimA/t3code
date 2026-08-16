@@ -37,6 +37,7 @@ import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { resolveRenameCommit } from "../threadRename";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -74,19 +75,7 @@ interface ChatHeaderProps {
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
 }
 
-/**
- * Rename commit rule shared with the sidebar's inline rename: trim, reject
- * empty (the caller toasts), and skip the mutation when nothing changed.
- */
-export function resolveRenameCommit(input: {
-  readonly title: string;
-  readonly originalTitle: string;
-}): { action: "commit"; title: string } | { action: "reject-empty" } | { action: "noop" } {
-  const trimmed = input.title.trim();
-  if (trimmed.length === 0) return { action: "reject-empty" };
-  if (trimmed === input.originalTitle) return { action: "noop" };
-  return { action: "commit", title: trimmed };
-}
+export { resolveRenameCommit } from "../threadRename";
 
 export function shouldShowOpenInPicker(input: {
   readonly activeProjectName: string | undefined;
@@ -188,18 +177,25 @@ export const ChatHeader = memo(function ChatHeader({
     },
     [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
   );
-  const { openMenu } = useThreadActionMenu({
-    threadRef: isServerThread ? activeThreadRef : null,
-    projectCwd: activeProjectCwd,
-    changeRequestState,
-    onStartRename: startRename,
-  });
+  const { openMenu } = useThreadActionMenu();
+  const openThreadActionMenu = useCallback(
+    (position: { x: number; y: number }) => {
+      openMenu({
+        threadRef: isServerThread ? activeThreadRef : null,
+        projectCwd: activeProjectCwd,
+        changeRequestState,
+        onStartRename: () => startRename(),
+        position,
+      });
+    },
+    [activeProjectCwd, activeThreadRef, changeRequestState, isServerThread, openMenu, startRename],
+  );
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const openMenuFromTitle = useCallback(() => {
     const rect = titleButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    openMenu({ x: rect.left, y: rect.bottom + 4 });
-  }, [openMenu]);
+    openThreadActionMenu({ x: rect.left, y: rect.bottom + 4 });
+  }, [openThreadActionMenu]);
   const handleHeaderContextMenu = useCallback(
     (event: ReactMouseEvent) => {
       if (!isServerThread || renamingTitle !== null) return;
@@ -207,9 +203,9 @@ export const ChatHeader = memo(function ChatHeader({
       // behavior; only the breadcrumb area opens the thread menu.
       if ((event.target as HTMLElement).closest("[data-chat-header-actions]")) return;
       event.preventDefault();
-      openMenu({ x: event.clientX, y: event.clientY });
+      openThreadActionMenu({ x: event.clientX, y: event.clientY });
     },
-    [isServerThread, openMenu, renamingTitle],
+    [isServerThread, openThreadActionMenu, renamingTitle],
   );
   const handleRenameKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
