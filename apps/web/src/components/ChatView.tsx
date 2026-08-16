@@ -57,7 +57,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
 } from "react";
@@ -128,6 +127,7 @@ import { useGlobalThreadTabsEnabled } from "../threadNavigationMode";
 import {
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
+  selectMaximizedRightPanelContent,
   selectThreadRightPanelState,
   type RightPanelSurface,
   updatePullRequestTabStatus,
@@ -289,7 +289,6 @@ import {
 } from "./chat/draftHeroTransition";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW,
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
@@ -314,7 +313,6 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
-  reduceMaximizedRightPanelView,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
@@ -1355,10 +1353,6 @@ function ChatViewContent(props: ChatViewProps) {
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
-  const [maximizedRightPanelView, dispatchMaximizedRightPanelView] = useReducer(
-    reduceMaximizedRightPanelView,
-    INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW,
-  );
   const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
     ApprovalRequestId[]
@@ -1604,6 +1598,9 @@ function ChatViewContent(props: ChatViewProps) {
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
+  const maximizedRightPanelContent = useRightPanelStore((state) =>
+    selectMaximizedRightPanelContent(state.maximizedContentByThreadKey, activeThreadRef),
+  );
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
@@ -1644,10 +1641,7 @@ function ChatViewContent(props: ChatViewProps) {
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
   const rightPanelOpen = rightPanelState.isOpen;
   const canMaximizeRightPanel = rightPanelOpen && !shouldUseRightPanelSheet;
-  const rightPanelMaximized =
-    canMaximizeRightPanel &&
-    maximizedRightPanelView._tag === "Maximized" &&
-    maximizedRightPanelView.threadKey === routeThreadKey;
+  const rightPanelMaximized = canMaximizeRightPanel && maximizedRightPanelContent !== null;
   const activeFileOpenRequestKey =
     activeFileSurface === null
       ? null
@@ -1656,13 +1650,13 @@ function ChatViewContent(props: ChatViewProps) {
   useEffect(() => {
     if (lastObservedFileOpenRequestKeyRef.current === activeFileOpenRequestKey) return;
     lastObservedFileOpenRequestKeyRef.current = activeFileOpenRequestKey;
-    if (rightPanelMaximized && activeFileOpenRequestKey !== null) {
-      dispatchMaximizedRightPanelView({ _tag: "ActivateSurface" });
+    if (rightPanelMaximized && activeFileOpenRequestKey !== null && activeThreadRef) {
+      useRightPanelStore.getState().activateMaximizedContent(activeThreadRef, "surface");
     }
-  }, [activeFileOpenRequestKey, rightPanelMaximized]);
+  }, [activeFileOpenRequestKey, activeThreadRef, rightPanelMaximized]);
   const maximizedThreadTabActive =
     rightPanelMaximized &&
-    (maximizedRightPanelView.activeContent === "thread" || activeRightPanelSurface === null);
+    (maximizedRightPanelContent === "thread" || activeRightPanelSurface === null);
   const rightPanelWorkspaceVisible = rightPanelOpen || rightPanelMaximized;
   const inlineRightPanelOwnsTitleBar = rightPanelWorkspaceVisible && !shouldUseRightPanelSheet;
 
@@ -3290,8 +3284,9 @@ function ChatViewContent(props: ChatViewProps) {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
   const activateMaximizedSurface = useCallback(() => {
-    dispatchMaximizedRightPanelView({ _tag: "ActivateSurface" });
-  }, []);
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().activateMaximizedContent(activeThreadRef, "surface");
+  }, [activeThreadRef]);
   const createBrowserSurface = useCallback(() => {
     if (!activeThreadRef) return;
     activateMaximizedSurface();
@@ -3371,8 +3366,8 @@ function ChatViewContent(props: ChatViewProps) {
     previewPanelOpen,
   ]);
   const closePreviewPanel = useCallback(() => {
-    dispatchMaximizedRightPanelView({ _tag: "Restore" });
     if (activeThreadRef) {
+      useRightPanelStore.getState().restorePanelSize(activeThreadRef);
       useRightPanelStore.getState().close(activeThreadRef);
     }
   }, [activeThreadRef]);
@@ -3502,21 +3497,19 @@ function ChatViewContent(props: ChatViewProps) {
     useRightPanelStore.getState().toggleVisibility(activeThreadRef);
   }, [activeThreadRef, closePreviewPanel, rightPanelOpen]);
   const toggleRightPanelMaximized = useCallback(() => {
-    if (!canMaximizeRightPanel) return;
+    if (!activeThreadRef || !canMaximizeRightPanel) return;
     if (rightPanelMaximized) {
-      dispatchMaximizedRightPanelView({ _tag: "Restore" });
+      useRightPanelStore.getState().restorePanelSize(activeThreadRef);
       return;
     }
-    dispatchMaximizedRightPanelView({
-      _tag: "Maximize",
-      threadKey: routeThreadKey,
-      hasActiveSurface: activeRightPanelSurface !== null,
-    });
-  }, [activeRightPanelSurface, canMaximizeRightPanel, rightPanelMaximized, routeThreadKey]);
+    useRightPanelStore
+      .getState()
+      .maximize(activeThreadRef, activeRightPanelSurface === null ? "thread" : "surface");
+  }, [activeRightPanelSurface, activeThreadRef, canMaximizeRightPanel, rightPanelMaximized]);
   const activateMaximizedThreadTab = useCallback(() => {
-    if (!rightPanelMaximized) return;
-    dispatchMaximizedRightPanelView({ _tag: "ActivateThread" });
-  }, [rightPanelMaximized]);
+    if (!activeThreadRef || !rightPanelMaximized) return;
+    useRightPanelStore.getState().activateMaximizedContent(activeThreadRef, "thread");
+  }, [activeThreadRef, rightPanelMaximized]);
   const cleanupRightPanelSurfaces = useCallback(
     (surfaces: readonly RightPanelSurface[]) => {
       if (!activeThreadRef) return;

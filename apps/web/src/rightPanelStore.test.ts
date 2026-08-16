@@ -7,6 +7,7 @@ import {
   pullRequestSurfaceId,
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
+  selectMaximizedRightPanelContent,
   selectSelectedRightPanelSurface,
   selectThreadRightPanelState,
   updatePullRequestTabStatus,
@@ -17,7 +18,7 @@ const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"))
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
 
 beforeEach(() => {
-  useRightPanelStore.setState({ byThreadKey: {} });
+  useRightPanelStore.setState({ byThreadKey: {}, maximizedContentByThreadKey: {} });
 });
 
 describe("rightPanelStore", () => {
@@ -218,6 +219,47 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refB)).toBeNull();
   });
 
+  it("keeps maximize state independently for each thread", () => {
+    useRightPanelStore.getState().maximize(refA, "surface");
+    useRightPanelStore.getState().maximize(refB, "thread");
+
+    const state = useRightPanelStore.getState();
+    expect(selectMaximizedRightPanelContent(state.maximizedContentByThreadKey, refA)).toBe(
+      "surface",
+    );
+    expect(selectMaximizedRightPanelContent(state.maximizedContentByThreadKey, refB)).toBe(
+      "thread",
+    );
+
+    useRightPanelStore.getState().restorePanelSize(refB);
+    const restoredState = useRightPanelStore.getState();
+    expect(selectMaximizedRightPanelContent(restoredState.maximizedContentByThreadKey, refA)).toBe(
+      "surface",
+    );
+    expect(
+      selectMaximizedRightPanelContent(restoredState.maximizedContentByThreadKey, refB),
+    ).toBeNull();
+  });
+
+  it("changes maximized content only after a thread is maximized", () => {
+    useRightPanelStore.getState().activateMaximizedContent(refA, "thread");
+    expect(
+      selectMaximizedRightPanelContent(
+        useRightPanelStore.getState().maximizedContentByThreadKey,
+        refA,
+      ),
+    ).toBeNull();
+
+    useRightPanelStore.getState().maximize(refA, "surface");
+    useRightPanelStore.getState().activateMaximizedContent(refA, "thread");
+    expect(
+      selectMaximizedRightPanelContent(
+        useRightPanelStore.getState().maximizedContentByThreadKey,
+        refA,
+      ),
+    ).toBe("thread");
+  });
+
   it("opening a different kind keeps both surfaces and activates the new one", () => {
     useRightPanelStore.getState().open(refA, "agents");
     useRightPanelStore.getState().open(refA, "preview");
@@ -381,10 +423,17 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("agents");
   });
 
-  it("removeThread clears persisted state", () => {
+  it("removeThread clears persisted and session layout state", () => {
     useRightPanelStore.getState().open(refA, "agents");
+    useRightPanelStore.getState().maximize(refA, "surface");
     useRightPanelStore.getState().removeThread(refA);
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
+    expect(
+      selectMaximizedRightPanelContent(
+        useRightPanelStore.getState().maximizedContentByThreadKey,
+        refA,
+      ),
+    ).toBeNull();
   });
 
   it("close on never-opened thread is a no-op", () => {

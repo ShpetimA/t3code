@@ -12,7 +12,6 @@ import type { Thread, ThreadShell } from "../types";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW,
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
@@ -28,7 +27,6 @@ import {
   parkedThreadBannerDescription,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
-  reduceMaximizedRightPanelView,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   scheduleEnvironmentReconnectWarning,
@@ -71,47 +69,6 @@ describe("parked thread banner copy", () => {
         navigationSurface: "tab",
       }),
     ).toBe("Sending a message keeps it active in this tab.");
-  });
-});
-
-describe("maximized right panel view", () => {
-  it("opens on the active surface and can switch to the pinned thread tab", () => {
-    const maximized = reduceMaximizedRightPanelView(INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW, {
-      _tag: "Maximize",
-      threadKey: "environment-local:thread-1",
-      hasActiveSurface: true,
-    });
-
-    expect(maximized).toEqual({
-      _tag: "Maximized",
-      threadKey: "environment-local:thread-1",
-      activeContent: "surface",
-    });
-    const threadActive = reduceMaximizedRightPanelView(maximized, { _tag: "ActivateThread" });
-    expect(threadActive).toEqual({
-      ...maximized,
-      activeContent: "thread",
-    });
-    expect(reduceMaximizedRightPanelView(threadActive, { _tag: "ActivateSurface" })).toEqual(
-      maximized,
-    );
-  });
-
-  it("keeps surface activation inert outside maximize mode and restores explicitly", () => {
-    expect(
-      reduceMaximizedRightPanelView(INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW, {
-        _tag: "ActivateSurface",
-      }),
-    ).toBe(INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW);
-
-    const maximized = reduceMaximizedRightPanelView(INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW, {
-      _tag: "Maximize",
-      threadKey: "environment-local:thread-1",
-      hasActiveSurface: false,
-    });
-    expect(reduceMaximizedRightPanelView(maximized, { _tag: "Restore" })).toBe(
-      INITIAL_MAXIMIZED_RIGHT_PANEL_VIEW,
-    );
   });
 });
 

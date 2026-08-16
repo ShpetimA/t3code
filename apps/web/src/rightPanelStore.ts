@@ -82,8 +82,15 @@ export interface ThreadRightPanelState {
   surfaces: RightPanelSurface[];
 }
 
+export type MaximizedRightPanelContent = "thread" | "surface";
+
 interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
+  /** Session-only layout state, kept outside the persisted panel projection. */
+  maximizedContentByThreadKey: Record<string, MaximizedRightPanelContent>;
+  maximize: (ref: ScopedThreadRef, content: MaximizedRightPanelContent) => void;
+  activateMaximizedContent: (ref: ScopedThreadRef, content: MaximizedRightPanelContent) => void;
+  restorePanelSize: (ref: ScopedThreadRef) => void;
   open: (
     ref: ScopedThreadRef,
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
@@ -364,6 +371,37 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
     (set) => ({
       byThreadKey: {},
+      maximizedContentByThreadKey: {},
+      maximize: (ref, content) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          if (state.maximizedContentByThreadKey[threadKey] === content) return state;
+          return {
+            maximizedContentByThreadKey: {
+              ...state.maximizedContentByThreadKey,
+              [threadKey]: content,
+            },
+          };
+        }),
+      activateMaximizedContent: (ref, content) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const current = state.maximizedContentByThreadKey[threadKey];
+          if (current === undefined || current === content) return state;
+          return {
+            maximizedContentByThreadKey: {
+              ...state.maximizedContentByThreadKey,
+              [threadKey]: content,
+            },
+          };
+        }),
+      restorePanelSize: (ref) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          if (!(threadKey in state.maximizedContentByThreadKey)) return state;
+          const { [threadKey]: _restored, ...rest } = state.maximizedContentByThreadKey;
+          return { maximizedContentByThreadKey: rest };
+        }),
       open: (ref, kind) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
@@ -647,9 +685,16 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       removeThread: (ref) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
-          if (!(threadKey in state.byThreadKey)) return state;
-          const { [threadKey]: _removed, ...rest } = state.byThreadKey;
-          return { byThreadKey: rest };
+          const hasPanelState = threadKey in state.byThreadKey;
+          const hasMaximizedState = threadKey in state.maximizedContentByThreadKey;
+          if (!hasPanelState && !hasMaximizedState) return state;
+          const { [threadKey]: _removedPanel, ...remainingPanels } = state.byThreadKey;
+          const { [threadKey]: _removedMaximize, ...remainingMaximizedContent } =
+            state.maximizedContentByThreadKey;
+          return {
+            byThreadKey: remainingPanels,
+            maximizedContentByThreadKey: remainingMaximizedContent,
+          };
         }),
     }),
     {
@@ -676,6 +721,14 @@ export function selectThreadRightPanelState(
 ): ThreadRightPanelState {
   if (!ref) return EMPTY_THREAD_STATE;
   return byThreadKey[scopedThreadKey(ref)] ?? EMPTY_THREAD_STATE;
+}
+
+export function selectMaximizedRightPanelContent(
+  maximizedContentByThreadKey: Record<string, MaximizedRightPanelContent>,
+  ref: ScopedThreadRef | null | undefined,
+): MaximizedRightPanelContent | null {
+  if (!ref) return null;
+  return maximizedContentByThreadKey[scopedThreadKey(ref)] ?? null;
 }
 
 export function selectActiveRightPanel(
