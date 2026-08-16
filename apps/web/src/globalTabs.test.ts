@@ -323,7 +323,7 @@ describe("global tabs", () => {
     expect(result.navigation).toEqual({ _tag: "Activate", tab: third });
   });
 
-  it("reconciles archived or deleted tabs and replaces an invalid active route", () => {
+  it("keeps user-opened thread tabs when lifecycle reconciliation omits them", () => {
     const first = serverTab("one");
     const second = serverTab("two");
     const third = serverTab("three");
@@ -333,9 +333,8 @@ describe("global tabs", () => {
       requiredThreadTabs: [],
       routeActiveTabKey: globalTabKey(second),
     });
-    expect(result.state.tabs).toEqual([first, third]);
-    expect(result.state.lastActiveTabKey).toBe(globalTabKey(third));
-    expect(result.navigation).toEqual({ _tag: "Activate", tab: third });
+    expect(result.state).toEqual(globalTabsState([first, second, third], second));
+    expect(result.navigation).toEqual({ _tag: "KeepCurrent" });
   });
 
   it("parses persisted tabs and their restoration destination", () => {
@@ -411,7 +410,7 @@ describe("global tabs", () => {
     expect(state.lastActiveTabKey).toBe(globalTabKey(appearance));
   });
 
-  it("reconciles missing threads without pruning application destinations", () => {
+  it("keeps opened thread and application destinations through reconciliation", () => {
     const thread = serverTab("one");
     const settings: GlobalTab = { _tag: "Settings", section: "general" };
     const usage: GlobalTab = { _tag: "Usage" };
@@ -426,7 +425,7 @@ describe("global tabs", () => {
       },
     );
 
-    expect(result.state.tabs).toEqual([settings, usage, pullRequests]);
+    expect(result.state.tabs).toEqual([thread, settings, usage, pullRequests]);
     expect(result.navigation).toEqual({ _tag: "KeepCurrent" });
   });
 

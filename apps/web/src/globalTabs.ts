@@ -334,6 +334,9 @@ export function transitionGlobalTabs(
       const tabs = current.tabs.filter((tab) => {
         if (!isGlobalThreadTab(tab)) return true;
         const tabKey = globalTabKey(tab);
+        // Opening a tab is an explicit user choice. Lifecycle reconciliation
+        // may add and remove inbox tabs, but cannot evict that saved history.
+        if (historyTabKeys.has(tabKey)) return true;
         if (!validThreadTabKeys.has(tabKey)) return false;
         return (
           tab._tag === "DraftThread" ||
