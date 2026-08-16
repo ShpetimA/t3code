@@ -42,6 +42,10 @@ function draftTab(id: string): Extract<GlobalTab, { readonly _tag: "DraftThread"
   };
 }
 
+function newTab(): Extract<GlobalTab, { readonly _tag: "NewTab" }> {
+  return { _tag: "NewTab" };
+}
+
 function threadShell(input: {
   readonly activityAt: string;
   readonly archivedAt?: string | null;
@@ -215,6 +219,31 @@ describe("global tabs", () => {
     expect(state.lastActiveTabKey).toBe(globalTabKey(first));
   });
 
+  it("opens the launcher as a real tab", () => {
+    const launcher = newTab();
+    const state = open(globalTabsState(), launcher);
+
+    expect(state).toEqual(globalTabsState([launcher], launcher));
+  });
+
+  it("replaces the active launcher with a newly opened destination", () => {
+    const launcher = newTab();
+    const first = serverTab("one");
+    const destination = serverTab("two");
+    const state = open(globalTabsState([first, launcher], launcher), destination);
+
+    expect(state).toEqual(globalTabsState([first, destination], destination));
+  });
+
+  it("removes the active launcher when selecting an existing destination", () => {
+    const launcher = newTab();
+    const first = serverTab("one");
+    const second = serverTab("two");
+    const state = open(globalTabsState([first, launcher, second], launcher), second);
+
+    expect(state).toEqual(globalTabsState([first, second], second));
+  });
+
   it("replaces a promoted draft in place using its reserved thread ref", () => {
     const draft = draftTab("one");
     const sibling = serverTab("two");
@@ -361,7 +390,7 @@ describe("global tabs", () => {
   });
 
   it("round-trips the local-storage projection", () => {
-    const state = globalTabsState([draftTab("one"), serverTab("two")]);
+    const state = globalTabsState([draftTab("one"), newTab(), serverTab("two")]);
     expect(parsePersistedGlobalTabsState(projectGlobalTabsState(state))).toEqual(state);
   });
 

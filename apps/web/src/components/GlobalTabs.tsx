@@ -179,6 +179,8 @@ function navigateToGlobalTab(
   tab: GlobalTab,
 ): Promise<void> {
   switch (tab._tag) {
+    case "NewTab":
+      return navigate({ to: "/new" });
     case "ServerThread":
       return navigate({
         to: "/$environmentId/$threadId",
@@ -716,7 +718,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       if (command === "tab.new") {
         event.preventDefault();
         event.stopPropagation();
-        void navigate({ to: "/" });
+        void navigateToGlobalTab(navigate, { _tag: "NewTab" });
         return;
       }
       if (command === null && closeShortcut) {
@@ -884,13 +886,15 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 ? projectByKey.get(`${environmentId}:${projectId}`)
                 : undefined;
               const title =
-                tab._tag === "Settings"
-                  ? "Settings"
-                  : tab._tag === "Usage"
-                    ? "Usage"
-                    : tab._tag === "PullRequests"
-                      ? "Pull Requests"
-                      : (shell?.title ?? (tab._tag === "DraftThread" ? "New session" : "Thread"));
+                tab._tag === "NewTab"
+                  ? "New tab"
+                  : tab._tag === "Settings"
+                    ? "Settings"
+                    : tab._tag === "Usage"
+                      ? "Usage"
+                      : tab._tag === "PullRequests"
+                        ? "Pull Requests"
+                        : (shell?.title ?? (tab._tag === "DraftThread" ? "New session" : "Thread"));
               const status = shell
                 ? resolveThreadStatusPill({
                     thread: {
@@ -997,6 +1001,8 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                               faviconPath={project.faviconPath}
                               className="mr-1.5 size-4"
                             />
+                          ) : tab._tag === "NewTab" ? (
+                            <PlusIcon className="mr-1.5 size-3.5 shrink-0" />
                           ) : tab._tag === "Settings" ? (
                             <Settings2Icon className="mr-1.5 size-3.5 shrink-0" />
                           ) : tab._tag === "Usage" ? (
@@ -1190,7 +1196,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 type="button"
                 className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Open new tab"
-                onClick={() => void navigate({ to: "/" })}
+                onClick={() => void navigateToGlobalTab(navigate, { _tag: "NewTab" })}
               >
                 <PlusIcon className="size-3.5" />
               </button>

@@ -3,6 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { resolveGlobalRouteTab } from "./globalTabRoutes";
 
 describe("global tab routes", () => {
+  it("maps the launcher onto the new-tab identity", () => {
+    expect(resolveGlobalRouteTab({ pathname: "/new" })).toEqual({ _tag: "NewTab" });
+  });
+
   it("maps every settings section onto the singleton settings identity", () => {
     expect(
       resolveGlobalRouteTab({

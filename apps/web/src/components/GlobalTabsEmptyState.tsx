@@ -116,7 +116,7 @@ function RecentProjectGroup(props: {
   );
 }
 
-/** Quiet launcher shown when top-tabs mode has no route-backed view selected. */
+/** Quiet launcher shown inside the route-backed New tab destination. */
 export function GlobalTabsEmptyState(props: {
   readonly onNewThread: () => void;
   readonly onSearchThreads: () => void;

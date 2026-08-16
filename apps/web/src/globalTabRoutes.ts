@@ -13,6 +13,10 @@ const SETTINGS_SECTION_BY_PATHNAME: Readonly<Record<string, GlobalSettingsSectio
 
 /** Resolves the application tab represented by a non-thread route. */
 export function resolveGlobalRouteTab(input: { readonly pathname: string }): GlobalTab | null {
+  if (input.pathname === "/new") {
+    return { _tag: "NewTab" };
+  }
+
   const settingsSection = SETTINGS_SECTION_BY_PATHNAME[input.pathname];
   if (settingsSection !== undefined) {
     return { _tag: "Settings", section: settingsSection };
