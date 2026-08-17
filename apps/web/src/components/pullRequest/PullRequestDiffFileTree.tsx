@@ -2,13 +2,13 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import type { GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
+  type Ref,
 } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
@@ -56,33 +56,29 @@ export interface PullRequestDiffFileTreeHandle {
 }
 
 /** A path-first Pierre tree for the portion of a pull-request diff loaded so far. */
-export const PullRequestDiffFileTree = forwardRef<
-  PullRequestDiffFileTreeHandle,
-  {
-    readonly files: ReadonlyArray<FileDiffMetadata>;
-    /** Null when the selected host commit does not report its own aggregate file count. */
-    readonly totalFileCount: number | null;
-    readonly hasMore: boolean;
-    readonly isLoadingMore: boolean;
-    readonly loadMoreFailed: boolean;
-    /** The persisted expansion used when the sidebar mounts. */
-    readonly initiallyExpanded: boolean;
-    readonly onLoadMore: () => void;
-    readonly onSelectFile: (path: string) => void;
-  }
->(function PullRequestDiffFileTree(
-  {
-    files,
-    totalFileCount,
-    hasMore,
-    isLoadingMore,
-    loadMoreFailed,
-    initiallyExpanded,
-    onLoadMore,
-    onSelectFile,
-  },
+export function PullRequestDiffFileTree({
   ref,
-) {
+  files,
+  totalFileCount,
+  hasMore,
+  isLoadingMore,
+  loadMoreFailed,
+  initiallyExpanded,
+  onLoadMore,
+  onSelectFile,
+}: {
+  readonly ref?: Ref<PullRequestDiffFileTreeHandle>;
+  readonly files: ReadonlyArray<FileDiffMetadata>;
+  /** Null when the selected host commit does not report its own aggregate file count. */
+  readonly totalFileCount: number | null;
+  readonly hasMore: boolean;
+  readonly isLoadingMore: boolean;
+  readonly loadMoreFailed: boolean;
+  /** The persisted expansion used when the sidebar mounts. */
+  readonly initiallyExpanded: boolean;
+  readonly onLoadMore: () => void;
+  readonly onSelectFile: (path: string) => void;
+}) {
   const { resolvedTheme } = useTheme();
   const paths = useMemo(() => files.map(resolveFileDiffPath), [files]);
   const directoryPaths = useMemo(() => collectDirectoryPaths(paths), [paths]);
@@ -220,4 +216,4 @@ export const PullRequestDiffFileTree = forwardRef<
       ) : null}
     </div>
   );
-});
+}
