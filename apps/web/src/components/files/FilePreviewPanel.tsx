@@ -51,6 +51,7 @@ import {
   nextFileCommentId,
   normalizeFileCommentRange,
   remapFileCommentAnnotations,
+  resolveFileCommentAnnotationChanges,
 } from "./fileCommentAnnotations";
 import { installFileEditorDismissal } from "./fileEditorDismissal";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
@@ -467,6 +468,8 @@ function EditableFileSurface({
   const lineAnnotations = draft ? [...persistedAnnotations, draft] : persistedAnnotations;
 
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const editorAnnotationsRef = useRef<ReadonlyArray<FileCommentLineAnnotation>>([]);
+  const restorableCommentIdsRef = useRef(new Set<string>());
   const selectionFrameRef = useRef<number | null>(null);
   const saveCoordinator = useFileSaveCoordinator({
     environmentId,
@@ -498,11 +501,15 @@ function EditableFileSurface({
             const currentComments =
               useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
                 ?.reviewComments ?? EMPTY_REVIEW_COMMENTS;
+            const annotationChanges = resolveFileCommentAnnotationChanges(
+              editorAnnotationsRef.current,
+              remapped,
+            );
+            editorAnnotationsRef.current = remapped;
             for (const annotation of remapped) {
               for (const entry of annotation.metadata.entries) {
                 if (entry.kind !== "comment") continue;
                 const currentComment = currentComments.find((comment) => comment.id === entry.id);
-                if (!currentComment) continue;
                 const nextComment = buildFileReviewComment({
                   id: entry.id,
                   filePath: relativePath,
@@ -511,6 +518,15 @@ function EditableFileSurface({
                   text: entry.text,
                   contents: file.contents,
                 });
+                if (!currentComment) {
+                  if (
+                    annotationChanges.addedIds.has(entry.id) &&
+                    restorableCommentIdsRef.current.delete(entry.id)
+                  ) {
+                    addReviewComment(composerDraftTarget, nextComment);
+                  }
+                  continue;
+                }
                 if (
                   currentComment.startIndex === nextComment.startIndex &&
                   currentComment.endIndex === nextComment.endIndex &&
@@ -521,10 +537,29 @@ function EditableFileSurface({
                 addReviewComment(composerDraftTarget, nextComment);
               }
             }
+            const sectionId = `file:${relativePath}`;
+            for (const comment of currentComments) {
+              if (
+                comment.sectionId === sectionId &&
+                comment.filePath === relativePath &&
+                annotationChanges.removedIds.has(comment.id)
+              ) {
+                restorableCommentIdsRef.current.add(comment.id);
+                removeReviewComment(composerDraftTarget, comment.id);
+              }
+            }
           }
         },
       }),
-    [addReviewComment, composerDraftTarget, cwd, environmentId, relativePath, saveCoordinator],
+    [
+      addReviewComment,
+      composerDraftTarget,
+      cwd,
+      environmentId,
+      relativePath,
+      removeReviewComment,
+      saveCoordinator,
+    ],
   );
 
   useEffect(
@@ -537,6 +572,7 @@ function EditableFileSurface({
   const removeAnnotationEntry = useCallback(
     (entryId: string) => {
       setSelectedRange(null);
+      restorableCommentIdsRef.current.delete(entryId);
       if (draft?.metadata.entries.some((entry) => entry.id === entryId)) {
         setDraft(null);
         return;
@@ -610,6 +646,9 @@ function EditableFileSurface({
   const handlePostRender = useCallback<FilePostRender>(
     (fileContainer, instance, phase) => {
       onPostRender(fileContainer, instance, phase);
+      if (phase !== "unmount") {
+        editorAnnotationsRef.current = lineAnnotations;
+      }
 
       if (selectionFrameRef.current !== null) {
         cancelAnimationFrame(selectionFrameRef.current);
@@ -623,7 +662,7 @@ function EditableFileSurface({
         instance.setSelectedLines(selectedRange, { notify: false });
       });
     },
-    [onPostRender, selectedRange],
+    [lineAnnotations, onPostRender, selectedRange],
   );
 
   return (

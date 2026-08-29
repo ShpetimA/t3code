@@ -5,6 +5,7 @@ import {
   formatFileCommentRange,
   normalizeFileCommentRange,
   remapFileCommentAnnotations,
+  resolveFileCommentAnnotationChanges,
 } from "./fileCommentAnnotations";
 import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
 
@@ -101,6 +102,35 @@ describe("file comment annotations", () => {
         },
       },
     ]);
+  });
+
+  it("distinguishes removed and restored Pierre comments", () => {
+    const annotation = {
+      lineNumber: 5,
+      metadata: {
+        entries: [
+          {
+            id: "comment-1",
+            kind: "comment" as const,
+            startLine: 5,
+            endLine: 5,
+            text: "Keep this guarded.",
+          },
+        ],
+      },
+    };
+
+    const removed = resolveFileCommentAnnotationChanges([annotation], []);
+    expect([...removed.removedIds]).toEqual(["comment-1"]);
+    expect([...removed.addedIds]).toEqual([]);
+
+    const restored = resolveFileCommentAnnotationChanges([], [annotation]);
+    expect([...restored.addedIds]).toEqual(["comment-1"]);
+    expect([...restored.removedIds]).toEqual([]);
+
+    const neverRendered = resolveFileCommentAnnotationChanges([], []);
+    expect([...neverRendered.addedIds]).toEqual([]);
+    expect([...neverRendered.removedIds]).toEqual([]);
   });
 });
 

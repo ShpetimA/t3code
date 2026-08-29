@@ -84,6 +84,33 @@ export function buildFileCommentAnnotations(
   }, []);
 }
 
+export function resolveFileCommentAnnotationChanges(
+  previousAnnotations: ReadonlyArray<FileCommentLineAnnotation>,
+  nextAnnotations: ReadonlyArray<FileCommentLineAnnotation>,
+): {
+  addedIds: ReadonlySet<string>;
+  removedIds: ReadonlySet<string>;
+} {
+  const previousIds = new Set(
+    previousAnnotations.flatMap((annotation) =>
+      annotation.metadata.entries
+        .filter((entry) => entry.kind === "comment")
+        .map((entry) => entry.id),
+    ),
+  );
+  const nextIds = new Set(
+    nextAnnotations.flatMap((annotation) =>
+      annotation.metadata.entries
+        .filter((entry) => entry.kind === "comment")
+        .map((entry) => entry.id),
+    ),
+  );
+  return {
+    addedIds: new Set([...nextIds].filter((id) => !previousIds.has(id))),
+    removedIds: new Set([...previousIds].filter((id) => !nextIds.has(id))),
+  };
+}
+
 export function remapFileCommentAnnotations(
   annotations: ReadonlyArray<FileCommentLineAnnotation>,
 ): FileCommentLineAnnotation[] {
