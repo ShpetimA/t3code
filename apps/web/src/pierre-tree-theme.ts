@@ -21,6 +21,6 @@ export const PIERRE_TREE_UNSAFE_CSS = `
 export function pierreTreeStyle(colorScheme: CSSProperties["colorScheme"]): PierreTreeStyle {
   return {
     colorScheme,
-    "--trees-fg-override": "var(--foreground)",
+    "--trees-fg-override": "var(--contrast-foreground)",
   };
 }

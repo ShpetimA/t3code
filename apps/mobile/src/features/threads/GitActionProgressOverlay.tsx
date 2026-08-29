@@ -8,8 +8,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
 import { APP_BAR_HEIGHT } from "../../lib/layoutMetrics";
+import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
-import { useThemeColor } from "../../lib/useThemeColor";
+import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { GitActionProgress } from "../../state/use-vcs-action-state";
 
 const OVERLAY_LAYOUT_TRANSITION = LinearTransition.duration(220);
@@ -66,13 +67,16 @@ export function GitActionProgressOverlay(props: {
 
 function OverlayContent(props: { readonly progress: GitActionProgress }) {
   const { progress } = props;
-  const iconColor = useThemeColor("--color-icon");
-  const glassBorder = useThemeColor("--color-header-border");
-  const glassTint = useThemeColor("--color-glass-tint");
+  const colors = useUniwindTheme();
+  const glassSurface = colors["--color-glass-surface"];
+  const foreground = colors["--color-foreground"];
+  const shadowColor = colors["--color-primary-shadow"];
   const isDarkMode = useColorScheme() === "dark";
+  const glassTint = themeColorWithAlpha(String(glassSurface), isDarkMode ? 0.48 : 0.38);
+  const glassBorder = themeColorWithAlpha(String(foreground), isDarkMode ? 0.18 : 0.12);
   const content = (
     <>
-      <OverlayIcon phase={progress.phase} iconColor={iconColor} />
+      <OverlayIcon phase={progress.phase} />
 
       <View className="flex-1 gap-0.5">
         {progress.label ? (
@@ -88,7 +92,12 @@ function OverlayContent(props: { readonly progress: GitActionProgress }) {
       </View>
 
       {progress.prUrl ? (
-        <SymbolView name="arrow.up.right" size={13} tintColor={iconColor} type="monochrome" />
+        <SymbolView
+          name="arrow.up.right"
+          size={13}
+          tintColorClassName={"accent-icon"}
+          type="monochrome"
+        />
       ) : null}
     </>
   );
@@ -98,12 +107,13 @@ function OverlayContent(props: { readonly progress: GitActionProgress }) {
       <Animated.View
         layout={OVERLAY_LAYOUT_TRANSITION}
         style={{
-          backgroundColor: glassTint,
-          borderColor: glassBorder,
           borderCurve: "continuous",
           borderRadius: 26,
-          borderWidth: StyleSheet.hairlineWidth,
-          overflow: "hidden",
+          elevation: 12,
+          shadowColor,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: isDarkMode ? 0.42 : 0.2,
+          shadowRadius: 18,
         }}
       >
         <AnimatedLiquidGlassView
@@ -111,9 +121,12 @@ function OverlayContent(props: { readonly progress: GitActionProgress }) {
           effect="regular"
           interactive
           layout={OVERLAY_LAYOUT_TRANSITION}
+          tintColor={glassTint}
           style={{
+            borderColor: glassBorder,
             borderCurve: "continuous",
             borderRadius: 26,
+            borderWidth: StyleSheet.hairlineWidth,
             overflow: "hidden",
           }}
         >
@@ -130,7 +143,7 @@ function OverlayContent(props: { readonly progress: GitActionProgress }) {
 
   const bgClass =
     progress.phase === "error"
-      ? "bg-red-50 dark:bg-red-950/80 border-red-200 dark:border-red-800"
+      ? "border-adaptive-red-200-800 bg-adaptive-red-50-950-a80"
       : "bg-card border-border";
 
   return (
@@ -143,13 +156,10 @@ function OverlayContent(props: { readonly progress: GitActionProgress }) {
   );
 }
 
-function OverlayIcon(props: {
-  readonly phase: GitActionProgress["phase"];
-  readonly iconColor: ReturnType<typeof useThemeColor>;
-}) {
+function OverlayIcon(props: { readonly phase: GitActionProgress["phase"] }) {
   switch (props.phase) {
     case "running":
-      return <ActivityIndicator size="small" />;
+      return <ActivityIndicator size="small" colorClassName={"accent-icon"} />;
     case "success":
       return (
         <View className="h-6 w-6 items-center justify-center rounded-full bg-green-500">
