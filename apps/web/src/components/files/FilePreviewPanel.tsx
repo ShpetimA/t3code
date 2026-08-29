@@ -33,7 +33,7 @@ import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
-import { buildFileReviewComment } from "~/reviewCommentContext";
+import { buildFileReviewComment, type ReviewCommentContext } from "~/reviewCommentContext";
 import { assetEnvironment } from "~/state/assets";
 import { useEnvironmentHttpBaseUrl, usePrimaryEnvironmentId } from "~/state/environments";
 import { previewEnvironment } from "~/state/preview";
@@ -43,6 +43,7 @@ import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 
 import FileBrowserPanel from "./FileBrowserPanel";
 import {
+  buildFileCommentAnnotations,
   type FileCommentAnnotationEntry,
   type FileCommentAnnotationGroup,
   type FileCommentLineAnnotation,
@@ -84,6 +85,7 @@ const FILE_EXPLORER_STORAGE_KEY = "t3code.fileExplorerOpen";
 const RENDER_MARKDOWN_STORAGE_KEY = "t3code.renderMarkdown";
 const FILE_SAVE_DEBOUNCE_MS = 500;
 const FILE_LINK_REVEAL_ATTRIBUTE = "data-file-link-reveal";
+const EMPTY_REVIEW_COMMENTS: ReadonlyArray<ReviewCommentContext> = [];
 const FILE_LINK_REVEAL_UNSAFE_CSS = `
   ${DIFF_SURFACE_THEME_UNSAFE_CSS}
 
@@ -445,7 +447,10 @@ function EditableFileSurface({
 }: EditableFileSurfaceProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
-  const [lineAnnotations, setLineAnnotations] = useState<FileCommentLineAnnotation[]>([]);
+  const reviewComments = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.reviewComments ?? EMPTY_REVIEW_COMMENTS,
+  );
+  const [draft, setDraft] = useState<FileCommentLineAnnotation | null>(null);
   const [selectionOverride, setSelectionOverride] = useState<FileSelectionOverride | null>(null);
   const selectedRange =
     selectionOverride?.revealRequestId === revealRequestId ? selectionOverride.range : null;
@@ -455,6 +460,12 @@ function EditableFileSurface({
     },
     [revealRequestId],
   );
+  const persistedAnnotations = useMemo(
+    () => buildFileCommentAnnotations(reviewComments, relativePath),
+    [relativePath, reviewComments],
+  );
+  const lineAnnotations = draft ? [...persistedAnnotations, draft] : persistedAnnotations;
+
   const surfaceRef = useRef<HTMLDivElement>(null);
   const selectionFrameRef = useRef<number | null>(null);
   const saveCoordinator = useFileSaveCoordinator({
@@ -475,10 +486,29 @@ function EditableFileSurface({
             const remapped = remapFileCommentAnnotations(
               nextLineAnnotations as FileCommentLineAnnotation[],
             );
-            setLineAnnotations(remapped);
+            setDraft((current) =>
+              current === null
+                ? null
+                : (remapped.find((annotation) =>
+                    annotation.metadata.entries.some((entry) =>
+                      current.metadata.entries.some((draftEntry) => draftEntry.id === entry.id),
+                    ),
+                  ) ?? null),
+            );
+            const currentComments =
+              useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
+                ?.reviewComments ?? EMPTY_REVIEW_COMMENTS;
             for (const annotation of remapped) {
               for (const entry of annotation.metadata.entries) {
                 if (entry.kind !== "comment") continue;
+                const currentComment = currentComments.find((comment) => comment.id === entry.id);
+                if (
+                  !currentComment ||
+                  (currentComment.startIndex === entry.startLine - 1 &&
+                    currentComment.endIndex === entry.endLine - 1)
+                ) {
+                  continue;
+                }
                 addReviewComment(
                   composerDraftTarget,
                   buildFileReviewComment({
@@ -508,57 +538,34 @@ function EditableFileSurface({
   const removeAnnotationEntry = useCallback(
     (entryId: string) => {
       setSelectedRange(null);
+      if (draft?.metadata.entries.some((entry) => entry.id === entryId)) {
+        setDraft(null);
+        return;
+      }
       removeReviewComment(composerDraftTarget, entryId);
-      setLineAnnotations((current) => {
-        return current.flatMap((annotation) => {
-          const entries = annotation.metadata.entries.filter((entry) => entry.id !== entryId);
-          return entries.length > 0 ? [{ ...annotation, metadata: { entries } }] : [];
-        });
-      });
     },
-    [composerDraftTarget, removeReviewComment, setSelectedRange],
+    [composerDraftTarget, draft, removeReviewComment, setSelectedRange],
   );
 
   const submitAnnotationEntry = useCallback(
     (entryId: string, text: string) => {
+      const entry = draft?.metadata.entries.find((candidate) => candidate.id === entryId);
+      if (!entry) return;
       setSelectedRange(null);
-      const entry = lineAnnotations
-        .flatMap((annotation) => annotation.metadata.entries)
-        .find((candidate) => candidate.id === entryId);
-      if (entry) {
-        addReviewComment(
-          composerDraftTarget,
-          buildFileReviewComment({
-            id: entry.id,
-            filePath: relativePath,
-            startLine: entry.startLine,
-            endLine: entry.endLine,
-            text,
-            contents,
-          }),
-        );
-      }
-      setLineAnnotations((current) =>
-        current.map((annotation) => ({
-          ...annotation,
-          metadata: {
-            entries: annotation.metadata.entries.map((annotationEntry) =>
-              annotationEntry.id === entryId
-                ? { ...annotationEntry, kind: "comment", text }
-                : annotationEntry,
-            ),
-          },
-        })),
+      addReviewComment(
+        composerDraftTarget,
+        buildFileReviewComment({
+          id: entry.id,
+          filePath: relativePath,
+          startLine: entry.startLine,
+          endLine: entry.endLine,
+          text,
+          contents,
+        }),
       );
+      setDraft(null);
     },
-    [
-      addReviewComment,
-      composerDraftTarget,
-      contents,
-      lineAnnotations,
-      relativePath,
-      setSelectedRange,
-    ],
+    [addReviewComment, composerDraftTarget, contents, draft, relativePath, setSelectedRange],
   );
 
   const beginComment = useCallback(
@@ -573,38 +580,14 @@ function EditableFileSurface({
         endLine,
         text: "",
       };
-      setLineAnnotations((current) => {
-        const withoutDraft = current.flatMap((annotation) => {
-          const entries = annotation.metadata.entries.filter((entry) => entry.kind !== "draft");
-          return entries.length > 0 ? [{ ...annotation, metadata: { entries } }] : [];
-        });
-        const existingIndex = withoutDraft.findIndex(
-          (annotation) => annotation.lineNumber === endLine,
-        );
-        if (existingIndex < 0) {
-          return [
-            ...withoutDraft,
-            {
-              lineNumber: endLine,
-              metadata: { entries: [draftEntry] },
-            },
-          ];
-        }
-        return withoutDraft.map((annotation, index) =>
-          index === existingIndex
-            ? {
-                ...annotation,
-                metadata: { entries: [...annotation.metadata.entries, draftEntry] },
-              }
-            : annotation,
-        );
+      setDraft({
+        lineNumber: endLine,
+        metadata: { entries: [draftEntry] },
       });
     },
     [editor],
   );
-  const hasOpenCommentForm = lineAnnotations.some((annotation) =>
-    annotation.metadata.entries.some((entry) => entry.kind === "draft"),
-  );
+  const hasOpenCommentForm = draft !== null;
   useEffect(() => {
     const root = surfaceRef.current;
     if (!root) return;
