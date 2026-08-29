@@ -502,24 +502,23 @@ function EditableFileSurface({
               for (const entry of annotation.metadata.entries) {
                 if (entry.kind !== "comment") continue;
                 const currentComment = currentComments.find((comment) => comment.id === entry.id);
+                if (!currentComment) continue;
+                const nextComment = buildFileReviewComment({
+                  id: entry.id,
+                  filePath: relativePath,
+                  startLine: entry.startLine,
+                  endLine: entry.endLine,
+                  text: entry.text,
+                  contents: file.contents,
+                });
                 if (
-                  !currentComment ||
-                  (currentComment.startIndex === entry.startLine - 1 &&
-                    currentComment.endIndex === entry.endLine - 1)
+                  currentComment.startIndex === nextComment.startIndex &&
+                  currentComment.endIndex === nextComment.endIndex &&
+                  currentComment.diff === nextComment.diff
                 ) {
                   continue;
                 }
-                addReviewComment(
-                  composerDraftTarget,
-                  buildFileReviewComment({
-                    id: entry.id,
-                    filePath: relativePath,
-                    startLine: entry.startLine,
-                    endLine: entry.endLine,
-                    text: entry.text,
-                    contents: file.contents,
-                  }),
-                );
+                addReviewComment(composerDraftTarget, nextComment);
               }
             }
           }
