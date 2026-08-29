@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  buildFileCommentAnnotations,
   formatFileCommentRange,
   normalizeFileCommentRange,
   remapFileCommentAnnotations,
@@ -46,6 +47,55 @@ describe("file comment annotations", () => {
               startLine: 11,
               endLine: 20,
               text: "Keep this guarded.",
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("rebuilds persisted file annotations from composer review comments", () => {
+    expect(
+      buildFileCommentAnnotations(
+        [
+          {
+            id: "comment-1",
+            sectionId: "file:apps/web/src/example.ts",
+            sectionTitle: "File comment",
+            filePath: "apps/web/src/example.ts",
+            startIndex: 4,
+            endIndex: 6,
+            rangeLabel: "L5 to L7",
+            text: "Keep this visible after remount.",
+            diff: "a\nb\nc",
+            fenceLanguage: "ts",
+          },
+          {
+            id: "comment-2",
+            sectionId: "file:apps/web/src/other.ts",
+            sectionTitle: "File comment",
+            filePath: "apps/web/src/other.ts",
+            startIndex: 1,
+            endIndex: 1,
+            rangeLabel: "L2",
+            text: "Ignore this one.",
+            diff: "x",
+            fenceLanguage: "ts",
+          },
+        ],
+        "apps/web/src/example.ts",
+      ),
+    ).toEqual([
+      {
+        lineNumber: 7,
+        metadata: {
+          entries: [
+            {
+              id: "comment-1",
+              kind: "comment",
+              startLine: 5,
+              endLine: 7,
+              text: "Keep this visible after remount.",
             },
           ],
         },
