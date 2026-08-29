@@ -43,6 +43,7 @@ import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 
 import FileBrowserPanel from "./FileBrowserPanel";
 import {
+  appendFileCommentEntry,
   buildFileCommentAnnotations,
   type FileCommentAnnotationEntry,
   type FileCommentAnnotationGroup,
@@ -451,7 +452,7 @@ function EditableFileSurface({
   const reviewComments = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.reviewComments ?? EMPTY_REVIEW_COMMENTS,
   );
-  const [draft, setDraft] = useState<FileCommentLineAnnotation | null>(null);
+  const [draft, setDraft] = useState<FileCommentAnnotationEntry | null>(null);
   const [selectionOverride, setSelectionOverride] = useState<FileSelectionOverride | null>(null);
   const selectedRange =
     selectionOverride?.revealRequestId === revealRequestId ? selectionOverride.range : null;
@@ -465,7 +466,10 @@ function EditableFileSurface({
     () => buildFileCommentAnnotations(reviewComments, relativePath),
     [relativePath, reviewComments],
   );
-  const lineAnnotations = draft ? [...persistedAnnotations, draft] : persistedAnnotations;
+  const lineAnnotations = useMemo(
+    () => (draft ? appendFileCommentEntry(persistedAnnotations, draft) : persistedAnnotations),
+    [draft, persistedAnnotations],
+  );
 
   const surfaceRef = useRef<HTMLDivElement>(null);
   const editorAnnotationsRef = useRef<ReadonlyArray<FileCommentLineAnnotation>>([]);
@@ -492,11 +496,9 @@ function EditableFileSurface({
             setDraft((current) =>
               current === null
                 ? null
-                : (remapped.find((annotation) =>
-                    annotation.metadata.entries.some((entry) =>
-                      current.metadata.entries.some((draftEntry) => draftEntry.id === entry.id),
-                    ),
-                  ) ?? null),
+                : (remapped
+                    .flatMap((annotation) => annotation.metadata.entries)
+                    .find((entry) => entry.id === current.id && entry.kind === "draft") ?? null),
             );
             const currentComments =
               useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
@@ -573,7 +575,7 @@ function EditableFileSurface({
     (entryId: string) => {
       setSelectedRange(null);
       restorableCommentIdsRef.current.delete(entryId);
-      if (draft?.metadata.entries.some((entry) => entry.id === entryId)) {
+      if (draft?.id === entryId) {
         setDraft(null);
         return;
       }
@@ -584,7 +586,7 @@ function EditableFileSurface({
 
   const submitAnnotationEntry = useCallback(
     (entryId: string, text: string) => {
-      const entry = draft?.metadata.entries.find((candidate) => candidate.id === entryId);
+      const entry = draft?.id === entryId ? draft : null;
       if (!entry) return;
       setSelectedRange(null);
       addReviewComment(
@@ -615,10 +617,7 @@ function EditableFileSurface({
         endLine,
         text: "",
       };
-      setDraft({
-        lineNumber: endLine,
-        metadata: { entries: [draftEntry] },
-      });
+      setDraft(draftEntry);
     },
     [editor],
   );

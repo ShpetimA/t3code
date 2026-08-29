@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  appendFileCommentEntry,
   buildFileCommentAnnotations,
   formatFileCommentRange,
   normalizeFileCommentRange,
@@ -97,6 +98,48 @@ describe("file comment annotations", () => {
               startLine: 5,
               endLine: 7,
               text: "Keep this visible after remount.",
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("groups a draft with an existing comment on the same line", () => {
+    const persisted = appendFileCommentEntry([], {
+      id: "comment-1",
+      kind: "comment",
+      startLine: 5,
+      endLine: 5,
+      text: "Keep this guarded.",
+    });
+
+    expect(
+      appendFileCommentEntry(persisted, {
+        id: "draft-1",
+        kind: "draft",
+        startLine: 5,
+        endLine: 5,
+        text: "",
+      }),
+    ).toEqual([
+      {
+        lineNumber: 5,
+        metadata: {
+          entries: [
+            {
+              id: "comment-1",
+              kind: "comment",
+              startLine: 5,
+              endLine: 5,
+              text: "Keep this guarded.",
+            },
+            {
+              id: "draft-1",
+              kind: "draft",
+              startLine: 5,
+              endLine: 5,
+              text: "",
             },
           ],
         },

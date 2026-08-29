@@ -37,7 +37,7 @@ export function formatFileCommentRange(startLine: number, endLine: number): stri
   return startLine === endLine ? `L${startLine}` : `L${startLine} to L${endLine}`;
 }
 
-function appendFileCommentEntry(
+export function appendFileCommentEntry(
   annotations: ReadonlyArray<FileCommentLineAnnotation>,
   entry: FileCommentAnnotationEntry,
 ): FileCommentLineAnnotation[] {
