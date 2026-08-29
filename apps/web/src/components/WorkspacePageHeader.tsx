@@ -1,24 +1,31 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef } from "react";
 
 import { isElectron } from "../env";
 import { cn } from "../lib/utils";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../workspaceTitlebar";
 
-/** Page-level workspace header that adapts to parent-owned top-tab chrome. */
-export function WorkspacePageHeader({ children }: { readonly children: ReactNode }) {
+/** Shared workspace top-bar geometry that yields Electron chrome to parent-owned global tabs. */
+export function WorkspacePageHeader({
+  electron = isElectron,
+  reserveNativeControls = electron,
+  className,
+  ...props
+}: ComponentPropsWithoutRef<"header"> & {
+  readonly electron?: boolean;
+  readonly reserveNativeControls?: boolean;
+}) {
   return (
     <header
-      data-electron={isElectron ? "" : undefined}
+      data-electron={electron ? "" : undefined}
       data-workspace-page-header=""
       className={cn(
-        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none",
-        isElectron
-          ? "drag-region px-5 wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]"
-          : "px-3 sm:px-5",
+        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-3 pl-[calc(env(safe-area-inset-left)+0.75rem)] pr-[calc(env(safe-area-inset-right)+0.75rem)] transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none sm:pl-[calc(env(safe-area-inset-left)+1.25rem)] sm:pr-[calc(env(safe-area-inset-right)+1.25rem)]",
+        electron && "drag-region",
+        reserveNativeControls && "wco:pr-[var(--workspace-native-controls-inset)]",
         COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+        className,
       )}
-    >
-      {children}
-    </header>
+      {...props}
+    />
   );
 }

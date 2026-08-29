@@ -1,5 +1,9 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { effectiveSettled, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  effectiveSettled,
+  effectiveSnoozed,
+  type ChangeRequestSettleSource,
+} from "@t3tools/client-runtime/state/thread-settled";
 import {
   EnvironmentId,
   ThreadId,
@@ -57,6 +61,8 @@ export function resolveGlobalThreadTabLifecycle(
   options: {
     readonly now: string;
     readonly autoSettleAfterDays: number | null;
+    readonly autoSettleOnMerge: boolean;
+    readonly changeRequest: ChangeRequestSettleSource | null;
     readonly supportsSettlement: boolean;
     readonly supportsSnooze: boolean;
   },
@@ -70,7 +76,8 @@ export function resolveGlobalThreadTabLifecycle(
     effectiveSettled(thread, {
       now: options.now,
       autoSettleAfterDays: options.autoSettleAfterDays,
-      changeRequestState: null,
+      autoSettleOnMerge: options.autoSettleOnMerge,
+      changeRequest: options.changeRequest,
     });
   const isRequired =
     thread.archivedAt === null && !isSnoozed && (thread.pinnedAt != null || !isSettled);

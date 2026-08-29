@@ -29,6 +29,7 @@ import {
   TerminalIcon,
   XIcon,
 } from "lucide-react";
+import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
 import {
   useCallback,
   useEffect,
@@ -103,9 +104,11 @@ import {
   sortPinnedThreadsForSidebar,
   sortThreadsForSidebar,
   type ThreadStatusPill,
+  useThreadJumpHintVisibility,
 } from "./Sidebar.logic";
 import { snoozeWakeDescription, snoozeWakeLabel } from "./Sidebar.snooze";
 import { ThreadStatusMark } from "./ThreadStatusMark";
+import { threadChangeRequestSnapshotsAtom } from "./ThreadStatusIndicators";
 import { closesThreadTabAfterSuccessfulAction } from "./threadActionMenu.logic";
 import { resolveRenameCommit } from "./threadRename";
 import { Kbd } from "./ui/kbd";
@@ -471,7 +474,6 @@ function SnoozedThreadsIndicator(props: {
                   <button
                     type="button"
                     aria-label={`Wake and open ${thread.title}`}
-                    title="Wake and open"
                     onClick={() => void onWakeAndOpenThread(threadRef)}
                     className="flex w-10 shrink-0 items-center justify-center self-stretch text-amber-700 outline-none transition-[background-color,color] duration-150 ease-out hover:bg-amber-500/10 focus-visible:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500/60 dark:text-amber-300"
                   >
@@ -502,6 +504,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const allShellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const serverConfigs = useServerConfigs();
   const autoSettleAfterDays = useClientSettings((state) => state.sidebarAutoSettleAfterDays);
+  const autoSettleOnMerge = useClientSettings((state) => state.sidebarAutoSettleOnMerge);
   const timestampFormat = useClientSettings((state) => state.timestampFormat);
   const nowMinute = useNowMinute();
   const lifecycleNow = `${nowMinute}:00.000Z`;
@@ -511,6 +514,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const shortcutModifiers = useShortcutModifierState();
   const lastVisitedAtByThreadKey = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const changeRequestSnapshotByKey = useAtomValue(threadChangeRequestSnapshotsAtom);
   const draggedTabKeyRef = useRef<string | null>(null);
   const [tabDropPreview, setTabDropPreview] = useState<{
     readonly key: string;
@@ -535,7 +539,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
     terminalOpen: routeTerminalOpen,
     modelPickerOpen: isModelPickerOpen(),
   };
-  const fastTabJumpModifiersHeld = shouldShowThreadJumpHintsForModifiers(
+  const fastTabJumpModifiersHeldNow = shouldShowThreadJumpHintsForModifiers(
     shortcutModifiers,
     keybindings,
     {
@@ -543,7 +547,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       context: shortcutContext,
     },
   );
-  const contextualTabJumpModifiersHeld = shouldShowTabJumpHintsForModifiers(
+  const contextualTabJumpModifiersHeldNow = shouldShowTabJumpHintsForModifiers(
     shortcutModifiers,
     keybindings,
     {
@@ -551,6 +555,18 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       context: shortcutContext,
     },
   );
+  const { showThreadJumpHints, updateThreadJumpHintsVisibility } = useThreadJumpHintVisibility();
+  useEffect(() => {
+    updateThreadJumpHintsVisibility(
+      fastTabJumpModifiersHeldNow || contextualTabJumpModifiersHeldNow,
+    );
+  }, [
+    contextualTabJumpModifiersHeldNow,
+    fastTabJumpModifiersHeldNow,
+    updateThreadJumpHintsVisibility,
+  ]);
+  const fastTabJumpModifiersHeld = showThreadJumpHints && fastTabJumpModifiersHeldNow;
+  const contextualTabJumpModifiersHeld = showThreadJumpHints && contextualTabJumpModifiersHeldNow;
   const newTabShortcutLabel = shortcutLabelForCommand(keybindings, "tab.new", {
     platform: navigator.platform,
     context: shortcutContext,
@@ -596,49 +612,72 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
       ),
     [threadShells],
   );
-  const { requiredThreadTabs, snoozedThreads, threadLifecycleByTabKey } = useMemo(() => {
-    const pinnedThreads: Array<(typeof threadShells)[number]> = [];
-    const activeThreads: Array<(typeof threadShells)[number]> = [];
-    const snoozedThreads: Array<(typeof threadShells)[number]> = [];
-    const lifecycleByTabKey = new Map<string, GlobalThreadTabLifecycle>();
+  const { changeRequestByTabKey, requiredThreadTabs, snoozedThreads, threadLifecycleByTabKey } =
+    useMemo(() => {
+      const pinnedThreads: Array<(typeof threadShells)[number]> = [];
+      const activeThreads: Array<(typeof threadShells)[number]> = [];
+      const snoozedThreads: Array<(typeof threadShells)[number]> = [];
+      const lifecycleByTabKey = new Map<string, GlobalThreadTabLifecycle>();
+      const changeRequestByTabKey = new Map<string, ChangeRequestSettleSource | null>();
 
-    for (const thread of threadShells) {
-      const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
-      const supportsSettlement = capabilities?.threadSettlement === true;
-      const supportsSnooze = capabilities?.threadSnooze === true;
-      const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-      const tabKey = globalTabKey({ _tag: "ServerThread", threadRef });
-      const lifecycle = resolveGlobalThreadTabLifecycle(thread, {
-        now: lifecycleNow,
-        autoSettleAfterDays,
-        supportsSettlement,
-        supportsSnooze,
-      });
-      lifecycleByTabKey.set(tabKey, lifecycle);
-      if (lifecycle.isSnoozed) {
-        snoozedThreads.push(thread);
-        continue;
+      for (const thread of threadShells) {
+        const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
+        const supportsSettlement = capabilities?.threadSettlement === true;
+        const supportsSnooze = capabilities?.threadSnooze === true;
+        const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+        const tabKey = globalTabKey({ _tag: "ServerThread", threadRef });
+        const snapshot = changeRequestSnapshotByKey.get(scopedThreadKey(threadRef));
+        const changeRequest =
+          snapshot != null &&
+          (thread.linkedPullRequest == null
+            ? thread.worktreePath === null || snapshot.branch === thread.branch
+            : snapshot.linkedPullRequest?.projectId === thread.linkedPullRequest.projectId &&
+              snapshot.linkedPullRequest.repository === thread.linkedPullRequest.repository &&
+              snapshot.linkedPullRequest.number === thread.linkedPullRequest.number)
+            ? snapshot.pr
+            : null;
+        const lifecycle = resolveGlobalThreadTabLifecycle(thread, {
+          now: lifecycleNow,
+          autoSettleAfterDays,
+          autoSettleOnMerge,
+          changeRequest,
+          supportsSettlement,
+          supportsSnooze,
+        });
+        changeRequestByTabKey.set(tabKey, changeRequest);
+        lifecycleByTabKey.set(tabKey, lifecycle);
+        if (lifecycle.isSnoozed) {
+          snoozedThreads.push(thread);
+          continue;
+        }
+        if (!lifecycle.isRequired) continue;
+        if (thread.pinnedAt != null) pinnedThreads.push(thread);
+        else activeThreads.push(thread);
       }
-      if (!lifecycle.isRequired) continue;
-      if (thread.pinnedAt != null) pinnedThreads.push(thread);
-      else activeThreads.push(thread);
-    }
 
-    return {
-      requiredThreadTabs: [
-        ...sortPinnedThreadsForSidebar(pinnedThreads),
-        ...sortThreadsForSidebar(activeThreads),
-      ].map((thread) => ({
-        _tag: "ServerThread" as const,
-        threadRef: scopeThreadRef(thread.environmentId, thread.id),
-      })),
-      snoozedThreads: snoozedThreads.toSorted(
-        (left, right) =>
-          firstValidTimestampMs(left.snoozedUntil) - firstValidTimestampMs(right.snoozedUntil),
-      ),
-      threadLifecycleByTabKey: lifecycleByTabKey,
-    };
-  }, [autoSettleAfterDays, lifecycleNow, serverConfigs, threadShells]);
+      return {
+        changeRequestByTabKey,
+        requiredThreadTabs: [
+          ...sortPinnedThreadsForSidebar(pinnedThreads),
+          ...sortThreadsForSidebar(activeThreads),
+        ].map((thread) => ({
+          _tag: "ServerThread" as const,
+          threadRef: scopeThreadRef(thread.environmentId, thread.id),
+        })),
+        snoozedThreads: snoozedThreads.toSorted(
+          (left, right) =>
+            firstValidTimestampMs(left.snoozedUntil) - firstValidTimestampMs(right.snoozedUntil),
+        ),
+        threadLifecycleByTabKey: lifecycleByTabKey,
+      };
+    }, [
+      autoSettleAfterDays,
+      autoSettleOnMerge,
+      changeRequestSnapshotByKey,
+      lifecycleNow,
+      serverConfigs,
+      threadShells,
+    ]);
   const projectByKey = useMemo(
     () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
     [projects],
@@ -1012,7 +1051,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                 openThreadActionMenu({
                   threadRef: tab.threadRef,
                   projectCwd: project?.workspaceRoot ?? null,
-                  changeRequestState: null,
+                  changeRequest: changeRequestByTabKey.get(tabKey) ?? null,
                   onStartRename: startThreadTabRename,
                   onActionSucceeded: (action) => {
                     if (closesThreadTabAfterSuccessfulAction(action)) {
@@ -1188,7 +1227,6 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                           aria-label={
                             settlesBeforeClose ? `Settle and close ${title}` : `Close ${title}`
                           }
-                          title={settlesBeforeClose ? "Settle and close tab" : "Close tab"}
                           onClick={() => requestCloseTab(tab)}
                         >
                           <span className="relative size-3">

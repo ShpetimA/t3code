@@ -9,7 +9,7 @@ import {
   canSnooze,
   effectiveSettled,
   effectiveSnoozed,
-  type ChangeRequestStateLike,
+  type ChangeRequestSettleSource,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -71,7 +71,7 @@ type ThreadLifecycleActions = Pick<
   | "snoozeThread"
   | "unsnoozeThread"
   | "pinThread"
-  | "unpinThread"
+  | "confirmAndUnpinThread"
 >;
 
 /**
@@ -167,7 +167,7 @@ async function runThreadLifecycleMenuAction(input: {
     case "unpin":
       return lifecycleCommandSucceeded(
         "Failed to unpin thread",
-        await input.actions.unpinThread(input.threadRef),
+        await input.actions.confirmAndUnpinThread(input.threadRef),
       );
   }
 }
@@ -177,8 +177,8 @@ export interface ThreadActionMenuTarget {
   readonly threadRef: ScopedThreadRef | null;
   /** Fallback for "Copy path" when the thread has no worktree. */
   readonly projectCwd: string | null;
-  /** PR state feeding auto-settle classification, as resolved by the caller. */
-  readonly changeRequestState: ChangeRequestStateLike | null;
+  /** PR feeding auto-settle classification, as resolved by the caller. */
+  readonly changeRequest: ChangeRequestSettleSource | null;
   readonly onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
   /** Preserves surface navigation around settle and snooze without forking the menu dispatcher. */
   readonly lifecycleOverrides?: ThreadActionMenuLifecycleOverrides;
@@ -209,7 +209,7 @@ export function useThreadActionMenu() {
     snoozeThread,
     unsnoozeThread,
     pinThread,
-    unpinThread,
+    confirmAndUnpinThread,
     archiveThread,
     deleteThread,
   } = useThreadActions();
@@ -247,7 +247,7 @@ export function useThreadActionMenu() {
   const resolveMenu = useCallback(
     (input: ThreadActionMenuTarget): ResolvedThreadActionMenu | null => {
       const {
-        changeRequestState,
+        changeRequest,
         lifecycleOverrides,
         onActionSucceeded,
         onStartRename,
@@ -281,7 +281,7 @@ export function useThreadActionMenu() {
             now: `${nowIso.slice(0, 16)}:00.000Z`,
             autoSettleAfterDays,
             autoSettleOnMerge,
-            changeRequestState,
+            changeRequest,
           }),
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: nowIso }),
         canSnoozeNow: canSnooze(thread, { now: nowIso }),
@@ -304,7 +304,7 @@ export function useThreadActionMenu() {
               snoozeThread,
               unsnoozeThread,
               pinThread,
-              unpinThread,
+              confirmAndUnpinThread,
             },
           });
           if (succeeded) onActionSucceeded?.(action);
@@ -422,7 +422,12 @@ export function useThreadActionMenu() {
             if (deleted._tag === "Success") {
               onActionSucceeded?.(action);
               await navigateAfterDelete?.();
-            } else if (!isAtomCommandInterrupted(deleted)) {
+            } else if (
+              !isAtomCommandInterrupted(deleted) &&
+              // Worktree cleanup can fail after the thread itself is gone.
+              // The deletion hook already reports that partial failure.
+              readThreadShell(threadRef) !== null
+            ) {
               failureToast("Failed to delete thread", squashAtomCommandFailure(deleted));
             }
             return;
@@ -439,6 +444,7 @@ export function useThreadActionMenu() {
       autoSettleOnMerge,
       confirmThreadArchive,
       confirmThreadDelete,
+      confirmAndUnpinThread,
       copyBranchToClipboard,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -450,7 +456,6 @@ export function useThreadActionMenu() {
       settleThread,
       snoozeThread,
       timestampFormat,
-      unpinThread,
       unsettleThread,
       unsnoozeThread,
       updateThreadMetadata,
@@ -474,7 +479,11 @@ export function useThreadActionMenu() {
     [resolveMenu],
   );
 
-  return { openMenu };
+  const closeMenu = useCallback(() => {
+    void readLocalApi()?.contextMenu.close();
+  }, []);
+
+  return { openMenu, closeMenu };
 }
 
 /** Exposes tab-close lifecycle helpers without coupling those actions to a menu surface. */

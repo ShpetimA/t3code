@@ -131,6 +131,8 @@ describe("global tabs", () => {
       resolveGlobalThreadTabLifecycle(threadShell({ activityAt: "2026-08-13T11:00:00.000Z" }), {
         now,
         autoSettleAfterDays: 3,
+        autoSettleOnMerge: true,
+        changeRequest: null,
         supportsSettlement: true,
         supportsSnooze: true,
       }),
@@ -146,6 +148,8 @@ describe("global tabs", () => {
     const options = {
       now,
       autoSettleAfterDays: 3,
+      autoSettleOnMerge: true,
+      changeRequest: null,
       supportsSettlement: true,
       supportsSnooze: true,
     } as const;
@@ -182,11 +186,42 @@ describe("global tabs", () => {
     ).toEqual({ isRequired: false, isSettled: false, isSnoozed: false, closePolicy: "direct" });
   });
 
+  it("matches sidebar lifecycle rules for open and merged pull requests", () => {
+    const shell = threadShell({ activityAt: "2026-08-01T11:00:00.000Z" });
+    const options = {
+      now,
+      autoSettleAfterDays: 3,
+      autoSettleOnMerge: true,
+      supportsSettlement: true,
+      supportsSnooze: true,
+    } as const;
+
+    expect(
+      resolveGlobalThreadTabLifecycle(shell, {
+        ...options,
+        changeRequest: { state: "open" },
+      }),
+    ).toEqual({
+      isRequired: true,
+      isSettled: false,
+      isSnoozed: false,
+      closePolicy: "settle-first",
+    });
+    expect(
+      resolveGlobalThreadTabLifecycle(shell, {
+        ...options,
+        changeRequest: { state: "merged" },
+      }),
+    ).toEqual({ isRequired: false, isSettled: true, isSnoozed: false, closePolicy: "direct" });
+  });
+
   it("keeps old-server threads visible but directly closable", () => {
     expect(
       resolveGlobalThreadTabLifecycle(threadShell({ activityAt: "2026-08-13T11:00:00.000Z" }), {
         now,
         autoSettleAfterDays: 3,
+        autoSettleOnMerge: true,
+        changeRequest: null,
         supportsSettlement: false,
         supportsSnooze: false,
       }),

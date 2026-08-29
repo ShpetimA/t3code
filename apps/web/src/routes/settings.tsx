@@ -14,6 +14,7 @@ import { SettingsBreadcrumb } from "../components/settings/SettingsBreadcrumb";
 import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
+import { isElectron } from "../env";
 
 function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
@@ -73,8 +74,8 @@ function SettingsContentLayout() {
       data-workspace-route-inset=""
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <WorkspacePageHeader>
-          <div className="flex w-full items-center gap-2">
+        <WorkspacePageHeader electron={isElectron}>
+          <div className="flex w-full items-center gap-3">
             <SettingsBreadcrumb pathname={location.pathname} />
             {showRestoreDefaults ? (
               <div className="ms-auto flex items-center gap-2">
