@@ -18,6 +18,7 @@ export type ThreadLifecycleMenuId =
 export type ThreadActionMenuId =
   | ThreadLifecycleMenuId
   | "new-thread-on-branch"
+  | "project-settings"
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -137,6 +138,7 @@ export function buildThreadActionMenuItems(
         { id: "copy-thread-id", label: "Thread ID", icon: "hash" },
       ],
     },
+    { id: "project-settings", label: "Project settings", icon: "settings" },
     // Archive removes the thread from the sidebar while keeping its
     // conversation under Settings > Archived threads — distinct from Settle
     // (stays visible in the Settled shelf) and Delete (clears history for

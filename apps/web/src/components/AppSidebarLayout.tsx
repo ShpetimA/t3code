@@ -16,6 +16,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
+import { usePanelAnimationSettings } from "../panelAnimations";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
@@ -147,6 +148,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const globalThreadTabsEnabled = useGlobalThreadTabsEnabled();
+  const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
+    usePanelAnimationSettings();
   const pathname = useLocation({ select: (location) => location.pathname });
   const routeTarget = useParams({
     strict: false,
@@ -198,6 +201,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   });
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
+    "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),
@@ -277,6 +281,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     <SidebarProvider
       className={cn("h-dvh! min-h-0!", showGlobalTabs && "flex-col")}
       data-global-tabs-layout={showGlobalTabs ? "" : undefined}
+      data-panel-animations={panelAnimationsActive ? "true" : "false"}
       defaultOpen
       style={sidebarProviderStyle}
       {...(settingsSidebarBelowTabs ? { open: true } : {})}

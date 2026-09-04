@@ -5,15 +5,11 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import {
-  canSnooze,
-  effectiveSettled,
-  effectiveSnoozed,
-  type ChangeRequestSettleSource,
-} from "@t3tools/client-runtime/state/thread-settled";
+import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { useCallback } from "react";
+import { useRouter } from "@tanstack/react-router";
+import { useCallback, useMemo } from "react";
 
 import {
   resolveSnoozePresets,
@@ -34,8 +30,16 @@ import {
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
+  useProjects,
 } from "../state/entities";
+import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
+import {
+  deriveLogicalProjectKeyFromSettings,
+  derivePhysicalProjectKey,
+  selectProjectGroupingSettings,
+} from "../logicalProject";
+import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { useUiStateStore } from "../uiStateStore";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
@@ -177,8 +181,6 @@ export interface ThreadActionMenuTarget {
   readonly threadRef: ScopedThreadRef | null;
   /** Fallback for "Copy path" when the thread has no worktree. */
   readonly projectCwd: string | null;
-  /** PR feeding auto-settle classification, as resolved by the caller. */
-  readonly changeRequest: ChangeRequestSettleSource | null;
   readonly onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
   /** Preserves surface navigation around settle and snooze without forking the menu dispatcher. */
   readonly lifecycleOverrides?: ThreadActionMenuLifecycleOverrides;
@@ -203,6 +205,19 @@ export interface ResolvedThreadActionMenu {
  * the same local context-menu bridge as the sidebar.
  */
 export function useThreadActionMenu() {
+  const router = useRouter();
+  const projects = useProjects();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const logicalProjectKeyByPhysicalKey = useMemo(
+    () =>
+      buildPhysicalToLogicalProjectKeyMap({
+        projects,
+        settings: projectGroupingSettings,
+        primaryEnvironmentId,
+      }),
+    [primaryEnvironmentId, projectGroupingSettings, projects],
+  );
   const {
     settleThread,
     unsettleThread,
@@ -219,8 +234,6 @@ export function useThreadActionMenu() {
   const planThreadRemovalNavigation = useThreadRemovalNavigation();
   const handleNewThread = useNewThreadHandler();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
-  const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
-  const autoSettleOnMerge = useClientSettings((s) => s.sidebarAutoSettleOnMerge);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
@@ -246,14 +259,7 @@ export function useThreadActionMenu() {
 
   const resolveMenu = useCallback(
     (input: ThreadActionMenuTarget): ResolvedThreadActionMenu | null => {
-      const {
-        changeRequest,
-        lifecycleOverrides,
-        onActionSucceeded,
-        onStartRename,
-        projectCwd,
-        threadRef,
-      } = input;
+      const { lifecycleOverrides, onActionSucceeded, onStartRename, projectCwd, threadRef } = input;
       if (threadRef === null) return null;
       // Snapshot at open time — the menu is modal, so state read now is what
       // the user is looking at.
@@ -272,17 +278,7 @@ export function useThreadActionMenu() {
       const items = buildThreadActionMenuItems({
         branch: thread.branch ?? null,
         isPinned: thread.pinnedAt != null,
-        isSettled:
-          supports.settlement &&
-          effectiveSettled(thread, {
-            // Minute-quantized like useNowMinute, so this classification can
-            // never disagree with the sidebar partition or ChatView's parked
-            // thread banner within the same minute.
-            now: `${nowIso.slice(0, 16)}:00.000Z`,
-            autoSettleAfterDays,
-            autoSettleOnMerge,
-            changeRequest,
-          }),
+        isSettled: supports.settlement && thread.settledOverride === "settled",
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: nowIso }),
         canSnoozeNow: canSnooze(thread, { now: nowIso }),
         isRegeneratingTitle,
@@ -320,6 +316,22 @@ export function useThreadActionMenu() {
           }
         };
         switch (action) {
+          case "project-settings": {
+            const project = projects.find(
+              (candidate) =>
+                candidate.environmentId === thread.environmentId &&
+                candidate.id === thread.projectId,
+            );
+            if (!project) return;
+            const projectKey =
+              logicalProjectKeyByPhysicalKey.get(derivePhysicalProjectKey(project)) ??
+              deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings);
+            void router.navigate({
+              to: "/projects/$projectKey",
+              params: { projectKey },
+            });
+            return;
+          }
           case "new-thread-on-branch": {
             // Explicit branch carry-over: reuse the thread's worktree when it
             // has one, otherwise its branch on the local checkout.
@@ -440,8 +452,6 @@ export function useThreadActionMenu() {
     },
     [
       archiveThread,
-      autoSettleAfterDays,
-      autoSettleOnMerge,
       confirmThreadArchive,
       confirmThreadDelete,
       confirmAndUnpinThread,
@@ -450,9 +460,13 @@ export function useThreadActionMenu() {
       copyThreadIdToClipboard,
       deleteThread,
       handleNewThread,
+      logicalProjectKeyByPhysicalKey,
       markThreadUnread,
       pinThread,
       planThreadRemovalNavigation,
+      projectGroupingSettings,
+      projects,
+      router,
       settleThread,
       snoozeThread,
       timestampFormat,
