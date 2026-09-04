@@ -235,15 +235,15 @@ export function terminalBufferUpdateSince(
     "buffer" | "bufferEpoch" | "bufferStartOffset" | "bufferEndOffset" | "version"
   >,
 ): TerminalBufferUpdate {
-  if (current.version === previous.version) {
-    return { type: "none" };
-  }
   if (
     current.bufferEpoch !== previous.bufferEpoch ||
     previous.bufferEndOffset < current.bufferStartOffset ||
     previous.bufferEndOffset > current.bufferEndOffset
   ) {
     return { type: "reset", buffer: current.buffer };
+  }
+  if (current.version === previous.version) {
+    return { type: "none" };
   }
 
   const encoded = textEncoder.encode(current.buffer);

@@ -273,6 +273,26 @@ describe("terminal session reducers", () => {
     });
   });
 
+  it("resets when a replacement snapshot reuses the same local version", () => {
+    const previous = {
+      bufferEpoch: 1,
+      bufferEndOffset: 5,
+      version: 1,
+    };
+    const current = {
+      buffer: "fresh session",
+      bufferEpoch: 2,
+      bufferStartOffset: 0,
+      bufferEndOffset: 13,
+      version: 1,
+    };
+
+    expect(terminalBufferUpdateSince(previous, current)).toEqual({
+      type: "reset",
+      buffer: "fresh session",
+    });
+  });
+
   it("uses byte offsets without splitting multibyte output while the window rolls", () => {
     const previous = applyTerminalAttachStreamEvent(
       EMPTY_TERMINAL_BUFFER_STATE,

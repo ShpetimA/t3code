@@ -1,10 +1,11 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
   terminalBufferUpdateSince,
+  type TerminalBufferState,
   type TerminalSessionState,
 } from "@t3tools/client-runtime/state/terminal";
 import {
@@ -23,11 +24,14 @@ import {
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
   useCallback,
+  useContext,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -50,7 +54,6 @@ import {
   type GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
-import { TerminalInputWriter } from "~/terminal/inputWriter";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { isTerminalLinkActivation, isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
 import {
@@ -127,15 +130,6 @@ function parseTerminalColor(value: string, fallback: GhosttyColor): GhosttyColor
     g: green ?? fallback.g,
     b: blue ?? fallback.b,
   };
-}
-
-function runtimeEnvSignature(runtimeEnv: Record<string, string> | undefined): string {
-  if (!runtimeEnv) return "";
-  return JSON.stringify(
-    Object.entries(runtimeEnv)
-      .filter(([key, value]) => key.length > 0 && typeof value === "string")
-      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey)),
-  );
 }
 
 function normalizeComputedColor(value: string | null | undefined, fallback: string): string {
@@ -339,7 +333,6 @@ export function TerminalViewport({
   // cannot be mistaken for the active flow.
   const openSelectionMenuRequestIdRef = useRef<number | null>(null);
   const keybindingsRef = useRef(keybindings);
-  const runtimeEnvKey = useMemo(() => runtimeEnvSignature(runtimeEnv), [runtimeEnv]);
   const handleSessionExited = useEffectEvent(() => {
     onSessionExited();
   });
@@ -362,15 +355,28 @@ export function TerminalViewport({
     }),
   );
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
-  const terminalSession = useAttachedTerminalSession({
-    environmentId,
-    terminal: {
+  const registry = useContext(RegistryContext);
+  const terminalAttachInput = useMemo(
+    () => ({
       threadId,
       terminalId,
       cwd,
       ...(worktreePath !== undefined ? { worktreePath } : {}),
       ...(runtimeEnv ? { env: runtimeEnv } : {}),
-    },
+    }),
+    [cwd, runtimeEnv, terminalId, threadId, worktreePath],
+  );
+  const terminalAttachAtom = useMemo(
+    () =>
+      terminalEnvironment.attach({
+        environmentId,
+        input: terminalAttachInput,
+      }),
+    [environmentId, terminalAttachInput],
+  );
+  const terminalSession = useAttachedTerminalSession({
+    environmentId,
+    terminal: terminalAttachInput,
   });
   const writeTerminal = useEffectEvent((data: string) =>
     runTerminalWrite({
@@ -384,7 +390,6 @@ export function TerminalViewport({
       input: { threadId, terminalId, cols, rows },
     }),
   );
-  const terminalBuffer = terminalSession.buffer;
   const terminalError = terminalSession.error;
   const terminalStatus = terminalSession.status;
   const synchronizedStatusRef = useRef<TerminalSessionState["status"]>("closed");
@@ -406,26 +411,21 @@ export function TerminalViewport({
     },
   );
   const terminalVersion = terminalSession.version;
+  const readLatestSession = useEffectEvent(() => terminalSession);
+  const shouldAutoFocus = useEffectEvent(() => autoFocus);
   const previousSessionRef = useRef({
-    buffer: terminalBuffer,
-    bufferEpoch: terminalSession.bufferEpoch,
-    bufferStartOffset: terminalSession.bufferStartOffset,
-    bufferEndOffset: terminalSession.bufferEndOffset,
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
   });
-  const latestSessionRef = useRef(previousSessionRef.current);
-  latestSessionRef.current = {
-    buffer: terminalBuffer,
+  const renderedBufferRef = useRef<
+    Pick<TerminalBufferState, "bufferEpoch" | "bufferStartOffset" | "bufferEndOffset" | "version">
+  >({
     bufferEpoch: terminalSession.bufferEpoch,
     bufferStartOffset: terminalSession.bufferStartOffset,
     bufferEndOffset: terminalSession.bufferEndOffset,
-    error: terminalError,
-    status: terminalStatus,
     version: terminalVersion,
-  };
-
+  });
   useEffect(() => {
     keybindingsRef.current = keybindings;
   }, [keybindings]);
@@ -450,30 +450,6 @@ export function TerminalViewport({
 
     const setup = async (): Promise<(() => void) | null> => {
       const setupFont = terminalFontRef.current;
-      const inputWriter = new TerminalInputWriter({
-        send: async (data) => {
-          const result = await writeTerminal(data);
-          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-          const error = squashAtomCommandFailure(result);
-          const activeTerminal = terminalRef.current ?? setupTerminal;
-          if (activeTerminal) {
-            writeSystemMessage(
-              activeTerminal,
-              error instanceof Error ? error.message : "Terminal write failed",
-            );
-          }
-        },
-        onError: (cause) => {
-          const activeTerminal = terminalRef.current ?? setupTerminal;
-          if (activeTerminal) {
-            writeSystemMessage(
-              activeTerminal,
-              cause instanceof Error ? cause.message : "Terminal write failed",
-            );
-          }
-        },
-      });
-      setupCleanups.push(() => inputWriter.dispose());
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
         theme: terminalThemeFromApp(mount),
         font: terminalFontOptions(setupFont.family, setupFont.size),
@@ -506,8 +482,13 @@ export function TerminalViewport({
       if (currentFont.family !== setupFont.family || currentFont.size !== setupFont.size) {
         void terminal.setFont(terminalFontOptions(currentFont.family, currentFont.size));
       }
-      const latestSession = latestSessionRef.current;
-      previousSessionRef.current = latestSession;
+      const latestSession = readLatestSession();
+      previousSessionRef.current = {
+        error: latestSession.error,
+        status: latestSession.status,
+        version: latestSession.version,
+      };
+      renderedBufferRef.current = latestSession;
       if (latestSession.buffer.length > 0) terminal.resetAndWrite(latestSession.buffer);
       if (latestSession.error !== null) writeSystemMessage(terminal, latestSession.error);
       // Attaching to a session that already exited must still run exit handling
@@ -516,7 +497,30 @@ export function TerminalViewport({
       // never started, so only "exited" triggers the message — as with xterm.)
       synchronizedStatusRef.current = "closed";
       synchronizeTerminalStatus(terminal, latestSession.status);
-      if (autoFocus) window.requestAnimationFrame(() => terminal.focus());
+      if (shouldAutoFocus()) window.requestAnimationFrame(() => terminal.focus());
+
+      // Terminal output is latency-sensitive and can arrive while React is
+      // rendering unrelated UI. Apply attach-stream updates from the atom
+      // registry directly so a completed command never waits for another
+      // browser interaction before Ghostty paints it.
+      const unsubscribeOutput = registry.subscribe(
+        terminalAttachAtom,
+        (result) => {
+          const next = Option.getOrNull(AsyncResult.value(result));
+          if (next === null || terminalRef.current !== terminal) return;
+          const update = terminalBufferUpdateSince(renderedBufferRef.current, next);
+          renderedBufferRef.current = next;
+          if (update.type === "append") {
+            terminal.write(update.data);
+            terminal.clearSelection();
+          } else if (update.type === "reset") {
+            writeTerminalBuffer(terminal, update.buffer);
+            terminal.clearSelection();
+          }
+        },
+        { immediate: true },
+      );
+      setupCleanups.push(unsubscribeOutput);
 
       const dismissSelectionAction = (supersede = false) => {
         const ownsMenu =
@@ -691,6 +695,19 @@ export function TerminalViewport({
         }
       };
 
+      const sendTerminalInput = async (data: string, fallbackError: string) => {
+        const activeTerminal = terminalRef.current;
+        if (!activeTerminal) return;
+        const result = await writeTerminal(data);
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          writeSystemMessage(
+            activeTerminal,
+            error instanceof Error ? error.message : fallbackError,
+          );
+        }
+      };
+
       function handleBeforeKey(event: KeyboardEvent): boolean {
         const currentKeybindings = keybindingsRef.current;
         const options = { context: { terminalFocus: true, terminalOpen: true } };
@@ -711,7 +728,7 @@ export function TerminalViewport({
         if (navigationData !== null) {
           event.preventDefault();
           event.stopPropagation();
-          inputWriter.write(navigationData);
+          void sendTerminalInput(navigationData, "Failed to move cursor");
           return false;
         }
 
@@ -719,14 +736,14 @@ export function TerminalViewport({
         if (deleteData !== null) {
           event.preventDefault();
           event.stopPropagation();
-          inputWriter.write(deleteData);
+          void sendTerminalInput(deleteData, "Failed to delete terminal input");
           return false;
         }
 
         if (!isTerminalClearShortcut(event)) return true;
         event.preventDefault();
         event.stopPropagation();
-        inputWriter.write("\u000c");
+        void sendTerminalInput("\u000c", "Failed to clear terminal");
         return false;
       }
 
@@ -770,7 +787,15 @@ export function TerminalViewport({
       }
 
       function handleData(data: string): void {
-        inputWriter.write(data);
+        void (async () => {
+          const result = await writeTerminal(data);
+          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+          const error = squashAtomCommandFailure(result);
+          writeSystemMessage(
+            terminal,
+            error instanceof Error ? error.message : "Terminal write failed",
+          );
+        })();
       }
 
       function handleSelectionChange(): void {
@@ -851,17 +876,11 @@ export function TerminalViewport({
       cancelled = true;
       teardown?.();
     };
-    // autoFocus is intentionally omitted;
-    // it is only read at mount time and must not trigger terminal teardown/recreation.
-  }, [cwd, environmentId, runtimeEnvKey, terminalId, threadId, worktreePath]);
+  }, [cwd, registry, terminalAttachAtom, terminalId]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
     const current = {
-      buffer: terminalBuffer,
-      bufferEpoch: terminalSession.bufferEpoch,
-      bufferStartOffset: terminalSession.bufferStartOffset,
-      bufferEndOffset: terminalSession.bufferEndOffset,
       error: terminalError,
       status: terminalStatus,
       version: terminalVersion,
@@ -877,14 +896,6 @@ export function TerminalViewport({
       return;
     }
 
-    const update = terminalBufferUpdateSince(previous, current);
-    if (update.type === "append") {
-      terminal.write(update.data);
-    } else if (update.type === "reset") {
-      writeTerminalBuffer(terminal, update.buffer);
-    }
-    terminal.clearSelection();
-
     if (current.error !== null && current.error !== previous.error) {
       writeSystemMessage(terminal, current.error);
     }
@@ -895,16 +906,7 @@ export function TerminalViewport({
       });
     }
     previousSessionRef.current = current;
-  }, [
-    autoFocus,
-    terminalBuffer,
-    terminalError,
-    terminalSession.bufferEndOffset,
-    terminalSession.bufferEpoch,
-    terminalSession.bufferStartOffset,
-    terminalStatus,
-    terminalVersion,
-  ]);
+  }, [autoFocus, terminalError, terminalStatus, terminalVersion]);
 
   useEffect(() => {
     if (!autoFocus) return;
