@@ -31,6 +31,7 @@ import type { IconName } from "lucide-react/dynamic";
 import type { ComponentType } from "react";
 import { lazy, Suspense, useState } from "react";
 import { useAssetUrlState } from "../assets/assetUrls";
+import { deriveProjectIdentity } from "../projectIdentity";
 import { selectProjectIcon, type ProjectIconName } from "../projectIconModel";
 import { projectIconColorClassName } from "../projectIconColors";
 import { cn } from "~/lib/utils";
@@ -100,6 +101,7 @@ export function ProjectFavicon(input: {
   projectName: string;
   faviconPath?: string | null | undefined;
   projectIcon?: ProjectIconOverride | null | undefined;
+  fallbackMode?: "automatic" | "monogram";
   className?: string | undefined;
   fallbackIcon?: ComponentType<{ className?: string }>;
 }) {
@@ -127,9 +129,11 @@ export function ProjectFavicon(input: {
       </span>
     );
   }
-  const automaticIconName = input.fallbackIcon
-    ? null
-    : selectProjectIcon(input.projectName, input.cwd);
+  const fallbackProjectName = input.fallbackMode === "monogram" ? input.projectName : undefined;
+  const automaticIconName =
+    input.fallbackIcon || fallbackProjectName
+      ? null
+      : selectProjectIcon(input.projectName, input.cwd);
   const FallbackIcon =
     input.fallbackIcon ??
     (automaticIconName?.kind === "lucide" ? PROJECT_ICONS[automaticIconName.icon] : undefined);
@@ -146,6 +150,7 @@ export function ProjectFavicon(input: {
         colorClassName={fallbackColorClassName}
         icon={FallbackIcon}
         emoji={fallbackEmoji}
+        projectName={fallbackProjectName}
       />
     );
   }
@@ -161,6 +166,7 @@ export function ProjectFavicon(input: {
       fallbackIcon={FallbackIcon}
       fallbackEmoji={fallbackEmoji}
       fallbackColorClassName={fallbackColorClassName}
+      fallbackProjectName={fallbackProjectName}
     />
   );
 }
@@ -182,12 +188,54 @@ function ProjectFaviconFallback({
   colorClassName,
   icon: Icon,
   emoji,
+  projectName,
 }: {
   readonly className?: string | undefined;
   readonly colorClassName?: string | undefined;
   readonly icon?: ComponentType<{ className?: string }> | undefined;
   readonly emoji?: string | undefined;
+  readonly projectName?: string | undefined;
 }) {
+  if (projectName && projectName.trim().length > 0) {
+    const identity = deriveProjectIdentity(projectName);
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        className={cn("size-4 shrink-0 overflow-hidden rounded-[25%] select-none", className)}
+        style={{
+          backgroundColor: identity.background,
+          backgroundImage: `linear-gradient(145deg, ${identity.highlight}, ${identity.background} 72%)`,
+        }}
+      >
+        <text
+          x="8"
+          y="8.1"
+          dominantBaseline="central"
+          textAnchor="middle"
+          fill="white"
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+          fontSize="9.25"
+          fontWeight="800"
+          letterSpacing="0.3"
+          textRendering="geometricPrecision"
+        >
+          {identity.monogram}
+        </text>
+        <rect
+          x="0.5"
+          y="0.5"
+          width="15"
+          height="15"
+          rx="3.5"
+          fill="none"
+          strokeWidth="1"
+          className="stroke-black/10 dark:stroke-white/10"
+        />
+      </svg>
+    );
+  }
+
   if (emoji) {
     return (
       <span
@@ -213,6 +261,7 @@ function ProjectFaviconImage({
   fallbackIcon: FallbackIcon,
   fallbackEmoji,
   fallbackColorClassName,
+  fallbackProjectName,
 }: {
   readonly cacheKey: string;
   readonly src: string;
@@ -220,6 +269,7 @@ function ProjectFaviconImage({
   readonly fallbackIcon?: ComponentType<{ className?: string }> | undefined;
   readonly fallbackEmoji?: string | undefined;
   readonly fallbackColorClassName?: string | undefined;
+  readonly fallbackProjectName?: string | undefined;
 }) {
   const [displayedSrc, setDisplayedSrc] = useState<string | null>(
     () => loadedProjectFaviconSrcs.get(cacheKey) ?? null,
@@ -240,6 +290,7 @@ function ProjectFaviconImage({
           colorClassName={fallbackColorClassName}
           icon={FallbackIcon}
           emoji={fallbackEmoji}
+          projectName={fallbackProjectName}
         />
       ) : null}
       {displayedSrc ? (

@@ -1148,7 +1148,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                                 cwd={project.workspaceRoot}
                                 projectName={project.title}
                                 faviconPath={project.faviconPath}
-                                projectIcon={project.projectIcon}
+                                fallbackMode="monogram"
                                 className="mr-1.5 size-4"
                               />
                             ) : tab._tag === "NewTab" ? (
