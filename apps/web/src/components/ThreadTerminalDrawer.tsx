@@ -50,6 +50,7 @@ import {
   type GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
+import { TerminalInputWriter } from "~/terminal/inputWriter";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { isTerminalLinkActivation, isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
 import {
@@ -449,6 +450,30 @@ export function TerminalViewport({
 
     const setup = async (): Promise<(() => void) | null> => {
       const setupFont = terminalFontRef.current;
+      const inputWriter = new TerminalInputWriter({
+        send: async (data) => {
+          const result = await writeTerminal(data);
+          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+          const error = squashAtomCommandFailure(result);
+          const activeTerminal = terminalRef.current ?? setupTerminal;
+          if (activeTerminal) {
+            writeSystemMessage(
+              activeTerminal,
+              error instanceof Error ? error.message : "Terminal write failed",
+            );
+          }
+        },
+        onError: (cause) => {
+          const activeTerminal = terminalRef.current ?? setupTerminal;
+          if (activeTerminal) {
+            writeSystemMessage(
+              activeTerminal,
+              cause instanceof Error ? cause.message : "Terminal write failed",
+            );
+          }
+        },
+      });
+      setupCleanups.push(() => inputWriter.dispose());
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
         theme: terminalThemeFromApp(mount),
         font: terminalFontOptions(setupFont.family, setupFont.size),
@@ -666,19 +691,6 @@ export function TerminalViewport({
         }
       };
 
-      const sendTerminalInput = async (data: string, fallbackError: string) => {
-        const activeTerminal = terminalRef.current;
-        if (!activeTerminal) return;
-        const result = await writeTerminal(data);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            activeTerminal,
-            error instanceof Error ? error.message : fallbackError,
-          );
-        }
-      };
-
       function handleBeforeKey(event: KeyboardEvent): boolean {
         const currentKeybindings = keybindingsRef.current;
         const options = { context: { terminalFocus: true, terminalOpen: true } };
@@ -699,7 +711,7 @@ export function TerminalViewport({
         if (navigationData !== null) {
           event.preventDefault();
           event.stopPropagation();
-          void sendTerminalInput(navigationData, "Failed to move cursor");
+          inputWriter.write(navigationData);
           return false;
         }
 
@@ -707,14 +719,14 @@ export function TerminalViewport({
         if (deleteData !== null) {
           event.preventDefault();
           event.stopPropagation();
-          void sendTerminalInput(deleteData, "Failed to delete terminal input");
+          inputWriter.write(deleteData);
           return false;
         }
 
         if (!isTerminalClearShortcut(event)) return true;
         event.preventDefault();
         event.stopPropagation();
-        void sendTerminalInput("\u000c", "Failed to clear terminal");
+        inputWriter.write("\u000c");
         return false;
       }
 
@@ -758,15 +770,7 @@ export function TerminalViewport({
       }
 
       function handleData(data: string): void {
-        void (async () => {
-          const result = await writeTerminal(data);
-          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            terminal,
-            error instanceof Error ? error.message : "Terminal write failed",
-          );
-        })();
+        inputWriter.write(data);
       }
 
       function handleSelectionChange(): void {
