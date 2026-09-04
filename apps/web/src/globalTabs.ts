@@ -1,9 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import {
-  effectiveSettled,
-  effectiveSnoozed,
-  type ChangeRequestSettleSource,
-} from "@t3tools/client-runtime/state/thread-settled";
+import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import {
   EnvironmentId,
   ThreadId,
@@ -21,6 +17,7 @@ export type GlobalSettingsSection =
   | "appearance"
   | "keybindings"
   | "providers"
+  | "integrations"
   | "source-control"
   | "connections"
   | "archived"
@@ -60,9 +57,6 @@ export function resolveGlobalThreadTabLifecycle(
   thread: OrchestrationThreadShell,
   options: {
     readonly now: string;
-    readonly autoSettleAfterDays: number | null;
-    readonly autoSettleOnMerge: boolean;
-    readonly changeRequest: ChangeRequestSettleSource | null;
     readonly supportsSettlement: boolean;
     readonly supportsSnooze: boolean;
   },
@@ -71,14 +65,7 @@ export function resolveGlobalThreadTabLifecycle(
     thread.archivedAt === null &&
     options.supportsSnooze &&
     effectiveSnoozed(thread, { now: options.now });
-  const isSettled =
-    options.supportsSettlement &&
-    effectiveSettled(thread, {
-      now: options.now,
-      autoSettleAfterDays: options.autoSettleAfterDays,
-      autoSettleOnMerge: options.autoSettleOnMerge,
-      changeRequest: options.changeRequest,
-    });
+  const isSettled = options.supportsSettlement && thread.settledOverride === "settled";
   const isRequired =
     thread.archivedAt === null && !isSnoozed && (thread.pinnedAt != null || !isSettled);
   return {
@@ -158,6 +145,7 @@ const PersistedGlobalTab = Schema.Union([
       "appearance",
       "keybindings",
       "providers",
+      "integrations",
       "source-control",
       "connections",
       "archived",

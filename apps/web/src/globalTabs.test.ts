@@ -130,9 +130,6 @@ describe("global tabs", () => {
     expect(
       resolveGlobalThreadTabLifecycle(threadShell({ activityAt: "2026-08-13T11:00:00.000Z" }), {
         now,
-        autoSettleAfterDays: 3,
-        autoSettleOnMerge: true,
-        changeRequest: null,
         supportsSettlement: true,
         supportsSnooze: true,
       }),
@@ -147,9 +144,6 @@ describe("global tabs", () => {
   it("makes settled, snoozed, and archived thread history directly closable", () => {
     const options = {
       now,
-      autoSettleAfterDays: 3,
-      autoSettleOnMerge: true,
-      changeRequest: null,
       supportsSettlement: true,
       supportsSnooze: true,
     } as const;
@@ -157,12 +151,6 @@ describe("global tabs", () => {
     expect(
       resolveGlobalThreadTabLifecycle(
         threadShell({ activityAt: "2026-08-13T11:00:00.000Z", settledOverride: "settled" }),
-        options,
-      ),
-    ).toEqual({ isRequired: false, isSettled: true, isSnoozed: false, closePolicy: "direct" });
-    expect(
-      resolveGlobalThreadTabLifecycle(
-        threadShell({ activityAt: "2026-08-09T11:00:00.000Z" }),
         options,
       ),
     ).toEqual({ isRequired: false, isSettled: true, isSnoozed: false, closePolicy: "direct" });
@@ -186,21 +174,18 @@ describe("global tabs", () => {
     ).toEqual({ isRequired: false, isSettled: false, isSnoozed: false, closePolicy: "direct" });
   });
 
-  it("matches sidebar lifecycle rules for open and merged pull requests", () => {
-    const shell = threadShell({ activityAt: "2026-08-01T11:00:00.000Z" });
+  it("uses the server-materialized settlement state", () => {
     const options = {
       now,
-      autoSettleAfterDays: 3,
-      autoSettleOnMerge: true,
       supportsSettlement: true,
       supportsSnooze: true,
     } as const;
 
     expect(
-      resolveGlobalThreadTabLifecycle(shell, {
-        ...options,
-        changeRequest: { state: "open" },
-      }),
+      resolveGlobalThreadTabLifecycle(
+        threadShell({ activityAt: "2026-08-01T11:00:00.000Z" }),
+        options,
+      ),
     ).toEqual({
       isRequired: true,
       isSettled: false,
@@ -208,10 +193,13 @@ describe("global tabs", () => {
       closePolicy: "settle-first",
     });
     expect(
-      resolveGlobalThreadTabLifecycle(shell, {
-        ...options,
-        changeRequest: { state: "merged" },
-      }),
+      resolveGlobalThreadTabLifecycle(
+        threadShell({
+          activityAt: "2026-08-01T11:00:00.000Z",
+          settledOverride: "settled",
+        }),
+        options,
+      ),
     ).toEqual({ isRequired: false, isSettled: true, isSnoozed: false, closePolicy: "direct" });
   });
 
@@ -219,9 +207,6 @@ describe("global tabs", () => {
     expect(
       resolveGlobalThreadTabLifecycle(threadShell({ activityAt: "2026-08-13T11:00:00.000Z" }), {
         now,
-        autoSettleAfterDays: 3,
-        autoSettleOnMerge: true,
-        changeRequest: null,
         supportsSettlement: false,
         supportsSnooze: false,
       }),

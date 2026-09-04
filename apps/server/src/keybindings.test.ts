@@ -199,6 +199,7 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       assert.equal(defaultsByCommand.get("tab.peek"), "mod+e");
       assert.equal(defaultsByCommand.get("tab.jump.1"), undefined);
       assert.equal(defaultsByCommand.get("tab.jump.9"), undefined);
+      assert.equal(defaultsByCommand.get("thread.copyReference"), "mod+shift+c");
       assert.equal(defaultsByCommand.get("thread.settle"), "mod+shift+s");
       assert.equal(defaultsByCommand.get("thread.pin"), "mod+shift+p");
       assert.equal(defaultsByCommand.get("thread.jump.1"), "mod+1");
@@ -210,6 +211,7 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       assert.equal(defaultsByCommand.get("sidebar.toggle"), "mod+b");
       assert.equal(defaultsByCommand.get("rightPanel.toggle"), "mod+alt+b");
       assert.isFalse(defaultsByCommand.has("rightPanel.toggleMaximized"));
+      assert.equal(defaultsByCommand.get("rightPanel.close"), "mod+w");
       assert.equal(defaultsByCommand.get("terminal.splitVertical"), "mod+shift+d");
       assert.equal(defaultsByCommand.get("modelPicker.jump.1"), "mod+1");
       assert.equal(defaultsByCommand.get("modelPicker.jump.9"), "mod+9");

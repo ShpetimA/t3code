@@ -5,6 +5,7 @@ const SETTINGS_SECTION_BY_PATHNAME: Readonly<Record<string, GlobalSettingsSectio
   "/settings/appearance": "appearance",
   "/settings/keybindings": "keybindings",
   "/settings/providers": "providers",
+  "/settings/integrations": "integrations",
   "/settings/source-control": "source-control",
   "/settings/connections": "connections",
   "/settings/archived": "archived",

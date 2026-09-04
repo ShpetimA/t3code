@@ -9,10 +9,32 @@ describe("global tab routes", () => {
 
   it("maps every settings section onto the singleton settings identity", () => {
     expect(
-      resolveGlobalRouteTab({
-        pathname: "/settings/appearance",
-      }),
-    ).toEqual({ _tag: "Settings", section: "appearance" });
+      [
+        "general",
+        "appearance",
+        "keybindings",
+        "providers",
+        "integrations",
+        "source-control",
+        "connections",
+        "archived",
+        "diagnostics",
+      ].map((section) =>
+        resolveGlobalRouteTab({
+          pathname: `/settings/${section}`,
+        }),
+      ),
+    ).toEqual([
+      { _tag: "Settings", section: "general" },
+      { _tag: "Settings", section: "appearance" },
+      { _tag: "Settings", section: "keybindings" },
+      { _tag: "Settings", section: "providers" },
+      { _tag: "Settings", section: "integrations" },
+      { _tag: "Settings", section: "source-control" },
+      { _tag: "Settings", section: "connections" },
+      { _tag: "Settings", section: "archived" },
+      { _tag: "Settings", section: "diagnostics" },
+    ]);
   });
 
   it("maps usage onto its singleton identity", () => {
