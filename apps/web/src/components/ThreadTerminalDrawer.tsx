@@ -3,7 +3,10 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { type TerminalSessionState } from "@t3tools/client-runtime/state/terminal";
+import {
+  terminalBufferUpdateSince,
+  type TerminalSessionState,
+} from "@t3tools/client-runtime/state/terminal";
 import {
   Plus,
   Square,
@@ -449,6 +452,9 @@ export function TerminalViewport({
   const terminalVersion = terminalSession.version;
   const previousSessionRef = useRef({
     buffer: terminalBuffer,
+    bufferEpoch: terminalSession.bufferEpoch,
+    bufferStartOffset: terminalSession.bufferStartOffset,
+    bufferEndOffset: terminalSession.bufferEndOffset,
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
@@ -456,6 +462,9 @@ export function TerminalViewport({
   const latestSessionRef = useRef(previousSessionRef.current);
   latestSessionRef.current = {
     buffer: terminalBuffer,
+    bufferEpoch: terminalSession.bufferEpoch,
+    bufferStartOffset: terminalSession.bufferStartOffset,
+    bufferEndOffset: terminalSession.bufferEndOffset,
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
@@ -911,6 +920,9 @@ export function TerminalViewport({
     const terminal = terminalRef.current;
     const current = {
       buffer: terminalBuffer,
+      bufferEpoch: terminalSession.bufferEpoch,
+      bufferStartOffset: terminalSession.bufferStartOffset,
+      bufferEndOffset: terminalSession.bufferEndOffset,
       error: terminalError,
       status: terminalStatus,
       version: terminalVersion,
@@ -926,13 +938,11 @@ export function TerminalViewport({
       return;
     }
 
-    if (
-      current.buffer.length >= previous.buffer.length &&
-      current.buffer.startsWith(previous.buffer)
-    ) {
-      terminal.write(current.buffer.slice(previous.buffer.length));
-    } else {
-      writeTerminalBuffer(terminal, current.buffer);
+    const update = terminalBufferUpdateSince(previous, current);
+    if (update.type === "append") {
+      terminal.write(update.data);
+    } else if (update.type === "reset") {
+      writeTerminalBuffer(terminal, update.buffer);
     }
     terminal.clearSelection();
 
@@ -946,7 +956,16 @@ export function TerminalViewport({
       });
     }
     previousSessionRef.current = current;
-  }, [autoFocus, terminalBuffer, terminalError, terminalStatus, terminalVersion]);
+  }, [
+    autoFocus,
+    terminalBuffer,
+    terminalError,
+    terminalSession.bufferEndOffset,
+    terminalSession.bufferEpoch,
+    terminalSession.bufferStartOffset,
+    terminalStatus,
+    terminalVersion,
+  ]);
 
   useEffect(() => {
     if (!autoFocus) return;

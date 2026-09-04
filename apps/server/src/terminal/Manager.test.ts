@@ -1509,6 +1509,37 @@ it.layer(
     }),
   );
 
+  it.effect("advertises truecolor capabilities instead of inheriting the server terminal", () =>
+    Effect.gen(function* () {
+      const defaults = yield* createManager(5, {
+        env: {
+          TERM: "dumb",
+          COLORTERM: "",
+        },
+      });
+      yield* defaults.manager.open(openInput());
+      expect(defaults.ptyAdapter.spawnInputs[0]?.env).toMatchObject({
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+      });
+
+      const overridden = yield* createManager(5, { env: {} });
+      yield* overridden.manager.open(
+        openInput({
+          terminalId: "term-2",
+          env: {
+            TERM: "custom-term",
+            COLORTERM: "24bit",
+          },
+        }),
+      );
+      expect(overridden.ptyAdapter.spawnInputs[0]?.env).toMatchObject({
+        TERM: "custom-term",
+        COLORTERM: "24bit",
+      });
+    }),
+  );
+
   it.effect("strips AppImage runtime env from terminal sessions", () =>
     Effect.gen(function* () {
       const appDir = "/tmp/.mount_T3Codeabc123";

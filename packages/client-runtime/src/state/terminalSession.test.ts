@@ -8,6 +8,7 @@ import {
   combineTerminalSessionState,
   EMPTY_TERMINAL_BUFFER_STATE,
   selectRunningSubprocessTerminalIds,
+  terminalBufferUpdateSince,
 } from "./terminalSession.ts";
 
 const TARGET = {
@@ -127,6 +128,8 @@ describe("terminal session reducers", () => {
 
     expect(output).toMatchObject({
       buffer: "lo world",
+      bufferStartOffset: 3,
+      bufferEndOffset: 11,
       status: "running",
       error: null,
       version: 2,
@@ -183,5 +186,93 @@ describe("terminal session reducers", () => {
     );
 
     expect(state.buffer).toBe("🙂");
+    expect(state.bufferStartOffset).toBe(4);
+    expect(state.bufferEndOffset).toBe(8);
+  });
+
+  it("appends across a rolling retained-buffer window without resetting terminal state", () => {
+    const previous = applyTerminalAttachStreamEvent(
+      EMPTY_TERMINAL_BUFFER_STATE,
+      {
+        type: "output",
+        threadId: TARGET.threadId,
+        terminalId: TARGET.terminalId,
+        data: "abcdef",
+      },
+      6,
+    );
+    const current = applyTerminalAttachStreamEvent(
+      previous,
+      {
+        type: "output",
+        threadId: TARGET.threadId,
+        terminalId: TARGET.terminalId,
+        data: "ghi",
+      },
+      6,
+    );
+
+    expect(current.buffer).toBe("defghi");
+    expect(terminalBufferUpdateSince(previous, current)).toEqual({
+      type: "append",
+      data: "ghi",
+    });
+  });
+
+  it("uses byte offsets without splitting multibyte output while the window rolls", () => {
+    const previous = applyTerminalAttachStreamEvent(
+      EMPTY_TERMINAL_BUFFER_STATE,
+      {
+        type: "output",
+        threadId: TARGET.threadId,
+        terminalId: TARGET.terminalId,
+        data: "a🙂",
+      },
+      5,
+    );
+    const current = applyTerminalAttachStreamEvent(
+      previous,
+      {
+        type: "output",
+        threadId: TARGET.threadId,
+        terminalId: TARGET.terminalId,
+        data: "界",
+      },
+      7,
+    );
+
+    expect(current.buffer).toBe("🙂界");
+    expect(terminalBufferUpdateSince(previous, current)).toEqual({
+      type: "append",
+      data: "界",
+    });
+  });
+
+  it("resets replay when the consumer falls behind the retained-buffer window", () => {
+    const previous = applyTerminalAttachStreamEvent(
+      EMPTY_TERMINAL_BUFFER_STATE,
+      {
+        type: "output",
+        threadId: TARGET.threadId,
+        terminalId: TARGET.terminalId,
+        data: "abc",
+      },
+      3,
+    );
+    const current = applyTerminalAttachStreamEvent(
+      previous,
+      {
+        type: "output",
+        threadId: TARGET.threadId,
+        terminalId: TARGET.terminalId,
+        data: "defghi",
+      },
+      3,
+    );
+
+    expect(terminalBufferUpdateSince(previous, current)).toEqual({
+      type: "reset",
+      buffer: "ghi",
+    });
   });
 });

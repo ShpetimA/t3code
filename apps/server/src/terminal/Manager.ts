@@ -81,6 +81,8 @@ const DEFAULT_PROCESS_KILL_GRACE_MS = 1_000;
 const DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS = 128;
 const DEFAULT_OPEN_COLS = 120;
 const DEFAULT_OPEN_ROWS = 30;
+const DEFAULT_TERMINAL_TYPE = "xterm-256color";
+const DEFAULT_COLOR_TERMINAL_TYPE = "truecolor";
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const MAX_TERMINAL_LABEL_LENGTH = 128;
@@ -1091,6 +1093,11 @@ function createTerminalSpawnEnv(
     if (shouldExcludeTerminalEnvKey(key)) continue;
     spawnEnv[key] = value;
   }
+  // These describe the emulator connected to the PTY, not the terminal that
+  // happened to launch the T3 server. Runtime overrides remain available for
+  // deliberately constrained project scripts.
+  spawnEnv.TERM = DEFAULT_TERMINAL_TYPE;
+  spawnEnv.COLORTERM = DEFAULT_COLOR_TERMINAL_TYPE;
   if (runtimeEnv) {
     for (const [key, value] of Object.entries(runtimeEnv)) {
       spawnEnv[key] = value;

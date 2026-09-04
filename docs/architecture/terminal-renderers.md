@@ -4,6 +4,11 @@ Terminal sessions remain server-owned PTYs. Clients receive the existing raw byt
 input and resize events over the existing terminal contracts; renderer choices never cross the
 wire.
 
+The server advertises the portable `xterm-256color` terminfo entry together with
+`COLORTERM=truecolor`. These values describe the T3 renderer and replace whatever terminal
+environment happened to launch the server; an explicit per-session runtime environment can still
+override them.
+
 ## Ghostty alignment
 
 Android and web use the official `libghostty-vt` C ABI for parsing, terminal state, grapheme
@@ -25,6 +30,9 @@ The web runtime is singleton-scoped per browser tab so split terminals share one
 and memory. Each visible terminal owns and frees its own terminal, render state, row iterator, cell
 iterator, key and mouse encoder, and input event handles. Restoring captured scrollback temporarily
 detaches the PTY callback so historical device queries cannot emit replies into the current shell.
+The client runtime tags its bounded transcript window with byte offsets. A live surface uses those
+offsets to append output after the retained window rolls forward instead of resetting Ghostty and
+replaying a truncated VT stream.
 
 ## Updating Ghostty
 

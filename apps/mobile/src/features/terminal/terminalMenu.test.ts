@@ -56,6 +56,9 @@ function makeKnownSession(input: {
           }
         : null,
       buffer: "",
+      bufferEpoch: 1,
+      bufferStartOffset: 0,
+      bufferEndOffset: 0,
       status: input.status,
       error: null,
       hasRunningSubprocess: false,
