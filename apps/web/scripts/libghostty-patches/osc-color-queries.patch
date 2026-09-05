@@ -1,0 +1,61 @@
+diff --git a/src/terminal/stream_terminal.zig b/src/terminal/stream_terminal.zig
+index e3d42c5..6f433cb 100644
+--- a/src/terminal/stream_terminal.zig
++++ b/src/terminal/stream_terminal.zig
+@@ -256,7 +256,7 @@ pub const Handler = struct {
+             .end_hyperlink => self.terminal.screens.active.endHyperlink(),
+             .semantic_prompt => try self.terminal.semanticPrompt(value),
+             .mouse_shape => self.terminal.mouse_shape = value,
+-            .color_operation => try self.colorOperation(value.op, &value.requests),
++            .color_operation => try self.colorOperation(value.op, &value.requests, value.terminator.string()),
+             .kitty_color_report => try self.kittyColorOperation(value),
+ 
+             // APC
+@@ -598,6 +598,7 @@ pub const Handler = struct {
+         self: *Handler,
+         op: osc_color.Operation,
+         requests: *const osc_color.List,
++        terminator: []const u8,
+     ) !void {
+         _ = op;
+         if (requests.count() == 0) return;
+@@ -659,9 +660,36 @@ pub const Handler = struct {
+                     mask.* = .initEmpty();
+                 },
+ 
+-                .query,
+-                .reset_special,
+-                => {},
++                .query => |target| report: {
++                    if (self.effects.write_pty == null) break :report;
++                    const color = switch (target) {
++                        .palette => |i| self.terminal.colors.palette.current[i],
++                        .dynamic => |dynamic| switch (dynamic) {
++                            .foreground => self.terminal.colors.foreground.get() orelse break :report,
++                            .background => self.terminal.colors.background.get() orelse break :report,
++                            .cursor => self.terminal.colors.cursor.get() orelse
++                                self.terminal.colors.foreground.get() orelse break :report,
++                            else => break :report,
++                        },
++                        .special => break :report,
++                    };
++                    var buf: [64]u8 = undefined;
++                    const response = switch (target) {
++                        .palette => |i| try std.fmt.bufPrintZ(
++                            &buf,
++                            "\x1b]4;{d};rgb:{x:0>4}/{x:0>4}/{x:0>4}{s}",
++                            .{ i, @as(u16, color.r) * 257, @as(u16, color.g) * 257, @as(u16, color.b) * 257, terminator },
++                        ),
++                        .dynamic => |dynamic| try std.fmt.bufPrintZ(
++                            &buf,
++                            "\x1b]{d};rgb:{x:0>4}/{x:0>4}/{x:0>4}{s}",
++                            .{ @intFromEnum(dynamic), @as(u16, color.r) * 257, @as(u16, color.g) * 257, @as(u16, color.b) * 257, terminator },
++                        ),
++                        .special => unreachable,
++                    };
++                    self.writePty(response);
++                },
++                .reset_special => {},
+             }
+         }
+     }

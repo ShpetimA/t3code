@@ -7,6 +7,7 @@ WEB_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${WEB_DIR}/../.." && pwd)"
 CANONICAL_VENDOR_DIR="${REPO_DIR}/native/libghostty-vt"
 VENDOR_DIR="${WEB_DIR}/src/terminal/ghostty/vendor"
+PATCH_DIR="${SCRIPT_DIR}/libghostty-patches"
 
 GHOSTTY_REVISION="$(tr -d '[:space:]' < "${CANONICAL_VENDOR_DIR}/VERSION")"
 GHOSTTY_SOURCE_DIR="${GHOSTTY_SOURCE_DIR:-${HOME}/.cache/t3code/ghostty-${GHOSTTY_REVISION:0:8}}"
@@ -89,8 +90,22 @@ ensure_ghostty_source() {
     die "expected Ghostty ${GHOSTTY_REVISION}, found ${actual_revision}"
 }
 
+apply_ghostty_patches() {
+  local patch_file
+  for patch_file in "${PATCH_DIR}"/*.patch; do
+    [[ -e "${patch_file}" ]] || continue
+    if git -C "${GHOSTTY_SOURCE_DIR}" apply --reverse --check "${patch_file}" >/dev/null 2>&1; then
+      continue
+    fi
+    log "applying patch: $(basename "${patch_file}")"
+    git -C "${GHOSTTY_SOURCE_DIR}" apply --check "${patch_file}"
+    git -C "${GHOSTTY_SOURCE_DIR}" apply "${patch_file}"
+  done
+}
+
 ensure_zig
 ensure_ghostty_source
+apply_ghostty_patches
 
 build_root="$(mktemp -d)"
 trap 'rm -rf "${build_root}"' EXIT

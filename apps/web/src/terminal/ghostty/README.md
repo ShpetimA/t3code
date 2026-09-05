@@ -14,6 +14,11 @@ It is intentionally not an xterm compatibility layer.
   `apps/web/scripts/build-libghostty-wasm.sh`. The upstream pin and license live once, at
   `native/libghostty-vt/` at the repository root; the wasm embeds the pinned revision
   in its build info and the ABI test verifies it against mobile's `VERSION`.
+  The web build applies `apps/web/scripts/libghostty-patches/osc-color-queries.patch`
+  because the pinned upstream stream handler ignores OSC color queries. The patch
+  replies through Ghostty's existing PTY callback using the current theme and palette;
+  without it, color detection in tools such as `vp` waits for another keystroke.
+  ABI tests cover the replies, fragmented queries, and callback suppression during replay.
 
 Keep browser behavior here and terminal transport in the existing client runtime. Do not add React
 state to the render loop. Both WASM artifacts are ordinary read-only assets, not executables.
