@@ -1,11 +1,10 @@
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
   terminalBufferUpdateSince,
-  type TerminalBufferState,
   type TerminalSessionState,
 } from "@t3tools/client-runtime/state/terminal";
 import {
@@ -24,14 +23,11 @@ import {
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
-import * as Option from "effect/Option";
-import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
   useCallback,
-  useContext,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -355,7 +351,6 @@ export function TerminalViewport({
     }),
   );
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
-  const registry = useContext(RegistryContext);
   const terminalAttachInput = useMemo(
     () => ({
       threadId,
@@ -366,14 +361,8 @@ export function TerminalViewport({
     }),
     [cwd, runtimeEnv, terminalId, threadId, worktreePath],
   );
-  const terminalAttachAtom = useMemo(
-    () =>
-      terminalEnvironment.attach({
-        environmentId,
-        input: terminalAttachInput,
-      }),
-    [environmentId, terminalAttachInput],
-  );
+  // Surface identity follows attach values, not the caller's object identity.
+  const terminalAttachKey = JSON.stringify([environmentId, terminalAttachInput]);
   const terminalSession = useAttachedTerminalSession({
     environmentId,
     terminal: terminalAttachInput,
@@ -390,8 +379,6 @@ export function TerminalViewport({
       input: { threadId, terminalId, cols, rows },
     }),
   );
-  const terminalError = terminalSession.error;
-  const terminalStatus = terminalSession.status;
   const synchronizedStatusRef = useRef<TerminalSessionState["status"]>("closed");
   const synchronizeTerminalStatus = useEffectEvent(
     (terminal: GhosttyTerminalSurface, status: TerminalSessionState["status"]) => {
@@ -410,22 +397,9 @@ export function TerminalViewport({
       synchronizedStatusRef.current = status;
     },
   );
-  const terminalVersion = terminalSession.version;
   const readLatestSession = useEffectEvent(() => terminalSession);
   const shouldAutoFocus = useEffectEvent(() => autoFocus);
-  const previousSessionRef = useRef({
-    error: terminalError,
-    status: terminalStatus,
-    version: terminalVersion,
-  });
-  const renderedBufferRef = useRef<
-    Pick<TerminalBufferState, "bufferEpoch" | "bufferStartOffset" | "bufferEndOffset" | "version">
-  >({
-    bufferEpoch: terminalSession.bufferEpoch,
-    bufferStartOffset: terminalSession.bufferStartOffset,
-    bufferEndOffset: terminalSession.bufferEndOffset,
-    version: terminalVersion,
-  });
+  const previousSessionRef = useRef(terminalSession);
   useEffect(() => {
     keybindingsRef.current = keybindings;
   }, [keybindings]);
@@ -483,12 +457,7 @@ export function TerminalViewport({
         void terminal.setFont(terminalFontOptions(currentFont.family, currentFont.size));
       }
       const latestSession = readLatestSession();
-      previousSessionRef.current = {
-        error: latestSession.error,
-        status: latestSession.status,
-        version: latestSession.version,
-      };
-      renderedBufferRef.current = latestSession;
+      previousSessionRef.current = latestSession;
       if (latestSession.buffer.length > 0) terminal.resetAndWrite(latestSession.buffer);
       if (latestSession.error !== null) writeSystemMessage(terminal, latestSession.error);
       // Attaching to a session that already exited must still run exit handling
@@ -498,29 +467,6 @@ export function TerminalViewport({
       synchronizedStatusRef.current = "closed";
       synchronizeTerminalStatus(terminal, latestSession.status);
       if (shouldAutoFocus()) window.requestAnimationFrame(() => terminal.focus());
-
-      // Terminal output is latency-sensitive and can arrive while React is
-      // rendering unrelated UI. Apply attach-stream updates from the atom
-      // registry directly so a completed command never waits for another
-      // browser interaction before Ghostty paints it.
-      const unsubscribeOutput = registry.subscribe(
-        terminalAttachAtom,
-        (result) => {
-          const next = Option.getOrNull(AsyncResult.value(result));
-          if (next === null || terminalRef.current !== terminal) return;
-          const update = terminalBufferUpdateSince(renderedBufferRef.current, next);
-          renderedBufferRef.current = next;
-          if (update.type === "append") {
-            terminal.write(update.data);
-            terminal.clearSelection();
-          } else if (update.type === "reset") {
-            writeTerminalBuffer(terminal, update.buffer);
-            terminal.clearSelection();
-          }
-        },
-        { immediate: true },
-      );
-      setupCleanups.push(unsubscribeOutput);
 
       const dismissSelectionAction = (supersede = false) => {
         const ownsMenu =
@@ -876,15 +822,11 @@ export function TerminalViewport({
       cancelled = true;
       teardown?.();
     };
-  }, [cwd, registry, terminalAttachAtom, terminalId]);
+  }, [cwd, terminalAttachKey, terminalId]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
-    const current = {
-      error: terminalError,
-      status: terminalStatus,
-      version: terminalVersion,
-    };
+    const current = terminalSession;
     if (!terminal) {
       previousSessionRef.current = current;
       return;
@@ -892,21 +834,26 @@ export function TerminalViewport({
 
     const previous = previousSessionRef.current;
     synchronizeTerminalStatus(terminal, current.status);
-    if (current.version === previous.version) {
-      return;
+    const update = terminalBufferUpdateSince(previous, current);
+    if (update.type === "append") {
+      terminal.write(update.data);
+      terminal.clearSelection();
+    } else if (update.type === "reset") {
+      writeTerminalBuffer(terminal, update.buffer);
+      terminal.clearSelection();
     }
 
     if (current.error !== null && current.error !== previous.error) {
       writeSystemMessage(terminal, current.error);
     }
 
-    if (previous.version === 0 && autoFocus) {
+    if (previous.version === 0 && current.version !== 0 && autoFocus) {
       window.requestAnimationFrame(() => {
         terminal.focus();
       });
     }
     previousSessionRef.current = current;
-  }, [autoFocus, terminalError, terminalStatus, terminalVersion]);
+  }, [autoFocus, terminalSession]);
 
   useEffect(() => {
     if (!autoFocus) return;
