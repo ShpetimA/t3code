@@ -641,7 +641,7 @@ export function TerminalViewport({
         }
       };
 
-      const sendTerminalInput = async (data: string, fallbackError: string) => {
+      async function sendTerminalInput(data: string, fallbackError: string): Promise<void> {
         const activeTerminal = terminalRef.current;
         if (!activeTerminal) return;
         const result = await writeTerminal(data);
@@ -652,7 +652,7 @@ export function TerminalViewport({
             error instanceof Error ? error.message : fallbackError,
           );
         }
-      };
+      }
 
       function handleBeforeKey(event: KeyboardEvent): boolean {
         const currentKeybindings = keybindingsRef.current;
@@ -733,15 +733,7 @@ export function TerminalViewport({
       }
 
       function handleData(data: string): void {
-        void (async () => {
-          const result = await writeTerminal(data);
-          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            terminal,
-            error instanceof Error ? error.message : "Terminal write failed",
-          );
-        })();
+        void sendTerminalInput(data, "Terminal write failed");
       }
 
       function handleSelectionChange(): void {
