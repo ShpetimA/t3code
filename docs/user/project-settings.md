@@ -8,6 +8,10 @@ Choose an icon, emoji, or image from the project to make it easier to recognize.
 to every checkout in the project group and appears on connected clients. Choose **Automatic** to
 let T3 Code detect an icon again.
 
+When no image is found, web and desktop show a two-character monogram with colors
+derived from the saved project name. For example, `T3 Code` becomes `T3`,
+`Open Warden` becomes `OW`, and `Hermes` becomes `HS`.
+
 ## Keep the default branch current
 
 Enable **Automatically pull** to keep the default-branch checkout up to date with its configured
