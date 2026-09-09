@@ -446,14 +446,7 @@ function SnoozedThreadsIndicator(props: {
                     className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-1 pl-3 text-left outline-none transition-[background-color,color] duration-150 ease-out hover:bg-accent/70 focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     {project ? (
-                      <ProjectFavicon
-                        environmentId={project.environmentId}
-                        cwd={project.workspaceRoot}
-                        projectName={project.title}
-                        faviconPath={project.faviconPath}
-                        projectIcon={project.projectIcon}
-                        className="size-4 shrink-0"
-                      />
+                      <ProjectFavicon project={project} className="size-4 shrink-0" />
                     ) : (
                       <AlarmClockIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
@@ -1143,13 +1136,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                             onClick={() => void navigateToGlobalTab(navigate, tab)}
                           >
                             {project ? (
-                              <ProjectFavicon
-                                environmentId={project.environmentId}
-                                cwd={project.workspaceRoot}
-                                projectName={project.title}
-                                faviconPath={project.faviconPath}
-                                className="mr-1.5 size-4"
-                              />
+                              <ProjectFavicon project={project} className="mr-1.5 size-4" />
                             ) : tab._tag === "NewTab" ? (
                               <PlusIcon className="mr-1.5 size-3.5 shrink-0" />
                             ) : tab._tag === "Settings" ? (
@@ -1267,11 +1254,7 @@ export function GlobalTabs({ activeTab }: GlobalTabsProps) {
                         {project ? (
                           <div className="flex min-w-0 items-center gap-2">
                             <ProjectFavicon
-                              environmentId={project.environmentId}
-                              cwd={project.workspaceRoot}
-                              projectName={project.title}
-                              faviconPath={project.faviconPath}
-                              projectIcon={project.projectIcon}
+                              project={project}
                               className="size-3 shrink-0 stroke-muted-foreground"
                             />
                             <div className="min-w-0 truncate text-foreground/75">

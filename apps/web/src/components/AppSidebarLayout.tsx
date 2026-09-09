@@ -16,7 +16,11 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
-import { usePanelAnimationSettings } from "../panelAnimations";
+import {
+  PanelAnimationSuppressionProvider,
+  usePanelAnimationSettings,
+  usePanelNavigationSuppression,
+} from "../panelAnimations";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
@@ -174,6 +178,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     }
     return resolveGlobalRouteTab({ pathname });
   }, [pathname, routeDraftSession, routeTarget]);
+  const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
+  const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const settingsSidebarBelowTabs = globalThreadTabsEnabled && isOnSettings;
   const showSidebar = settingsSidebarBelowTabs || !globalThreadTabsEnabled;
@@ -278,30 +284,32 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   ) : null;
 
   return (
-    <SidebarProvider
-      className={cn("h-dvh! min-h-0!", showGlobalTabs && "flex-col")}
-      data-global-tabs-layout={showGlobalTabs ? "" : undefined}
-      data-panel-animations={panelAnimationsActive ? "true" : "false"}
-      defaultOpen
-      style={sidebarProviderStyle}
-      {...(settingsSidebarBelowTabs ? { open: true } : {})}
-    >
-      <ProjectProjectionRetention />
-      {showGlobalTabs ? (
-        <>
-          <GlobalTabs activeTab={activeGlobalTab} />
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+    <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
+      <SidebarProvider
+        className={cn("h-dvh! min-h-0!", showGlobalTabs && "flex-col")}
+        data-global-tabs-layout={showGlobalTabs ? "" : undefined}
+        data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
+        defaultOpen
+        style={sidebarProviderStyle}
+        {...(settingsSidebarBelowTabs ? { open: true } : {})}
+      >
+        <ProjectProjectionRetention />
+        {showGlobalTabs ? (
+          <>
+            <GlobalTabs activeTab={activeGlobalTab} />
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              {sidebar}
+              {children}
+            </div>
+          </>
+        ) : (
+          <>
             {sidebar}
             {children}
-          </div>
-        </>
-      ) : (
-        <>
-          {sidebar}
-          {children}
-        </>
-      )}
-      {showSidebar && !settingsSidebarBelowTabs ? <SidebarControl /> : null}
-    </SidebarProvider>
+          </>
+        )}
+        {showSidebar && !settingsSidebarBelowTabs ? <SidebarControl /> : null}
+      </SidebarProvider>
+    </PanelAnimationSuppressionProvider>
   );
 }

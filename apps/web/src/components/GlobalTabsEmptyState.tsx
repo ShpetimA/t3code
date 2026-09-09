@@ -60,13 +60,7 @@ function RecentProjectGroup(props: {
   return (
     <div>
       <div className="flex h-8 items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
-        <ProjectFavicon
-          environmentId={project.environmentId}
-          cwd={project.workspaceRoot}
-          projectName={project.title}
-          faviconPath={project.faviconPath}
-          className="size-4"
-        />
+        <ProjectFavicon project={project} className="size-4" />
         <span className="truncate">{project.title}</span>
       </div>
       <div className="ml-3 border-l border-border/55 pl-3">
