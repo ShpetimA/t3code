@@ -106,6 +106,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --desktop-window-right-resize-inset: 0px;
   --workspace-topbar-height: 52px;
   --workspace-controls-top: 0px;
+  --workspace-fixed-controls-top: var(--workspace-controls-top);
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
   --workspace-native-controls-inset: 0px;
@@ -572,6 +573,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @layer components {
+  /* Fixed controls need the tab bar's viewport offset; route-local absolute controls do not. */
+  [data-global-tabs-layout] {
+    --workspace-fixed-controls-top: calc(
+      var(--workspace-controls-top) + var(--workspace-topbar-height)
+    );
+  }
+
   /* Route components declare standalone viewport behavior; the tab shell owns it in tabs mode. */
   [data-global-tabs-layout] [data-workspace-route-inset] {
     height: 100% !important;
