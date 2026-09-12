@@ -848,6 +848,7 @@ describe("rightPanelStore", () => {
   it("toggle hides the panel without discarding the active surface", () => {
     useRightPanelStore.getState().toggle(refA, "diff");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
+    splitSurfaceIntoSoleTabPane("diff");
     useRightPanelStore.getState().toggle(refA, "diff");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
@@ -855,6 +856,10 @@ describe("rightPanelStore", () => {
       activeSurfaceId: "diff",
       surfaces: [{ id: "diff", kind: "diff" }],
     });
+    expect(
+      selectThreadWorkspaceLayout(useThreadWorkspaceLayoutStore.getState().byThreadKey, refA)
+        .rightSidebarVisibility,
+    ).toBe("closed");
   });
 
   it("toggle to a different kind switches active", () => {

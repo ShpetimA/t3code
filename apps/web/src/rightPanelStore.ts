@@ -956,6 +956,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return upsertSurface(current, singletonSurface(kind));
           }),
         );
+        const panel = selectThreadRightPanelState(get().byThreadKey, ref);
+        if (!panel.isOpen) {
+          transitionThreadWorkspaceLayout(ref, {
+            _tag: "SetRightSidebarVisibility",
+            visibility: "closed",
+          });
+          return;
+        }
         revealThreadWorkspaceSurface(ref);
       },
       removeThread: (ref) =>

@@ -15,6 +15,7 @@ import {
   type ReactNode,
   type RefObject,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -655,6 +656,15 @@ function PaneSplitHandle(props: {
     document.body.style.removeProperty("user-select");
     dragStateRef.current = null;
   }, []);
+
+  useEffect(
+    () => () => {
+      const dragState = dragStateRef.current;
+
+      if (dragState) releasePointer(dragState.pointerId);
+    },
+    [releasePointer],
+  );
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {

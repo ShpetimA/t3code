@@ -380,6 +380,7 @@ export function TerminalViewport({
   // cannot be mistaken for the active flow.
   const openSelectionMenuRequestIdRef = useRef<number | null>(null);
   const keybindingsRef = useRef(keybindings);
+  const workspaceShortcutsEnabledRef = useRef(workspaceShortcutsEnabled);
   const runtimeEnvKey = useMemo(() => runtimeEnvSignature(runtimeEnv), [runtimeEnv]);
   const handleSessionExited = useEffectEvent(() => {
     onSessionExited();
@@ -467,6 +468,10 @@ export function TerminalViewport({
   useEffect(() => {
     keybindingsRef.current = keybindings;
   }, [keybindings]);
+
+  useEffect(() => {
+    workspaceShortcutsEnabledRef.current = workspaceShortcutsEnabled;
+  }, [workspaceShortcutsEnabled]);
 
   useLayoutEffect(() => {
     visibleRef.current = visible;
@@ -757,7 +762,7 @@ export function TerminalViewport({
           isTerminalSplitVerticalShortcut(event, currentKeybindings, options) ||
           isTerminalNewShortcut(event, currentKeybindings, options) ||
           isDiffToggleShortcut(event, currentKeybindings, options) ||
-          (workspaceShortcutsEnabled &&
+          (workspaceShortcutsEnabledRef.current &&
             isWorkspaceShortcutReleasedFromTerminal(event, currentKeybindings, options))
         ) {
           return false;

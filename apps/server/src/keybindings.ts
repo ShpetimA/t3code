@@ -119,9 +119,15 @@ function migrateChangedDefaultKeybindings(config: readonly KeybindingRule[]): {
   readonly changed: boolean;
 } {
   let changed = false;
+  const destinationOccupied = config.some(
+    (rule) =>
+      !isSameKeybindingRule(rule, CURRENT_PREVIEW_TOGGLE_DEFAULT) &&
+      hasSameShortcutContext(rule, CURRENT_PREVIEW_TOGGLE_DEFAULT),
+  );
 
   const keybindings = config.map((rule) => {
     if (!isSameKeybindingRule(rule, LEGACY_PREVIEW_TOGGLE_DEFAULT)) return rule;
+    if (destinationOccupied) return rule;
     changed = true;
     return CURRENT_PREVIEW_TOGGLE_DEFAULT;
   });
