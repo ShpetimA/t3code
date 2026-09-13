@@ -36,7 +36,7 @@ export interface PaneTree {
   readonly maximizedPaneId: PaneId | null;
 }
 
-export interface SplitPaneTabInput {
+interface SplitPaneTabInput {
   readonly sourcePaneId: PaneId;
   readonly sourceTabId: PaneTabId;
   readonly targetTabId: PaneTabId;
@@ -46,7 +46,7 @@ export interface SplitPaneTabInput {
   readonly mode: "copy" | "move";
 }
 
-export interface SplitPaneInput {
+interface SplitPaneInput {
   readonly sourcePaneId: PaneId;
   readonly targetPaneId: PaneId;
   readonly splitId: PaneSplitId;
@@ -54,7 +54,7 @@ export interface SplitPaneInput {
 }
 
 /** Moves one tab from its current pane into an existing group. */
-export interface MovePaneTabInput {
+interface MovePaneTabInput {
   readonly sourcePaneId: PaneId;
   readonly targetPaneId: PaneId;
   readonly tabId: PaneTabId;
@@ -62,7 +62,7 @@ export interface MovePaneTabInput {
 }
 
 /** Moves one tab into a new split positioned around an existing target group. */
-export interface MoveTabToPaneSplitInput extends PaneTabDragData {
+interface MoveTabToPaneSplitInput extends PaneTabDragData {
   readonly targetPaneId: PaneId;
   readonly newPaneId: PaneId;
   readonly splitId: PaneSplitId;
@@ -84,23 +84,42 @@ export interface PaneBounds {
   readonly left: number;
 }
 
-export interface SplitPaneLayout {
+interface SplitPaneLayout {
   readonly group: PaneNode;
   readonly bounds: PaneBounds;
 }
 
-export interface PaneSplitLayout {
+interface PaneSplitLayout {
   readonly split: PaneSplitNode;
   readonly bounds: PaneBounds;
 }
 
-export interface PaneTreeLayout {
+interface PaneTreeLayout {
   readonly groups: readonly SplitPaneLayout[];
   readonly splits: readonly PaneSplitLayout[];
 }
 
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
+
+function createPaneSplitNode(input: {
+  readonly id: PaneSplitId;
+  readonly direction: PaneSplitDirection;
+  readonly existing: PaneTreeNode;
+  readonly inserted: PaneTreeNode;
+}): PaneSplitNode {
+  const insertedFirst = input.direction === "left" || input.direction === "up";
+
+  return {
+    _tag: "Split",
+    id: input.id,
+    orientation:
+      input.direction === "left" || input.direction === "right" ? "horizontal" : "vertical",
+    ratio: 0.5,
+    first: insertedFirst ? input.inserted : input.existing,
+    second: insertedFirst ? input.existing : input.inserted,
+  };
+}
 
 export function clampPaneSplitRatio(ratio: number): number | null {
   if (!Number.isFinite(ratio)) return null;
@@ -345,16 +364,12 @@ export function moveTabToPaneSplit(tree: PaneTree, input: MoveTabToPaneSplitInpu
     tabIds: [input.sourceTabId],
     activeTabId: input.sourceTabId,
   };
-  const movedGroupFirst = input.direction === "left" || input.direction === "up";
-  const split: PaneSplitNode = {
-    _tag: "Split",
+  const split = createPaneSplitNode({
     id: input.splitId,
-    orientation:
-      input.direction === "left" || input.direction === "right" ? "horizontal" : "vertical",
-    ratio: 0.5,
-    first: movedGroupFirst ? movedGroup : targetAfterMove,
-    second: movedGroupFirst ? targetAfterMove : movedGroup,
-  };
+    direction: input.direction,
+    existing: targetAfterMove,
+    inserted: movedGroup,
+  });
   root = replacePane(root, targetAfterMove.id, split);
   return {
     root,
@@ -394,16 +409,12 @@ export function splitPane(tree: PaneTree, input: SplitPaneInput): PaneTree {
     tabIds: [],
     activeTabId: null,
   };
-  const newGroupFirst = input.direction === "left" || input.direction === "up";
-  const split: PaneSplitNode = {
-    _tag: "Split",
+  const split = createPaneSplitNode({
     id: input.splitId,
-    orientation:
-      input.direction === "left" || input.direction === "right" ? "horizontal" : "vertical",
-    ratio: 0.5,
-    first: newGroupFirst ? targetGroup : sourceGroup,
-    second: newGroupFirst ? sourceGroup : targetGroup,
-  };
+    direction: input.direction,
+    existing: sourceGroup,
+    inserted: targetGroup,
+  });
   const root = replacePane(tree.root, input.sourcePaneId, split);
 
   return root === tree.root ? tree : { root, focusedPaneId: targetGroup.id, maximizedPaneId: null };
@@ -424,16 +435,12 @@ export function splitPaneTab(tree: PaneTree, input: SplitPaneTabInput): PaneTree
     tabIds: [input.targetTabId],
     activeTabId: input.targetTabId,
   };
-  const newGroupFirst = input.direction === "left" || input.direction === "up";
-  const split: PaneSplitNode = {
-    _tag: "Split",
+  const split = createPaneSplitNode({
     id: input.splitId,
-    orientation:
-      input.direction === "left" || input.direction === "right" ? "horizontal" : "vertical",
-    ratio: 0.5,
-    first: newGroupFirst ? targetGroup : sourceAfterMove,
-    second: newGroupFirst ? sourceAfterMove : targetGroup,
-  };
+    direction: input.direction,
+    existing: sourceAfterMove,
+    inserted: targetGroup,
+  });
   const root = replacePane(tree.root, input.sourcePaneId, split);
 
   if (root === tree.root) return tree;

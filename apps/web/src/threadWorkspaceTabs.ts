@@ -188,13 +188,14 @@ export function threadWorkspaceTabBarDropTransition(
 ): ThreadWorkspaceLayoutTransition | null {
   const sourcePane = findPane(current.paneTree.root, input.draggedTab.sourcePaneId);
   const targetPane = findPane(current.paneTree.root, input.targetPaneId);
+  const { targetIndex } = input;
 
+  if (!sourcePane?.tabIds.includes(input.draggedTab.sourceTabId)) return null;
+  if (!targetPane) return null;
   if (
-    !sourcePane?.tabIds.includes(input.draggedTab.sourceTabId) ||
-    !targetPane ||
-    !Number.isSafeInteger(input.targetIndex) ||
-    input.targetIndex < 0 ||
-    input.targetIndex > targetPane.tabIds.length
+    !Number.isSafeInteger(targetIndex) ||
+    targetIndex < 0 ||
+    targetIndex > targetPane.tabIds.length
   ) {
     return null;
   }
@@ -204,13 +205,13 @@ export function threadWorkspaceTabBarDropTransition(
       sourcePaneId: sourcePane.id,
       targetPaneId: targetPane.id,
       tabId: input.draggedTab.sourceTabId,
-      targetIndex: input.targetIndex,
+      targetIndex,
     };
   }
 
   const sourceIndex = sourcePane.tabIds.indexOf(input.draggedTab.sourceTabId);
   const adjustedTargetIndex =
-    sourceIndex < input.targetIndex ? Math.max(0, input.targetIndex - 1) : input.targetIndex;
+    sourceIndex < targetIndex ? Math.max(0, targetIndex - 1) : targetIndex;
 
   return {
     _tag: "ReorderTab",
@@ -340,12 +341,6 @@ function reconcileThreadWorkspaceTabFields(
   return next;
 }
 
-function paneNodeContainsThreadTab(current: ThreadWorkspaceTabFields, node: PaneTreeNode): boolean {
-  return getPanes(node).some((pane) =>
-    pane.tabIds.some((tabId) => current.tabsById[tabId]?._tag === "Thread"),
-  );
-}
-
 /** The collapsible right-side subtree, when the layout has a conventional thread/sidebar split. */
 export function findThreadWorkspaceRightSidebar(
   current: ThreadWorkspaceTabFields,
@@ -353,8 +348,13 @@ export function findThreadWorkspaceRightSidebar(
   const root = current.paneTree.root;
 
   if (root._tag !== "Split" || root.orientation !== "horizontal") return null;
-  if (!paneNodeContainsThreadTab(current, root.first)) return null;
-  return paneNodeContainsThreadTab(current, root.second) ? null : root.second;
+  const containsThreadTab = (node: PaneTreeNode) =>
+    getPanes(node).some((pane) =>
+      pane.tabIds.some((tabId) => current.tabsById[tabId]?._tag === "Thread"),
+    );
+
+  if (!containsThreadTab(root.first)) return null;
+  return containsThreadTab(root.second) ? null : root.second;
 }
 
 /** Selects the pane tree rendered by the workspace without mutating the saved split layout. */
@@ -671,7 +671,9 @@ function moveThreadWorkspaceTabToPane(
   const equivalentTargetTabId = targetGroup.tabIds.find((tabId) => {
     const candidate = current.tabsById[tabId];
 
-    return candidate ? workspaceTabsShareContent(tab, candidate) : false;
+    if (!candidate) return false;
+    if (tab._tag === "Thread") return candidate._tag === "Thread";
+    return candidate._tag === "Surface" && candidate.surfaceId === tab.surfaceId;
   });
 
   if (equivalentTargetTabId) {
@@ -955,14 +957,6 @@ function withoutUnreferencedTabs(current: ThreadWorkspaceTabFields): ThreadWorks
   return Object.keys(tabsById).length === Object.keys(current.tabsById).length
     ? current
     : { ...current, tabsById };
-}
-
-function workspaceTabsShareContent(left: ThreadWorkspaceTab, right: ThreadWorkspaceTab): boolean {
-  if (left._tag === "Thread" || right._tag === "Thread") {
-    return left._tag === right._tag;
-  }
-
-  return left.surfaceId === right.surfaceId;
 }
 
 export function parsePersistedThreadWorkspaceTabs(input: unknown): {
