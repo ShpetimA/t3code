@@ -50,6 +50,7 @@ function makeThread(overrides: Partial<EnvironmentThreadShell> = {}): Environmen
     settledOverride: null,
     settledAt: null,
     session: null,
+    pullRequests: [],
     latestUserMessageAt: null,
     hasPendingApprovals: false,
     hasPendingUserInput: false,

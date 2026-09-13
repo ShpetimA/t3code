@@ -85,6 +85,7 @@ function threadShell(input: {
     pinOrderKey: null,
     titleRegeneration: null,
     session: null,
+    pullRequests: [],
     latestUserMessageAt: input.activityAt,
     hasPendingApprovals: false,
     hasPendingUserInput: false,

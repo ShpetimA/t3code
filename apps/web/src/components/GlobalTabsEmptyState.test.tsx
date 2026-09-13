@@ -47,6 +47,7 @@ function makeThread(index: number): EnvironmentThreadShell {
     settledOverride: null,
     settledAt: null,
     session: null,
+    pullRequests: [],
     latestUserMessageAt: null,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
