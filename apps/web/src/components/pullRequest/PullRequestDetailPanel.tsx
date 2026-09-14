@@ -2152,48 +2152,41 @@ export function PullRequestDetailPanel({
                   className="min-w-0 flex-1"
                 />
               </span>
-              <div
-                className={cn(
-                  "ml-auto flex min-w-0 items-center justify-end gap-2",
-                  checkoutCommand ? "flex-[1_1_10rem]" : "shrink-0",
-                )}
-              >
-                <span className="inline-flex shrink-0 items-center gap-2 text-[11px]">
-                  <span
-                    className="inline-flex items-center gap-1 tabular-nums"
-                    aria-label={`${detail.changedFiles.toLocaleString()} changed ${
-                      detail.changedFiles === 1 ? "file" : "files"
-                    }`}
-                  >
-                    <FileDiffIcon aria-hidden className="size-3" />
-                    {detail.changedFiles.toLocaleString()}{" "}
-                    {detail.changedFiles === 1 ? "file" : "files"}
-                  </span>
-                  <PullRequestDiffStat
-                    additions={detail.additions}
-                    deletions={detail.deletions}
-                    className="shrink-0 font-mono text-[11px]"
-                  />
+              {checkoutCommand ? (
+                <PullRequestCopyableCode
+                  key={checkoutCommand}
+                  value={checkoutCommand}
+                  target="pull request checkout command"
+                  copyLabel="Copy checkout command"
+                  copiedLabel="Checkout command copied"
+                  className="min-w-0 flex-[1_1_10rem] text-right font-mono"
+                  tooltipSide="bottom"
+                  onError={(error) =>
+                    toastManager.add({
+                      type: "error",
+                      title: "Could not copy checkout command",
+                      description: error.message,
+                    })
+                  }
+                />
+              ) : null}
+              <span className="ml-auto inline-flex shrink-0 items-center gap-2 text-[11px]">
+                <span
+                  className="inline-flex items-center gap-1 tabular-nums"
+                  aria-label={`${detail.changedFiles.toLocaleString()} changed ${
+                    detail.changedFiles === 1 ? "file" : "files"
+                  }`}
+                >
+                  <FileDiffIcon aria-hidden className="size-3" />
+                  {detail.changedFiles.toLocaleString()}{" "}
+                  {detail.changedFiles === 1 ? "file" : "files"}
                 </span>
-                {checkoutCommand ? (
-                  <PullRequestCopyableCode
-                    key={checkoutCommand}
-                    value={checkoutCommand}
-                    target="pull request checkout command"
-                    copyLabel="Copy checkout command"
-                    copiedLabel="Checkout command copied"
-                    className="min-w-0 flex-[1_1_10rem] font-mono"
-                    tooltipSide="bottom"
-                    onError={(error) =>
-                      toastManager.add({
-                        type: "error",
-                        title: "Could not copy checkout command",
-                        description: error.message,
-                      })
-                    }
-                  />
-                ) : null}
-              </div>
+                <PullRequestDiffStat
+                  additions={detail.additions}
+                  deletions={detail.deletions}
+                  className="shrink-0 font-mono text-[11px]"
+                />
+              </span>
             </div>
           </div>
         ) : null}

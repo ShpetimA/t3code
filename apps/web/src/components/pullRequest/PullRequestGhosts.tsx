@@ -144,17 +144,15 @@ export function PullRequestDetailGhost({ seed }: { seed?: PullRequestListEntry |
                   />
                   <code className="min-w-0 flex-1 truncate">{seed.headBranch}</code>
                 </span>
-                <div className="ml-auto flex min-w-0 flex-[1_1_10rem] items-center justify-end gap-2">
-                  <span className="inline-flex shrink-0 items-center gap-2 text-[11px]">
-                    <GhostBar className="w-10" />
-                    <PullRequestDiffStat
-                      additions={seed.additions}
-                      deletions={seed.deletions}
-                      className="font-mono text-[11px]"
-                    />
-                  </span>
-                  <GhostBar className="h-5 min-w-0 flex-[1_1_10rem] rounded-md" />
-                </div>
+                <GhostBar className="h-5 min-w-0 flex-[1_1_10rem] rounded-md" />
+                <span className="ml-auto inline-flex shrink-0 items-center gap-2 text-[11px]">
+                  <GhostBar className="w-10" />
+                  <PullRequestDiffStat
+                    additions={seed.additions}
+                    deletions={seed.deletions}
+                    className="font-mono text-[11px]"
+                  />
+                </span>
               </>
             ) : (
               <>
@@ -164,11 +162,9 @@ export function PullRequestDetailGhost({ seed }: { seed?: PullRequestListEntry |
                 <GhostBar className="w-24" />
                 <GhostBar className="size-3 rounded-full" />
                 <GhostBar className="w-32" />
-                <div className="ml-auto flex min-w-0 flex-[1_1_10rem] items-center justify-end gap-2">
-                  <GhostBar className="w-10" />
-                  <GhostBar className="w-20" />
-                  <GhostBar className="h-5 min-w-0 flex-[1_1_10rem] rounded-md" />
-                </div>
+                <GhostBar className="h-5 min-w-0 flex-[1_1_10rem] rounded-md" />
+                <GhostBar className="ml-auto w-10" />
+                <GhostBar className="w-20" />
               </>
             )}
           </div>
