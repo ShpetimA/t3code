@@ -68,9 +68,8 @@ export function PullRequestListGhost({
 }
 
 /**
- * The detail panel's current expanded shape. Keeping the chrome, summary facts, and description
- * boundaries in the ghost prevents the loaded pull request from replacing one layout with
- * another a moment later.
+ * The detail panel's compact shape. Keeping its identity row stable prevents the loaded pull
+ * request from replacing one layout with another a moment later.
  */
 export function PullRequestDetailGhost({ seed }: { seed?: PullRequestListEntry | null }) {
   const statePresentation = seed
@@ -94,22 +93,24 @@ export function PullRequestDetailGhost({ seed }: { seed?: PullRequestListEntry |
     >
       <div className="shrink-0 border-b border-border/60">
         <div className="flex h-7 items-center justify-between gap-3 px-4">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm sm:text-xs">
             {seed && statePresentation ? (
               <>
-                <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
-                  {seed.repository}
-                </span>
-                <span
-                  className={cn("shrink-0 text-xs font-medium", statePresentation.toneClassName)}
-                >
+                <span className={cn("shrink-0 font-medium", statePresentation.toneClassName)}>
                   #{seed.number}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {seed.title}
+                </span>
+                <span className="min-w-0 max-w-[30%] truncate font-medium text-muted-foreground">
+                  {seed.repository}
                 </span>
               </>
             ) : (
               <>
-                <GhostBar className="w-24" />
                 <GhostBar className="w-9" />
+                <GhostBar className="min-w-0 flex-1" />
+                <GhostBar className="w-24 max-w-[30%]" />
               </>
             )}
           </div>
@@ -119,60 +120,57 @@ export function PullRequestDetailGhost({ seed }: { seed?: PullRequestListEntry |
           </div>
         </div>
 
-        <div className="px-4 pb-4 pt-1">
-          {seed ? (
-            <h1 className="truncate text-base font-semibold leading-snug">{seed.title}</h1>
-          ) : (
-            <GhostBar className="h-5 w-4/5 max-w-md" />
-          )}
-          <div className="mt-2 flex items-center gap-1.5">
+        <div className="px-4 pb-2 pt-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             {seed ? (
               <>
-                <PullRequestActorLabel
-                  actor={seed.author}
-                  className="font-medium"
-                  tooltip={false}
-                />
-                <span className="text-xs text-muted-foreground">
-                  updated {formatRelativeTimeLabel(seed.updatedAt)}
+                <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
+                  <PullRequestActorLabel
+                    actor={seed.author}
+                    className="shrink-0 rounded-full"
+                    labelClassName="min-w-0 truncate"
+                    tooltip={false}
+                  />
+                  <span className="shrink-0">
+                    updated {formatRelativeTimeLabel(seed.updatedAt)}
+                  </span>
                 </span>
+                <span aria-hidden className="h-3 w-px shrink-0 bg-border/70" />
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[11px] text-muted-foreground/65">
+                  <code className="min-w-0 max-w-[40%] shrink-0 truncate">{seed.baseBranch}</code>
+                  <ArrowLeftIcon
+                    aria-label="receives changes from"
+                    className="size-3 shrink-0 opacity-60"
+                  />
+                  <code className="min-w-0 flex-1 truncate">{seed.headBranch}</code>
+                </span>
+                <div className="ml-auto flex min-w-0 flex-[1_1_10rem] items-center justify-end gap-2">
+                  <span className="inline-flex shrink-0 items-center gap-2 text-[11px]">
+                    <GhostBar className="w-10" />
+                    <PullRequestDiffStat
+                      additions={seed.additions}
+                      deletions={seed.deletions}
+                      className="font-mono text-[11px]"
+                    />
+                  </span>
+                  <GhostBar className="h-5 min-w-0 flex-[1_1_10rem] rounded-md" />
+                </div>
               </>
             ) : (
               <>
                 <GhostBar className="size-4 rounded-full" />
                 <GhostBar className="w-24" />
-              </>
-            )}
-          </div>
-          <div className="mt-4 flex min-w-0 items-center gap-2">
-            {seed ? (
-              <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-xs text-muted-foreground/70">
-                <code className="min-w-0 max-w-[40%] shrink-0 truncate">{seed.baseBranch}</code>
-                <ArrowLeftIcon
-                  aria-label="receives changes from"
-                  className="size-3.5 shrink-0 opacity-60"
-                />
-                <code className="min-w-0 flex-1 truncate">{seed.headBranch}</code>
-              </span>
-            ) : (
-              <>
-                <GhostBar className="h-6 w-24 rounded-md" />
+                <GhostBar className="h-3 w-px" />
+                <GhostBar className="w-24" />
                 <GhostBar className="size-3 rounded-full" />
-                <GhostBar className="h-6 w-32 rounded-md" />
+                <GhostBar className="w-32" />
+                <div className="ml-auto flex min-w-0 flex-[1_1_10rem] items-center justify-end gap-2">
+                  <GhostBar className="w-10" />
+                  <GhostBar className="w-20" />
+                  <GhostBar className="h-5 min-w-0 flex-[1_1_10rem] rounded-md" />
+                </div>
               </>
             )}
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <GhostBar className="w-10" />
-              {seed ? (
-                <PullRequestDiffStat
-                  additions={seed.additions}
-                  deletions={seed.deletions}
-                  className="font-mono text-xs"
-                />
-              ) : (
-                <GhostBar className="w-20" />
-              )}
-            </div>
           </div>
         </div>
 
