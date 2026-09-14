@@ -116,7 +116,10 @@ function ProjectFaviconFallback({
       <svg
         aria-hidden="true"
         viewBox="0 0 16 16"
-        className={cn("size-4 shrink-0 overflow-hidden rounded-[25%] select-none", className)}
+        className={cn(
+          "size-4 shrink-0 overflow-hidden rounded-[25%] font-mono select-none",
+          className,
+        )}
         style={{
           backgroundColor: identity.background,
           backgroundImage: `linear-gradient(145deg, ${identity.highlight}, ${identity.background} 72%)`,
@@ -124,13 +127,12 @@ function ProjectFaviconFallback({
       >
         <text
           x="8"
-          y="8.1"
-          dominantBaseline="central"
+          y="10.8"
           textAnchor="middle"
           fill="white"
-          className="font-sans"
+          className="font-mono"
           fontSize="8.25"
-          fontWeight="800"
+          fontWeight="700"
           textLength="12"
           lengthAdjust="spacingAndGlyphs"
           textRendering="geometricPrecision"
@@ -138,13 +140,13 @@ function ProjectFaviconFallback({
           {identity.monogram}
         </text>
         <rect
-          x="0.5"
-          y="0.5"
-          width="15"
-          height="15"
-          rx="3.5"
+          x="0.25"
+          y="0.25"
+          width="15.5"
+          height="15.5"
+          rx="3.75"
           fill="none"
-          strokeWidth="1"
+          strokeWidth="0.5"
           className="stroke-black/10 dark:stroke-white/10"
         />
       </svg>
