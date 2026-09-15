@@ -213,7 +213,10 @@ function PullRequestRowImpl({
             ) : null}
             {entry.labels.length > 0 ? <PullRequestRowLabels labels={entry.labels} /> : null}
           </PullRequestMetaLine>
-          <span aria-hidden className="mx-1.5 shrink-0 text-muted-foreground/50 @md/pr-row:hidden">
+          <span
+            aria-hidden
+            className="mx-1.5 hidden shrink-0 text-muted-foreground/50 @sm/pr-row:inline @md/pr-row:hidden"
+          >
             ·
           </span>
           <span className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
