@@ -385,16 +385,12 @@ export function PullRequestActorLabel({
   const login = actor?.login ?? "ghost";
   const label = (
     <>
-      <span className={cn("truncate", labelClassName)}>{login}</span>
       <PullRequestActorAvatar actor={actor} />
+      <span className={cn("truncate", labelClassName)}>{login}</span>
     </>
   );
   if (!tooltip) {
-    return (
-      <span className={cn("flex min-w-0 flex-row-reverse items-center gap-1.5", className)}>
-        {label}
-      </span>
-    );
+    return <span className={cn("flex min-w-0 items-center gap-1.5", className)}>{label}</span>;
   }
   return (
     <Tooltip>
@@ -412,7 +408,7 @@ export function PullRequestActorLabel({
           )
         }
         className={cn(
-          "flex min-w-0 flex-row-reverse items-center gap-1.5",
+          "flex min-w-0 items-center gap-1.5",
           profileUrl &&
             "cursor-pointer rounded-sm underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
           className,

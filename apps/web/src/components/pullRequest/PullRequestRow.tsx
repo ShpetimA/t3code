@@ -222,7 +222,7 @@ function PullRequestRowImpl({
             </span>
             <PullRequestActorLabel
               actor={entry.author}
-              className="min-w-4 max-w-40 flex-row"
+              className="min-w-4 max-w-40 flex-row-reverse"
               labelClassName="sr-only @xs/pr-row:not-sr-only @xs/pr-row:truncate"
             />
           </span>
