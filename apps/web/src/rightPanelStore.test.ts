@@ -138,6 +138,46 @@ describe("rightPanelStore", () => {
     expect(useRightPanelStore.getState().selectedThreadTabKey).toBe("env-1:thread-A");
   });
 
+  it("rejects pending proactive panels after leaving the Thread tab", () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "src/app.ts", 42);
+    store.selectThreadTab(refA);
+    const turnRevision = store.getUserActionRevision(refA);
+    const selectedPanel = selectThreadRightPanelState(
+      useRightPanelStore.getState().byThreadKey,
+      refA,
+    );
+
+    store.selectPanelTab(refA);
+
+    expect(useRightPanelStore.getState().selectedThreadTabKey).toBeNull();
+    expect(store.openProactive(refA, completedDiff, turnRevision)).toBe(false);
+    expect(store.openProactive(refA, linkedPullRequest, turnRevision)).toBe(false);
+    expect(
+      store.openProactive(refA, { id: "pull-requests", kind: "pull-requests" }, turnRevision),
+    ).toBe(false);
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toBe(
+      selectedPanel,
+    );
+
+    const nextTurnRevision = store.getUserActionRevision(refA);
+    expect(store.openProactive(refA, completedDiff, nextTurnRevision)).toBe(true);
+  });
+
+  it("keeps pending updates eligible when selecting the panel does not leave Thread mode", () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "src/app.ts");
+    const turnRevision = store.getUserActionRevision(refA);
+
+    store.selectPanelTab(refA);
+    store.selectThreadTab(refB);
+    store.selectPanelTab(refA);
+
+    expect(useRightPanelStore.getState().selectedThreadTabKey).toBe("env-1:thread-B");
+    expect(store.openProactive(refA, completedDiff, turnRevision)).toBe(true);
+    expect(useRightPanelStore.getState().selectedThreadTabKey).toBe("env-1:thread-B");
+  });
+
   it.each(["diff", "files", "preview", "device", "pull-requests"] as const)(
     "reveals %s when opened from the Thread tab",
     (kind) => {

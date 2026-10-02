@@ -592,7 +592,15 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       selectPanelTab: (ref) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
-          return state.selectedThreadTabKey === threadKey ? { selectedThreadTabKey: null } : state;
+          if (state.selectedThreadTabKey !== threadKey) return state;
+
+          return {
+            selectedThreadTabKey: null,
+            userActionRevisionByThreadKey: {
+              ...state.userActionRevisionByThreadKey,
+              [threadKey]: (state.userActionRevisionByThreadKey[threadKey] ?? 0) + 1,
+            },
+          };
         }),
       getUserActionRevision: (ref) =>
         get().userActionRevisionByThreadKey[scopedThreadKey(ref)] ?? 0,
